@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>44i SEO/AEO Delivery System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<!--
+  44i SEO/AEO Delivery System — specialist front end
+  Stack: GitHub Pages (static)  ·  Supabase (DB + Auth + Edge Functions)  ·  Ahrefs + GSC
+  Brand: 44i Blue #4B9BD7 · Ink #000 · Paper #FFF · Manrope · growth-green accent for positive metrics
+
+  SUPABASE WIRING POINTS (marked //SB below):
+   - auth: supabase.auth on load
+   - runAudit(): invoke Edge Function 'run-audit' (URL + tier) -> Ahrefs/GSC pulls -> rows in `audits`/`findings`
+   - data currently mocked from the Parker Brothers golden run so the UI is demonstrable offline
+  Replace the wordmark span in the header with the official 44iDigital_White.svg file in your repo.
+-->
+<style>
+  :root{
+    --blue:#4B9BD7; --blue-d:#2F7CB8; --ink:#0E1620; --navy:#21384A; --navy-2:#2C4860;
+    --paper:#FFFFFF; --mist:#F4F7FA; --line:#E4EAF0; --muted:#5B6B7A;
+    --grow:#9FCC6B; --grow-d:#6FA53C; --mint:#E7F3D6;
+    --crit:#C0392B; --high:#E67E22; --med:#4B9BD7; --low:#2E8B57;
+    --r:14px; --r-sm:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Manrope',system-ui,sans-serif;color:var(--ink);background:var(--paper);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+
+  header{border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);z-index:10}
+  .hbar{display:flex;align-items:center;justify-content:space-between;height:66px}
+  .logo{display:flex;align-items:center;gap:11px;font-weight:800;font-size:21px;letter-spacing:-.5px}
+  .logo .icn{width:30px;height:30px;border-radius:8px;background:var(--blue);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px}
+  .logo small{font-weight:700;font-size:11px;letter-spacing:3px;color:var(--muted);align-self:flex-end;margin-bottom:3px}
+  .who{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+  .who .av{width:30px;height:30px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+
+  .hero{padding:46px 0 30px}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:2.5px;color:var(--blue);text-transform:uppercase;margin-bottom:14px}
+  h1{font-size:40px;font-weight:800;letter-spacing:-1.2px;line-height:1.08;max-width:680px}
+  h1 .hl{background:var(--mint);box-shadow:0 0 0 4px var(--mint);border-radius:3px}
+  .sub{color:var(--muted);font-size:16px;margin-top:16px;max-width:560px}
+
+  .intake{background:var(--mist);border:1px solid var(--line);border-radius:var(--r);padding:22px;margin-top:26px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end}
+  .field{display:flex;flex-direction:column;gap:7px}
+  .field label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.3px}
+  .field input{font-family:inherit;font-size:15px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;color:var(--ink);width:100%}
+  .field input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.15)}
+  .tiers{display:flex;gap:8px;margin-top:7px}
+  .tier{flex:1;text-align:center;padding:10px 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);transition:.12s;user-select:none}
+  .tier:hover{border-color:var(--blue)}
+  .tier.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .tier small{display:block;font-weight:500;font-size:11px;opacity:.8;margin-top:2px}
+  .run{font-family:inherit;font-weight:700;font-size:15px;color:#fff;background:var(--blue);border:none;border-radius:999px;padding:14px 30px;cursor:pointer;white-space:nowrap;transition:.12s;height:fit-content}
+  .run:hover{background:var(--blue-d)}
+
+  .section-h{display:flex;align-items:center;gap:10px;margin:40px 0 16px}
+  .section-h h2{font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--ink)}
+  .section-h .ln{flex:1;height:1px;background:var(--line)}
+  .section-h .tag{font-size:12px;color:var(--muted);font-weight:600}
+
+  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+  .card{background:var(--mist);border-radius:var(--r-sm);padding:15px 16px}
+  .card .k{font-size:12px;color:var(--muted);font-weight:600}
+  .card .v{font-size:27px;font-weight:800;letter-spacing:-1px;margin-top:5px}
+  .card .v small{font-size:13px;font-weight:600;color:var(--muted)}
+  .card .d{font-size:11px;font-weight:700;margin-top:3px}
+  .up{color:var(--grow-d)} .down{color:var(--crit)}
+
+  .panel{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;margin-top:8px}
+  .navycard{background:var(--navy);border-radius:var(--r);padding:24px 26px;color:#fff}
+  .navycard .lab{font-size:12px;font-weight:700;letter-spacing:1.5px;color:#9DB6CC;text-transform:uppercase}
+  .navycard h3{font-size:21px;font-weight:800;margin:6px 0 20px;letter-spacing:-.4px}
+  .bars{display:flex;align-items:flex-end;gap:18px;height:150px;padding-top:8px}
+  .bcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%}
+  .bcol .bwrap{flex:1;width:100%;display:flex;align-items:flex-end}
+  .bcol .bar{width:100%;background:var(--grow);border-radius:7px 7px 0 0;position:relative;transition:height .5s ease}
+  .bcol .bv{position:absolute;top:-22px;left:0;right:0;text-align:center;font-weight:800;font-size:13px;color:#fff}
+  .bcol .bl{font-size:11px;color:#9DB6CC;font-weight:600;text-align:center;line-height:1.2}
+  .navycard .big{font-size:40px;font-weight:800;letter-spacing:-1.5px;margin-top:18px}
+  .navycard .big span{color:var(--grow)}
+  .navycard .bigsub{font-size:12px;color:#9DB6CC;font-weight:600;margin-top:2px}
+
+  .diag{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:22px 24px}
+  .diag .lab{font-size:12px;font-weight:700;letter-spacing:1.5px;color:var(--blue);text-transform:uppercase}
+  .diag h3{font-size:17px;font-weight:800;margin:8px 0 10px;letter-spacing:-.3px}
+  .diag p{font-size:14px;color:var(--muted);line-height:1.6}
+  .diag .focus{margin-top:14px;padding:12px 14px;background:var(--mint);border-radius:var(--r-sm);font-size:13px;font-weight:700;color:#3C5A1E}
+
+  .engines{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .eng{border:1px solid var(--line);border-radius:var(--r);padding:18px;position:relative;overflow:hidden}
+  .eng::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--blue)}
+  .eng .en{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--blue);text-transform:uppercase}
+  .eng h4{font-size:16px;font-weight:800;margin:5px 0 8px;letter-spacing:-.3px}
+  .eng p{font-size:12.5px;color:var(--muted);line-height:1.5;min-height:54px}
+  .eng .st{margin-top:12px;font-size:11px;font-weight:700;padding:5px 10px;border-radius:999px;display:inline-block}
+  .st.ready{background:var(--mint);color:#3C5A1E}
+  .st.setup{background:#FBE3D4;color:#9A4A12}
+
+  .deliv{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  .deliv .row{display:grid;grid-template-columns:26px 1fr auto auto;gap:14px;align-items:center;padding:13px 18px;border-bottom:1px solid var(--line);font-size:14px}
+  .deliv .row:last-child{border-bottom:none}
+  .deliv .row.head{background:var(--mist);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+  .chk{width:20px;height:20px;border-radius:6px;background:var(--grow);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+  .chk.pending{background:var(--line);color:var(--muted)}
+  .pill{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#EAF2FA;color:var(--blue-d)}
+  .eng-tag{font-size:11px;font-weight:700;color:var(--muted)}
+
+  footer{margin:54px 0 40px;padding-top:22px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
+  footer .badges{display:flex;gap:18px}
+  @media(max-width:880px){
+    .cards{grid-template-columns:repeat(3,1fr)} .panel{grid-template-columns:1fr} .engines{grid-template-columns:repeat(2,1fr)}
+    .intake{grid-template-columns:1fr} h1{font-size:31px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hbar">
+    <div class="logo">
+      <span class="icn">44</span>
+      <span>44i<small>DIGITAL</small></span>
+    </div>
+    <div class="who"><span>SEO/AEO Delivery System</span><span class="av">SP</span></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="hero">
+    <div class="eyebrow">Specialist Console</div>
+    <h1>One URL in. A full <span class="hl">SEO/AEO program</span> out.</h1>
+    <p class="sub">Enter a client URL and tier. The system pulls live Ahrefs and Search Console data, grades it, drafts the content, specs the fixes, and builds the monthly report — all in 44i brand standards.</p>
+
+    <div class="intake">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="field">
+          <label>Client URL</label>
+          <input id="url" type="text" value="parkerbrothersroofing.com">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="field">
+            <label>Target market</label>
+            <input id="market" type="text" value="Oklahoma, US">
+          </div>
+          <div class="field">
+            <label>Tier</label>
+            <div class="tiers" id="tiers">
+              <div class="tier" data-t="starter">Starter<small>$199</small></div>
+              <div class="tier" data-t="builder">Builder<small>$599</small></div>
+              <div class="tier on" data-t="pro">Pro<small>$799</small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="run" onclick="runAudit()">Run audit →</button>
+    </div>
+  </section>
+
+  <div class="section-h"><h2>Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">parkerbrothersroofing.com · live</span></div>
+  <div class="cards" id="cards"></div>
+
+  <div class="panel">
+    <div class="navycard">
+      <div class="lab">Findings by severity</div>
+      <h3>What the audit surfaced</h3>
+      <div class="bars" id="bars"></div>
+      <div class="big">19 <span>findings</span></div>
+      <div class="bigsub">4 critical · 7 high · 6 medium · 2 low</div>
+    </div>
+    <div class="diag">
+      <div class="lab">Auto-diagnosis</div>
+      <h3>Authority exists — targeting doesn't convert it</h3>
+      <p>A strong link profile (287 referring domains) paired with only 14 ranking keywords means the authority is there but on-page targeting isn't capturing it.</p>
+      <div class="focus">Recommended focus: keyword expansion + on-page optimization — not more link-building.</div>
+    </div>
+  </div>
+
+  <div class="section-h"><h2>The Four Engines</h2><div class="ln"></div><span class="tag" id="tiertag">Pro tier</span></div>
+  <div class="engines" id="engines"></div>
+
+  <div class="section-h"><h2>Deliverables this cycle</h2><div class="ln"></div><span class="tag" id="delivtag"></span></div>
+  <div class="deliv" id="deliv"></div>
+
+  <footer>
+    <span>44i, Inc. · Specialist Console · draft outputs require review</span>
+    <div class="badges"><span>Powered by Ahrefs + Google Search Console</span><span>· Supabase</span></div>
+  </footer>
+</div>
+
+<script>
+// ---- DATA (mocked from the Parker Brothers golden run; //SB replace with Supabase rows) ----
+const metrics = [
+  {k:"Domain Rating", v:"13", s:"/100", d:"low authority", dc:""},
+  {k:"Organic keywords", v:"14", s:"", d:"thin capture", dc:"down"},
+  {k:"Monthly organic", v:"97", s:"", d:"underperforming", dc:""},
+  {k:"Referring domains", v:"287", s:"", d:"strong profile", dc:"up"},
+  {k:"Live backlinks", v:"3,290", s:"", d:"healthy", dc:"up"},
+  {k:"Top-3 rankings", v:"3", s:"", d:"limited", dc:""},
+];
+const severity = [
+  {l:"Critical", v:4, c:"#C0392B"},
+  {l:"High", v:7, c:"#E67E22"},
+  {l:"Medium", v:6, c:"#4B9BD7"},
+  {l:"Low", v:2, c:"#9FCC6B"},
+];
+const ENGINES = [
+  {n:"Engine 1", t:"Audit", p:"Live Ahrefs + GSC pulls, graded into findings and a styled report.", st:"ready", stl:"Ready"},
+  {n:"Engine 2", t:"Content", p:"Drafts blogs, GBP posts, landing & pillar pages on the boilerplate.", st:"ready", stl:"Ready"},
+  {n:"Engine 3", t:"Technical Fix", p:"Paste-ready schema, title/meta rewrites, internal-link plans.", st:"ready", stl:"Ready"},
+  {n:"Engine 4", t:"Reporting", p:"Monthly cadence report mapped to the tier deliverable checklist.", st:"ready", stl:"Ready"},
+];
+// deliverable matrix per tier (from the blueprint)
+const DELIV = {
+  starter:[
+    ["GBP posts","Content","1×/mo",1],["Branded blog","Content","M1",1],
+    ["Reputation monitoring","Reporting","ongoing",1],["Local listing optimization","Fix","ongoing",1],
+    ["Targeted landing pages","Content","optional",0],["Monthly report","Reporting","monthly",1],
+  ],
+  builder:[
+    ["GBP posts","Content","2×/mo",1],["Branded blog","Content","M2",1],
+    ["Keyword research & strategy","Audit","M1",1],["Site health scan","Audit","monthly",0],
+    ["High-intent keyword targeting","Audit","monthly",1],["Core SEO monitoring","Audit","monthly",1],
+    ["Domain optimization monitoring","Audit","monthly",1],["Internal link strategy","Fix","M1",1],
+    ["Sitemap refresh","Fix","monthly",1],["Monthly report","Reporting","monthly",1],
+  ],
+  pro:[
+    ["GBP posts","Content","3×/mo",1],["Branded blog","Content","M2·M3·M5",1],
+    ["Keyword research & strategy","Audit","M1",1],["Site health scan","Audit","monthly",0],
+    ["High-intent keyword targeting","Audit","monthly",1],["Core SEO monitoring","Audit","monthly",1],
+    ["Domain optimization monitoring","Audit","monthly",1],["Internal link strategy","Fix","M1",1],
+    ["Sitemap refresh","Fix","monthly",1],["Schema implementation","Fix","M1",1],
+    ["AEO research & optimization","Audit","monthly",0],["AEO pillar pages","Content","per plan",1],
+    ["Monthly report","Reporting","monthly",1],
+  ],
+};
+const TIERNAME = {starter:"Starter tier", builder:"Builder tier", pro:"Pro tier"};
+let tier = "pro";
+
+function renderCards(){
+  document.getElementById('cards').innerHTML = metrics.map(m=>`
+    <div class="card"><div class="k">${m.k}</div>
+    <div class="v">${m.v}<small>${m.s}</small></div>
+    <div class="d ${m.dc}">${m.dc==='up'?'▲ ':''}${m.dc==='down'?'▼ ':''}${m.d}</div></div>`).join('');
+}
+function renderBars(){
+  const max = Math.max(...severity.map(s=>s.v));
+  document.getElementById('bars').innerHTML = severity.map(s=>`
+    <div class="bcol"><div class="bwrap">
+      <div class="bar" style="height:${(s.v/max*100)}%;background:${s.c}">
+        <div class="bv">${s.v}</div></div>
+    </div><div class="bl">${s.l}</div></div>`).join('');
+}
+function renderEngines(){
+  document.getElementById('engines').innerHTML = ENGINES.map(e=>{
+    // mark Site Audit/AEO setup-dependent engines on pro
+    return `<div class="eng"><div class="en">${e.n}</div><h4>${e.t}</h4><p>${e.p}</p>
+      <span class="st ${e.st}">${e.stl}</span></div>`;
+  }).join('');
+}
+function renderDeliv(){
+  const rows = DELIV[tier];
+  const done = rows.filter(r=>r[3]).length;
+  document.getElementById('delivtag').textContent = `${done} of ${rows.length} ready · setup unlocks the rest`;
+  document.getElementById('deliv').innerHTML =
+    `<div class="row head"><span></span><span>Deliverable</span><span>Engine</span><span>Cadence</span></div>` +
+    rows.map(r=>`<div class="row">
+      <span class="chk ${r[3]?'':'pending'}">${r[3]?'✓':'…'}</span>
+      <span style="font-weight:600">${r[0]}</span>
+      <span class="pill">${r[1]}</span>
+      <span class="eng-tag">${r[2]}</span></div>`).join('');
+}
+function runAudit(){
+  const u = document.getElementById('url').value.trim().replace(/^https?:\/\//,'');
+  document.getElementById('domtag').textContent = u + " · live";
+  // //SB: await supabase.functions.invoke('run-audit',{body:{url:u,tier}})
+  renderCards(); renderBars(); renderEngines(); renderDeliv();
+  document.querySelector('.section-h').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+document.getElementById('tiers').addEventListener('click',e=>{
+  const t = e.target.closest('.tier'); if(!t) return;
+  tier = t.dataset.t;
+  document.querySelectorAll('.tier').forEach(x=>x.classList.toggle('on',x===t));
+  document.getElementById('tiertag').textContent = TIERNAME[tier];
+  document.getElementById('tiertag') && renderDeliv();
+});
+
+renderCards(); renderBars(); renderEngines(); renderDeliv();
+</script>
+</body>
+</html>
