@@ -1038,7 +1038,43 @@ let filters={search:'',tier:'all',status:'all',flag:null,sort:'created.desc'};
 let groupFilters={search:'',am:'all',strat:'all'};
 let _st, _gt;
 // per-package editable working state (competitors / gaps / content queue)
-let PK={competitors:[], comp_pages:[], gaps:[], topics:[]};
+let PK={competitors:[], comp_pages:[], gaps:[], topics:[], metrics:[], severity:[], diag:null, audit:null};
+
+// Load the latest live audit for the active client and map it into PK
+async function loadLiveAudit(){
+  PK={competitors:[], comp_pages:[], gaps:[], topics:[], metrics:[], severity:[], diag:null, audit:null};
+  if(OFFLINE || !activeClient) return;
+  const { data: aud } = await sb.from('audits').select('*')
+    .eq('client_id', activeClient.id).order('run_at',{ascending:false}).limit(1).maybeSingle();
+  if(!aud) return;  // no audit yet → placeholder state
+  PK.audit=aud;
+  const num=v=> v==null?'—':Number(v).toLocaleString();
+  PK.metrics=[
+    {k:'Domain Rating',    v:aud.domain_rating??'—', s:'/100', d:'', dc:''},
+    {k:'Organic keywords', v:num(aud.org_keywords),   s:'', d:'', dc:''},
+    {k:'Monthly organic',  v:num(aud.org_traffic),    s:'', d:'', dc:''},
+    {k:'Referring domains',v:num(aud.referring_domains), s:'', d:'', dc:''},
+    {k:'Live backlinks',   v:num(aud.live_backlinks), s:'', d:'', dc:''},
+    {k:'Top-3 rankings',   v:num(aud.org_keywords_top3), s:'', d:'', dc:''},
+  ];
+  const [cr, gr, fr] = await Promise.all([
+    sb.from('competitors').select('*').eq('audit_id', aud.id),
+    sb.from('content_gaps').select('*').eq('audit_id', aud.id),
+    sb.from('findings').select('*').eq('audit_id', aud.id),
+  ]);
+  PK.competitors=(cr.data||[]).map(c=>({_id:c.id, domain:c.domain, dr:c.domain_rating,
+    common:c.common_keywords, total:c.total_keywords, overlap:c.overlap_pct, traffic:c.org_traffic, manual:c.is_manual}));
+  PK.gaps=(gr.data||[]).map(g=>({_id:g.id, kw:g.keyword, who:g.competitor_domain||'—',
+    pos:g.their_position||0, vol:g.volume||0, kd:g.difficulty||0, sel:g.selected}));
+  const COL={critical:'#C0392B',high:'#E67E22',medium:'#4B9BD7',low:'#9FCC6B'}, ORD=['critical','high','medium','low'];
+  const counts={critical:0,high:0,medium:0,low:0};
+  (fr.data||[]).forEach(f=>{ counts[f.severity]=(counts[f.severity]||0)+1; });
+  PK.severity=ORD.map(s=>({l:cap(s), v:counts[s], c:COL[s]}));
+  const top=(fr.data||[]).slice().sort((a,b)=>ORD.indexOf(a.severity)-ORD.indexOf(b.severity))[0];
+  PK.diag={ h: top? top.title : 'Audit complete', p: aud.diagnosis||'',
+            focus: top&&top.recommended_fix? 'Recommended: '+top.recommended_fix : '' };
+  PK.topics=[]; PK.gaps.filter(g=>g.sel).forEach(addTopicFromGap);
+}
 let _topicSeq=0;
 
 // ════════════════════════════════════════════════════════════
@@ -1343,11 +1379,15 @@ async function saveClient(){
 // ════════════════════════════════════════════════════════════
 //  OPEN CLIENT → PACKAGE VIEW
 // ════════════════════════════════════════════════════════════
-function openClient(id){
-  activeClient=DB.find(c=>c.id===id); if(!activeClient) return;
+async function openClient(id){
+  activeClient = OFFLINE ? DB.find(c=>c.id===id) : groupClients.find(c=>c.id===id);
+  if(!activeClient) return;
   activeTier=activeClient.tier;
-  initPackageData();
-  navigate('package');
+  if(OFFLINE){ initPackageData(); navigate('package'); return; }
+  PK={competitors:[], comp_pages:[], gaps:[], topics:[], metrics:[], severity:[], diag:null, audit:null};
+  navigate('package');          // show the shell immediately
+  await loadLiveAudit();         // fetch any existing audit
+  renderPackage();               // re-render with real data (or the empty state)
 }
 // hydrate the editable working copy from the audit run (//SB: from competitors/content_gaps rows)
 function initPackageData(){
@@ -1504,10 +1544,33 @@ function renderAccessPanel(){
   document.getElementById('access-tag').innerHTML=`${connected} of 4 connected`+(gap?` · <span style="color:var(--high);font-weight:700">access gap for ${cap(activeClient.tier)}</span>`:'');
   document.getElementById('access-panel').innerHTML=PLATFORMS.map(p=>{
     const on=!!c[p.key];
+    const pull = (p.key==='gsc' && !OFFLINE)
+      ? `<button class="apc-btn" style="margin-top:6px;background:#1A3C5E;color:#fff" onclick="pullGSC()">Pull Search Console data →</button>` : '';
     return `<div class="apc ${on?'on':'off'} ${p.key}"><div class="apc-status">${on?'✓ Connected':'✗ Not connected'}</div>
       <div class="apc-name">${p.name}</div><div class="apc-desc">${on?p.on_desc:p.off_desc}</div>
-      <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button></div>`;
+      <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button>${pull}</div>`;
   }).join('');
+}
+
+// Pull live Google Search Console data for the active client (service-account auth)
+async function pullGSC(){
+  if(OFFLINE){ showToast('Live mode only',true); return; }
+  if(!activeClient) return;
+  showToast('Pulling Search Console data…');
+  try{
+    const { data, error } = await sb.functions.invoke('pull-gsc', { body:{ client_id:activeClient.id } });
+    if(error){
+      let body=null; try{ body=await error.context.json(); }catch(_){}
+      console.error('pull-gsc', error, body);
+      showToast('GSC: '+((body&&(body.message||body.error))||error.message||'see console'), true);
+      return;
+    }
+    if(data && data.error){ showToast('GSC: '+(data.message||data.error), true); return; }
+    activeClient.gsc=true;
+    const gc=groupClients.find(x=>x.id===activeClient.id); if(gc) gc.gsc=true;
+    renderAccessPanel();
+    showToast(`Search Console connected — ${data.query_count} queries · ${(data.totals&&data.totals.clicks)||0} clicks (90 days)`, false, true);
+  }catch(e){ console.error(e); showToast('GSC error — see console', true); }
 }
 function togglePlatform(k){
   if(!activeClient) return; activeClient[k]=!activeClient[k];
@@ -1521,22 +1584,30 @@ function togglePlatform(k){
 
 // ── audit renderers ──
 function renderMetrics(){
-  if(!OFFLINE){ document.getElementById('cards').innerHTML=`<div class="card" style="grid-column:1/-1"><div class="k">Audit & intelligence</div><div class="v" style="font-size:15px;line-height:1.5">No audit yet — connect the audit engine (next step) to populate metrics, findings, competitors, and the content plan.</div></div>`; document.getElementById('domtag').textContent=activeClient.url+' · engine not connected'; return; }
-  document.getElementById('cards').innerHTML=AUDIT.metrics.map(m=>`<div class="card"><div class="k">${m.k}</div><div class="v">${m.v}<small>${m.s}</small></div><div class="d ${m.dc}">${m.dc==='up'?'▲ ':''}${m.dc==='down'?'▼ ':''}${m.d}</div></div>`).join('');
-}
-function renderBars(){
-  if(!OFFLINE){
-    document.getElementById('bars').innerHTML='';
-    document.getElementById('f-total').innerHTML='—';
-    document.getElementById('f-sub').textContent='findings populate after the first audit run';
-    document.getElementById('diag-h').textContent='Awaiting audit'; document.getElementById('diag-p').textContent='Run the audit engine to generate findings and the auto-diagnosis for this client.'; document.getElementById('diag-f').textContent='';
+  const M = OFFLINE ? AUDIT.metrics : PK.metrics;
+  if(!M || !M.length){
+    document.getElementById('cards').innerHTML=`<div class="card" style="grid-column:1/-1"><div class="k">Audit & intelligence</div><div class="v" style="font-size:15px;line-height:1.5">No audit yet — click "Generate package" below to run the live audit for this client.</div></div>`;
     return;
   }
-  const max=Math.max(...AUDIT.severity.map(s=>s.v)), total=AUDIT.severity.reduce((a,b)=>a+b.v,0);
-  document.getElementById('bars').innerHTML=AUDIT.severity.map(s=>`<div class="bcol"><div class="bwrap"><div class="bar" style="height:${s.v/max*100}%;background:${s.c}"><div class="bv">${s.v}</div></div></div><div class="bl">${s.l}</div></div>`).join('');
+  document.getElementById('cards').innerHTML=M.map(m=>`<div class="card"><div class="k">${m.k}</div><div class="v">${m.v}<small>${m.s||''}</small></div>${m.d?`<div class="d ${m.dc||''}">${m.dc==='up'?'▲ ':''}${m.dc==='down'?'▼ ':''}${m.d}</div>`:''}</div>`).join('');
+}
+function renderBars(){
+  const S = OFFLINE ? AUDIT.severity : PK.severity;
+  const D = OFFLINE ? AUDIT.diag : PK.diag;
+  if(!S || !S.length){
+    document.getElementById('bars').innerHTML='';
+    document.getElementById('f-total').innerHTML='—';
+    document.getElementById('f-sub').textContent='findings appear after you generate the audit';
+    document.getElementById('diag-h').textContent='Awaiting audit';
+    document.getElementById('diag-p').textContent='Click "Generate package" to run the live audit and populate findings.';
+    document.getElementById('diag-f').textContent='';
+    return;
+  }
+  const max=Math.max(1,...S.map(s=>s.v)), total=S.reduce((a,b)=>a+b.v,0);
+  document.getElementById('bars').innerHTML=S.map(s=>`<div class="bcol"><div class="bwrap"><div class="bar" style="height:${s.v/max*100}%;background:${s.c}"><div class="bv">${s.v}</div></div></div><div class="bl">${s.l}</div></div>`).join('');
   document.getElementById('f-total').innerHTML=`${total} <span>findings</span>`;
-  document.getElementById('f-sub').textContent=AUDIT.severity.map(s=>`${s.v} ${s.l.toLowerCase()}`).join(' · ');
-  document.getElementById('diag-h').textContent=AUDIT.diag.h; document.getElementById('diag-p').textContent=AUDIT.diag.p; document.getElementById('diag-f').textContent=AUDIT.diag.focus;
+  document.getElementById('f-sub').textContent=S.map(s=>`${s.v} ${s.l.toLowerCase()}`).join(' · ');
+  document.getElementById('diag-h').textContent=D?.h||''; document.getElementById('diag-p').textContent=D?.p||''; document.getElementById('diag-f').textContent=D?.focus||'';
 }
 // ── 2 · COMPETITIVE ANALYSIS (editable) ──
 function renderCompetitors(){
@@ -1674,8 +1745,13 @@ function generateDrafts(){
   setTimeout(()=>{ PK.topics.forEach(t=>{ t.status='drafted'; if(!t.body) t.body=genBody(t); t.revision=t.revision||1; }); renderQueue(); showToast(`${n} draft${n===1?'':'s'} ready for review`, false, true); }, 1700);
 }
 function renderFixes(){
-  document.getElementById('fix-tag').textContent=`${AUDIT.fixes.length} fixes · paste-ready`;
-  document.getElementById('fixes').innerHTML=AUDIT.fixes.map(f=>`
+  const F = OFFLINE ? AUDIT.fixes : [];
+  document.getElementById('fix-tag').textContent = F.length ? `${F.length} fixes · paste-ready` : 'generated with the audit';
+  if(!F.length){
+    document.getElementById('fixes').innerHTML=`<div class="fixrow"><div class="fixtop"><span class="fixtarget">Technical fixes (schema, titles, meta) are added here as the fix engine comes online.</span></div></div>`;
+    return;
+  }
+  document.getElementById('fixes').innerHTML=F.map(f=>`
     <div class="fixrow">
       <div class="fixtop"><span class="fixkind ${f.kindClass}">${f.kindLabel}</span><span class="fixtarget">${f.target}</span></div>
       ${f.before?`<div class="fixbefore">Current: <s>${esc(f.before)}</s></div>`:''}
@@ -1716,20 +1792,36 @@ function downloadReport(){
 }
 
 // ── generate / deploy ──
-function generatePackage(){
+async function generatePackage(){
   const c=activeClient, u=document.getElementById('url').value.trim().replace(/^https?:\/\//,'');
   if(!u){ showToast('Enter a client URL',true); return; }
   c.url=u; c.market=document.getElementById('market').value.trim(); c.tier=activeTier;
-  if(!OFFLINE){
-    // run-audit / generate-content are Edge Functions that need API keys (next step).
-    showToast('Audit engine connects in the next step (API keys) — client saved',true);
-    if(c.url||c.market){ sb.from('clients').update({url:c.url, market:c.market, tier:c.tier}).eq('id',c.id).then(()=>{}); }
+  if(OFFLINE){
+    c.last_audit=new Date().toISOString().slice(0,10); c.pkg_status='generating';
+    initPackageData(); renderPackage(); showToast('Generating full package — audit, competitors, gaps, content plan…');
+    setTimeout(()=>{ c.pkg_status='ready'; renderPackage(); showToast('Package ready to deploy', false, true); }, 1600);
     return;
   }
-  c.last_audit=new Date().toISOString().slice(0,10); c.pkg_status='generating';
-  initPackageData();
-  renderPackage(); showToast('Generating full package — audit, competitors, gaps, content plan…');
-  setTimeout(()=>{ c.pkg_status='ready'; renderPackage(); showToast('Package ready to deploy', false, true); }, 1600);
+  // LIVE — persist intake, then run the audit engine (Ahrefs) via the Edge Function
+  await sb.from('clients').update({ url:c.url, market:c.market, tier:c.tier }).eq('id', c.id);
+  const btn=document.querySelector('#v-package .run'); if(btn){ btn.disabled=true; btn.textContent='Running audit…'; }
+  c.pkg_status='generating'; renderPackage();
+  showToast('Running live audit — Ahrefs pulls, competitors, gaps, findings…');
+  try{
+    const { data, error } = await sb.functions.invoke('run-audit', { body:{ client_id:c.id } });
+    if(error || (data && data.error)){
+      console.error('run-audit', error, data);
+      showToast('Audit failed: '+((data&&data.error)||error?.message||'see console'), true);
+      c.pkg_status='none'; renderPackage();
+    } else {
+      c.pkg_status='ready'; c.last_audit=new Date().toISOString().slice(0,10);
+      const gc=groupClients.find(x=>x.id===c.id); if(gc){ gc.pkg_status='ready'; gc.last_audit=c.last_audit; }
+      await loadLiveAudit(); renderPackage();
+      const n=data.counts||{};
+      showToast(`Audit complete — ${n.competitors||0} competitors · ${n.gaps||0} gaps · ${n.findings||0} findings`, false, true);
+    }
+  }catch(e){ console.error(e); showToast('Audit error — see console', true); c.pkg_status='none'; renderPackage(); }
+  finally{ const b=document.querySelector('#v-package .run'); if(b){ b.disabled=false; b.textContent='Generate package →'; } }
 }
 function deployPackage(){
   const c=activeClient, g=groupOf(c);
