@@ -7,29 +7,24 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-
 <!--
-  44i SEO/AEO Delivery System — Internal Ops Console v6
+  44i SEO/AEO Delivery System — Internal Ops Console v8
   Stack: GitHub Pages (static) · Supabase (DB + Auth + Edge Functions) · Ahrefs + GSC
-  Brand: 44i Blue #4B9BD7 · Ink #0E1620 · Navy #21384A · Manrope · grow-green #9FCC6B
 
-  OPERATING MODEL (v6)
-  ─ INTERNAL TOOL. 44i staff only. Clients never log in.
-  ─ Built to manage HUNDREDS of clients — manage by exception, not by scrolling.
-  ─ The ONLY client-facing artifact is the downloadable monthly report (Engine 4).
+  THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
+   · Dashboard opens on PARTNER GROUPS (42 white-label partners from group-assignments.xlsx)
+   · A group drills into its CLIENTS
+   · A client opens its PACKAGE: audit + competition + fixes + deliverables + report,
+     all generated at URL entry and bundled with a deploy lifecycle.
+   · "Deploy package" routes work to the partner's Trello board + notifies IO recipients.
+   · The MONTHLY REPORT is the one client-facing artifact and is WHITE-LABELED in the
+     partner's brand (color + logo). The console itself stays 44i-branded.
 
-  ARCHITECTURE FOR SCALE
-  ─ Never load the full client list. The dashboard talks to queryClients(), which is
-    shaped exactly like a Supabase paginated query (.ilike / .eq / .order / .range).
-    OFFLINE it filters an in-memory mock; live it hits Postgres one page at a time.
-  ─ Triage counts (needs audit / access gaps / reports due) come from a Postgres VIEW
-    (client_health) via cheap COUNT queries — NOT by pulling rows. See schema.sql v3.
-  ─ clients.last_audit_at is denormalized (trigger-maintained) so the list never joins
-    to audits per row.
+  SCALE: never loads the whole book. queryClients() is shaped like a Supabase
+  paginated query; triage + group counts come from Postgres views (see schema.sql v4).
 
-  SUPABASE WIRING POINTS  (search //SB)
+  SUPABASE WIRING POINTS — search //SB
 -->
-
 <style>
 /* ── tokens ──────────────────────────────────────────────────── */
 :root{
@@ -40,12 +35,10 @@
   --crit:#C0392B; --crit-l:#FDECEA; --high:#E67E22; --high-l:#FBE3D4;
   --gold:#C9A227; --gold-l:#F7F0D8;
   --r:14px; --r-sm:10px; --r-xs:6px;
-  --gsc:#4285F4; --gsc-l:#E8F0FE;
-  --gbp:#34A853; --gbp-l:#E6F4EA;
-  --wp:#21759B;  --wp-l:#E4F2FA;
-  --ga4:#E8710A; --ga4-l:#FDE9D9;
-  /* status */
+  --gsc:#4285F4; --gsc-l:#E8F0FE; --gbp:#34A853; --gbp-l:#E6F4EA;
+  --wp:#21759B;  --wp-l:#E4F2FA;  --ga4:#E8710A; --ga4-l:#FDE9D9;
   --st-active:#6FA53C; --st-onboard:#4B9BD7; --st-paused:#E67E22; --st-churned:#9CA8B4;
+  --pk-gen:#E67E22; --pk-ready:#6FA53C; --pk-deployed:#2F7CB8; --pk-none:#9CA8B4;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Manrope',system-ui,sans-serif;color:var(--ink);background:var(--paper);line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -69,6 +62,13 @@ header.show{display:block}
 .hbtn{font-size:12px;font-weight:600;color:var(--muted);background:none;border:1px solid var(--line);border-radius:999px;padding:6px 14px;transition:.12s}
 .hbtn:hover{border-color:var(--ink);color:var(--ink)}
 
+/* ── breadcrumb ─────────────────────────────────────────────── */
+.crumb{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:20px 0 0}
+.crumb button{background:none;border:none;font-size:13px;font-weight:600;color:var(--muted);transition:.12s;padding:0}
+.crumb button:hover{color:var(--blue-d)}
+.crumb .sep{color:var(--line)}
+.crumb .here{font-weight:700;color:var(--ink)}
+
 /* ── LOGIN ──────────────────────────────────────────────────── */
 #v-login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--mist)}
 .login-card{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:42px 40px;width:100%;max-width:400px;box-shadow:0 4px 24px rgba(14,22,32,.06)}
@@ -82,160 +82,198 @@ header.show{display:block}
 .lfield input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.15)}
 .lerr{font-size:13px;color:var(--crit);background:var(--crit-l);padding:10px 12px;border-radius:var(--r-sm);margin-bottom:12px;display:none}
 .lbtn{width:100%;font-weight:700;font-size:15px;color:#fff;background:var(--blue);border:none;border-radius:999px;padding:14px;margin-top:8px;transition:.12s}
-.lbtn:hover:not(:disabled){background:var(--blue-d)}
-.lbtn:disabled{opacity:.55;cursor:not-allowed}
+.lbtn:hover:not(:disabled){background:var(--blue-d)} .lbtn:disabled{opacity:.55;cursor:not-allowed}
 .login-foot{font-size:12px;color:var(--muted);text-align:center;margin-top:22px}
 
-/* ── CLIENTS / DASHBOARD ────────────────────────────────────── */
-.view-head{display:flex;align-items:flex-end;justify-content:space-between;padding:30px 0 6px}
+/* ── view head + global stat strip ──────────────────────────── */
+.view-head{display:flex;align-items:flex-end;justify-content:space-between;padding:24px 0 6px}
 .view-head h1{font-size:26px;font-weight:800;letter-spacing:-.8px}
 .view-head .vsub{font-size:13px;color:var(--muted);margin-top:3px}
 .add-btn{font-weight:700;font-size:14px;color:#fff;background:var(--blue);border:none;border-radius:999px;padding:11px 22px;transition:.12s}
 .add-btn:hover{background:var(--blue-d)}
+.strip{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0 20px}
+.sstat{border:1px solid var(--line);border-radius:var(--r);padding:14px 18px;position:relative;background:#fff}
+.sstat .snum{font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1}
+.sstat .slab{font-size:12px;font-weight:700;color:var(--muted);margin-top:6px}
+.sstat .sbar{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:var(--r) 0 0 var(--r)}
+.sstat.g .sbar{background:var(--navy)}   .sstat.g .snum{color:var(--navy)}
+.sstat.r .sbar{background:var(--pk-ready)} .sstat.r .snum{color:var(--grow-d)}
+.sstat.d .sbar{background:var(--pk-deployed)} .sstat.d .snum{color:var(--blue-d)}
+.sstat.a .sbar{background:var(--crit)}   .sstat.a .snum{color:var(--crit)}
 
-/* triage bar — manage by exception */
-.triage{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0 18px}
-.tstat{border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;cursor:pointer;transition:.12s;position:relative;text-align:left;background:#fff}
-.tstat:hover{border-color:var(--blue);box-shadow:0 2px 10px rgba(14,22,32,.04)}
-.tstat.active{border-color:var(--blue);background:var(--blue-l)}
-.tstat .tnum{font-size:30px;font-weight:800;letter-spacing:-1.2px;line-height:1}
-.tstat .tlab{font-size:12px;font-weight:700;color:var(--muted);margin-top:7px;letter-spacing:.2px}
+/* ── PARTNER GROUP CARDS ────────────────────────────────────── */
+.gsearch{margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.gsearch input{font-family:inherit;font-size:14px;padding:9px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--mist);color:var(--ink);width:280px}
+.gsearch input:focus{outline:none;border-color:var(--blue);background:#fff}
+.gsearch select{font-family:inherit;font-size:13px;font-weight:600;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;color:var(--ink)}
+.groups{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:46px}
+.gcard{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:.14s;background:#fff;position:relative}
+.gcard:hover{box-shadow:0 6px 20px rgba(14,22,32,.08);transform:translateY(-2px)}
+.gcard .gtop{height:6px}
+.gcard .gbody{padding:16px 18px 14px}
+.gcard .ghead{display:flex;align-items:center;gap:11px;margin-bottom:13px}
+.glogo{width:42px;height:42px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff;flex-shrink:0;overflow:hidden}
+.glogo img{width:100%;height:100%;object-fit:contain;background:#fff}
+.gname{font-size:15px;font-weight:800;letter-spacing:-.3px;line-height:1.2}
+.gpeople{font-size:11.5px;color:var(--muted);margin-top:2px}
+.gstats{display:flex;gap:18px;padding-top:12px;border-top:1px solid var(--line)}
+.gstat .gv{font-size:19px;font-weight:800;letter-spacing:-.5px}
+.gstat .gl{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:1px}
+.gstat .gv.ready{color:var(--grow-d)} .gstat .gv.zero{color:var(--muted)}
+.ginactive{position:absolute;top:12px;right:12px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);background:var(--mist);padding:3px 8px;border-radius:999px}
+
+/* ── group detail header ────────────────────────────────────── */
+.ghero{display:flex;align-items:center;gap:18px;padding:18px 0 4px}
+.ghero .glogo{width:56px;height:56px;border-radius:12px;font-size:19px}
+.ghero h1{font-size:25px;font-weight:800;letter-spacing:-.7px}
+.ghero .ghmeta{font-size:13px;color:var(--muted);margin-top:3px}
+.ghero .ghmeta b{color:var(--ink);font-weight:700}
+.ghero-spacer{flex:1}
+.ghrouting{font-size:11.5px;color:var(--muted);text-align:right;line-height:1.6;max-width:340px}
+.ghrouting .rk{font-weight:700;color:var(--navy)}
+
+/* triage (within group) */
+.triage{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0 16px}
+.tstat{border:1px solid var(--line);border-radius:var(--r);padding:15px 18px;cursor:pointer;transition:.12s;position:relative;text-align:left;background:#fff}
+.tstat:hover{border-color:var(--blue)} .tstat.active{border-color:var(--blue);background:var(--blue-l)}
+.tstat .tnum{font-size:28px;font-weight:800;letter-spacing:-1.1px;line-height:1}
+.tstat .tlab{font-size:12px;font-weight:700;color:var(--muted);margin-top:6px}
 .tstat .tbar{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:var(--r) 0 0 var(--r)}
-.tstat.all  .tbar{background:var(--navy)}    .tstat.all  .tnum{color:var(--navy)}
-.tstat.aud  .tbar{background:var(--crit)}    .tstat.aud  .tnum{color:var(--crit)}
-.tstat.gap  .tbar{background:var(--high)}    .tstat.gap  .tnum{color:var(--high)}
-.tstat.rep  .tbar{background:var(--gold)}    .tstat.rep  .tnum{color:var(--gold)}
+.tstat.all .tbar{background:var(--navy)}  .tstat.all .tnum{color:var(--navy)}
+.tstat.aud .tbar{background:var(--crit)}  .tstat.aud .tnum{color:var(--crit)}
+.tstat.gap .tbar{background:var(--high)}  .tstat.gap .tnum{color:var(--high)}
+.tstat.rdy .tbar{background:var(--pk-ready)} .tstat.rdy .tnum{color:var(--grow-d)}
 
 /* filter bar */
-.fbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
-.fbar input.search{font-family:inherit;font-size:14px;padding:9px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--mist);color:var(--ink);width:280px}
+.fbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.fbar input.search{font-family:inherit;font-size:14px;padding:9px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--mist);color:var(--ink);width:240px}
 .fbar input.search:focus{outline:none;border-color:var(--blue);background:#fff}
 .fsel{font-family:inherit;font-size:13px;font-weight:600;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;color:var(--ink)}
 .fsel:focus{outline:none;border-color:var(--blue)}
 .fclear{font-size:13px;font-weight:600;color:var(--blue-d);background:none;border:none;padding:8px 6px;margin-left:auto}
 .fclear:hover{text-decoration:underline}
 
-/* table */
+/* clients table */
 .ctable{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-.ct-cols{grid-template-columns:1.6fr 92px 110px 86px 168px 116px 158px}
+.ct-cols{grid-template-columns:1.7fr 104px 84px 158px 132px 118px 146px}
 .ct-head{display:grid;padding:11px 18px;background:var(--mist);font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
-.ct-head span{cursor:default}
 .ct-row{display:grid;padding:13px 18px;border-bottom:1px solid var(--line);align-items:center;cursor:pointer;transition:background .1s}
-.ct-row:last-child{border-bottom:none}
-.ct-row:hover{background:var(--mist)}
+.ct-row:last-child{border-bottom:none} .ct-row:hover{background:var(--mist)}
 .ct-client .dn{font-weight:700;font-size:14px}
 .ct-client .nm{font-size:12px;font-weight:500;color:var(--muted);margin-top:1px}
 .ct-client .mk{font-size:11px;color:var(--muted);margin-top:1px;opacity:.8}
-.assignee-av{width:26px;height:26px;border-radius:50%;background:var(--navy-2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
 .status-dot{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted)}
 .status-dot i{width:8px;height:8px;border-radius:50%;display:inline-block;font-style:normal}
 .sd-active i{background:var(--st-active)} .sd-onboarding i{background:var(--st-onboard)}
 .sd-paused i{background:var(--st-paused)} .sd-churned i{background:var(--st-churned)}
 .tier-pill{display:inline-block;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px}
-.tier-pill.starter{background:#F0F7FF;color:#2F7CB8}
-.tier-pill.builder{background:var(--mint);color:#3C5A1E}
-.tier-pill.pro{background:var(--navy);color:#fff}
+.tier-pill.starter{background:#F0F7FF;color:#2F7CB8} .tier-pill.builder{background:var(--mint);color:#3C5A1E} .tier-pill.pro{background:var(--navy);color:#fff}
 .pbadges{display:flex;gap:4px}
-.pbadge{width:34px;height:23px;border-radius:var(--r-xs);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;letter-spacing:.3px}
+.pbadge{width:33px;height:22px;border-radius:var(--r-xs);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;letter-spacing:.3px}
 .pbadge.on{opacity:1} .pbadge.off{opacity:.22;filter:grayscale(1)}
 .pbadge.gsc{background:var(--gsc-l);color:var(--gsc)} .pbadge.gbp{background:var(--gbp-l);color:var(--gbp)}
-.pbadge.wp{background:var(--wp-l);color:var(--wp)}    .pbadge.ga4{background:var(--ga4-l);color:var(--ga4)}
-.ct-date{font-size:12px;color:var(--muted)}
-.ct-date.stale{color:var(--crit);font-weight:600}
+.pbadge.wp{background:var(--wp-l);color:var(--wp)} .pbadge.ga4{background:var(--ga4-l);color:var(--ga4)}
+.pkg-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px}
+.pkg-badge i{width:7px;height:7px;border-radius:50%;font-style:normal}
+.pkg-none{background:var(--mist);color:var(--muted)} .pkg-none i{background:var(--pk-none)}
+.pkg-generating{background:var(--high-l);color:#9A4A12} .pkg-generating i{background:var(--pk-gen)}
+.pkg-ready{background:var(--mint);color:#3C5A1E} .pkg-ready i{background:var(--pk-ready)}
+.pkg-deployed{background:var(--blue-l);color:var(--blue-d)} .pkg-deployed i{background:var(--pk-deployed)}
+.ct-date{font-size:12px;color:var(--muted)} .ct-date.stale{color:var(--crit);font-weight:600}
 .ct-act{display:flex;gap:6px;justify-content:flex-end}
-.abtn{font-size:12px;font-weight:700;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted);transition:.12s;white-space:nowrap}
+.abtn{font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted);transition:.12s;white-space:nowrap}
 .abtn:hover{border-color:var(--blue-d);color:var(--ink)}
-.abtn.audit{background:var(--blue);color:#fff;border-color:var(--blue)}
-.abtn.audit:hover{background:var(--blue-d);border-color:var(--blue-d)}
-.abtn.report{border-color:var(--gold);color:#9A7B12}
-.abtn.report:hover{background:var(--gold-l);border-color:var(--gold)}
+.abtn.open{background:var(--blue);color:#fff;border-color:var(--blue)} .abtn.open:hover{background:var(--blue-d);border-color:var(--blue-d)}
 
-/* pagination */
-.pager{display:flex;align-items:center;justify-content:space-between;margin:14px 2px 48px;font-size:13px;color:var(--muted)}
+.pager{display:flex;align-items:center;justify-content:space-between;margin:14px 2px 46px;font-size:13px;color:var(--muted)}
 .pager .pnav{display:flex;gap:8px}
 .pbtn{font-size:13px;font-weight:700;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink);transition:.12s}
-.pbtn:hover:not(:disabled){border-color:var(--blue);color:var(--blue-d)}
-.pbtn:disabled{opacity:.4;cursor:not-allowed}
-
-.empty{text-align:center;padding:54px 20px}
-.empty h3{font-size:17px;font-weight:700;margin-bottom:8px}
-.empty p{font-size:14px;color:var(--muted)}
+.pbtn:hover:not(:disabled){border-color:var(--blue);color:var(--blue-d)} .pbtn:disabled{opacity:.4;cursor:not-allowed}
+.empty{text-align:center;padding:48px 20px}
+.empty h3{font-size:17px;font-weight:700;margin-bottom:8px} .empty p{font-size:14px;color:var(--muted)}
 
 /* ── MODAL ──────────────────────────────────────────────────── */
 .overlay{position:fixed;inset:0;background:rgba(14,22,32,.42);z-index:50;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .18s}
 .overlay.open{opacity:1;pointer-events:all}
 .modal{background:#fff;border-radius:var(--r);padding:30px 34px;width:100%;max-width:520px;transform:translateY(10px);transition:transform .18s;max-height:92vh;overflow-y:auto}
 .overlay.open .modal{transform:translateY(0)}
-.modal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.modal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .modal-h h2{font-size:19px;font-weight:800;letter-spacing:-.4px}
-.xbtn{background:none;border:none;font-size:20px;color:var(--muted);line-height:1;padding:4px 6px}
-.xbtn:hover{color:var(--ink)}
+.modal-grp{font-size:12.5px;color:var(--muted);margin-bottom:20px}
+.modal-grp b{color:var(--ink);font-weight:700}
+.xbtn{background:none;border:none;font-size:20px;color:var(--muted);line-height:1;padding:4px 6px} .xbtn:hover{color:var(--ink)}
 .mfield{display:flex;flex-direction:column;gap:7px;margin-bottom:15px}
 .mfield label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.3px;text-transform:uppercase}
 .mfield input,.mfield select{font-family:inherit;font-size:15px;padding:11px 14px;border:1px solid var(--line);border-radius:var(--r-sm);color:var(--ink);background:#fff}
 .mfield input:focus,.mfield select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.15)}
-.mrow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.mrow .mfield{margin-bottom:15px}
+.mrow{display:grid;grid-template-columns:1fr 1fr;gap:14px} .mrow .mfield{margin-bottom:15px}
 .access-label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px;margin-top:4px}
 .atacc{display:flex;flex-direction:column;gap:8px}
 .atrow{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer;transition:.12s}
-.atrow:hover{border-color:var(--blue)}
-.atrow.on{border-color:var(--grow-d);background:var(--mint)}
+.atrow:hover{border-color:var(--blue)} .atrow.on{border-color:var(--grow-d);background:var(--mint)}
 .atleft{display:flex;align-items:center;gap:10px}
 .at-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800}
 .at-icon.gsc{background:var(--gsc-l);color:var(--gsc)} .at-icon.gbp{background:var(--gbp-l);color:var(--gbp)}
-.at-icon.wp{background:var(--wp-l);color:var(--wp)}    .at-icon.ga4{background:var(--ga4-l);color:var(--ga4)}
+.at-icon.wp{background:var(--wp-l);color:var(--wp)} .at-icon.ga4{background:var(--ga4-l);color:var(--ga4)}
 .at-name{font-size:13px;font-weight:700} .at-sub{font-size:11px;color:var(--muted)}
 .at-chk{width:18px;height:18px;border-radius:5px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;transition:.12s;flex-shrink:0}
 .atrow.on .at-chk{background:var(--grow-d);border-color:var(--grow-d);color:#fff}
 .req-note{font-size:11px;color:var(--high);font-weight:600;margin-top:2px}
-.mfoot{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.gen-note{font-size:12px;color:var(--blue-d);font-weight:600;background:var(--blue-l);padding:10px 13px;border-radius:var(--r-sm);margin-top:14px}
+.mfoot{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
 .mbtn{font-weight:700;font-size:14px;padding:11px 22px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted);transition:.12s}
-.mbtn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
-.mbtn:hover{border-color:var(--blue-d);color:var(--ink)} .mbtn.primary:hover{background:var(--blue-d)}
+.mbtn.primary{background:var(--blue);color:#fff;border-color:var(--blue)} .mbtn:hover{border-color:var(--blue-d);color:var(--ink)} .mbtn.primary:hover{background:var(--blue-d)}
 
-/* ── AUDIT VIEW ─────────────────────────────────────────────── */
-.back-link{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted);padding:22px 0 0;cursor:pointer;background:none;border:none;transition:.12s}
-.back-link:hover{color:var(--ink)}
-.hero{padding:22px 0 18px}
-.eyebrow{font-size:12px;font-weight:700;letter-spacing:2.5px;color:var(--blue);text-transform:uppercase;margin-bottom:12px}
-h1.ah{font-size:34px;font-weight:800;letter-spacing:-1.1px;line-height:1.1;max-width:680px}
-h1.ah .hl{background:var(--mint);box-shadow:0 0 0 4px var(--mint);border-radius:3px}
-.sub{color:var(--muted);font-size:15px;margin-top:12px;max-width:560px}
-.intake{background:var(--mist);border:1px solid var(--line);border-radius:var(--r);padding:20px;margin-top:20px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end}
+/* ── PACKAGE VIEW ───────────────────────────────────────────── */
+.pkg-hero{display:flex;align-items:center;gap:16px;padding:16px 0 6px}
+.pkg-hero .glogo{width:48px;height:48px;border-radius:10px;font-size:16px}
+.pkg-hero h1{font-size:24px;font-weight:800;letter-spacing:-.7px}
+.pkg-hero .ph-meta{font-size:13px;color:var(--muted);margin-top:2px}
+.pkg-hero .ph-meta b{color:var(--ink);font-weight:700}
+.pkg-hero-spacer{flex:1}
+.pkg-statline{display:flex;align-items:center;gap:10px}
+.pkg-statbig{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:800;padding:8px 16px;border-radius:999px}
+.pkg-statbig i{width:9px;height:9px;border-radius:50%;font-style:normal}
+.deploy-btn{font-weight:700;font-size:14px;color:#fff;background:var(--navy);border:none;border-radius:999px;padding:12px 24px;transition:.12s}
+.deploy-btn:hover{background:var(--navy-2)} .deploy-btn:disabled{opacity:.45;cursor:not-allowed}
+.deploy-btn.deployed{background:var(--grow-d)}
+
+.intake{background:var(--mist);border:1px solid var(--line);border-radius:var(--r);padding:20px;margin-top:18px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end}
 .ifield{display:flex;flex-direction:column;gap:7px}
 .ifield label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.3px;text-transform:uppercase}
-.ifield input{font-family:inherit;font-size:15px;padding:11px 14px;border:1px solid var(--line);border-radius:var(--r-sm);color:var(--ink);background:#fff}
-.ifield input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.15)}
+.ifield input,.ifield select{font-family:inherit;font-size:15px;padding:11px 14px;border:1px solid var(--line);border-radius:var(--r-sm);color:var(--ink);background:#fff}
+.ifield input:focus,.ifield select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.15)}
 .tiers{display:flex;gap:8px;margin-top:6px}
 .tsel{flex:1;text-align:center;padding:10px 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);transition:.12s;user-select:none}
 .tsel:hover{border-color:var(--blue)} .tsel.on{background:var(--blue);border-color:var(--blue);color:#fff}
 .tsel small{display:block;font-weight:500;font-size:11px;opacity:.8;margin-top:2px}
 .run{font-weight:700;font-size:15px;color:#fff;background:var(--blue);border:none;border-radius:999px;padding:14px 28px;white-space:nowrap;transition:.12s;align-self:flex-end}
 .run:hover{background:var(--blue-d)}
-.section-h{display:flex;align-items:center;gap:10px;margin:32px 0 14px}
+
+.section-h{display:flex;align-items:center;gap:10px;margin:30px 0 14px}
 .section-h h2{font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase}
 .section-h .ln{flex:1;height:1px;background:var(--line)}
 .section-h .tag{font-size:12px;color:var(--muted);font-weight:600}
+
 .acp{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 .apc{border:1px solid var(--line);border-radius:var(--r-sm);padding:14px 16px;position:relative}
 .apc.on.gsc{background:var(--gsc-l);border-color:rgba(66,133,244,.2)} .apc.on.gbp{background:var(--gbp-l);border-color:rgba(52,168,83,.2)}
-.apc.on.wp{background:var(--wp-l);border-color:rgba(33,117,155,.2)}   .apc.on.ga4{background:var(--ga4-l);border-color:rgba(232,113,10,.2)}
+.apc.on.wp{background:var(--wp-l);border-color:rgba(33,117,155,.2)} .apc.on.ga4{background:var(--ga4-l);border-color:rgba(232,113,10,.2)}
 .apc.off{background:var(--mist)}
 .apc-status{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;margin-bottom:3px}
 .apc.on .apc-status{color:var(--grow-d)} .apc.off .apc-status{color:var(--muted)}
-.apc-name{font-size:13px;font-weight:800;margin-bottom:3px;letter-spacing:-.2px}
-.apc.off .apc-name{color:var(--muted)}
+.apc-name{font-size:13px;font-weight:800;margin-bottom:3px;letter-spacing:-.2px} .apc.off .apc-name{color:var(--muted)}
 .apc-desc{font-size:11px;color:var(--muted);line-height:1.45}
 .apc-btn{position:absolute;top:10px;right:12px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid;background:none;cursor:pointer;transition:.12s}
 .apc.on .apc-btn{color:var(--grow-d);border-color:var(--grow-d)} .apc.off .apc-btn{color:var(--blue);border-color:var(--blue)}
-.apc.on .apc-btn:hover{background:rgba(111,165,60,.12)} .apc.off .apc-btn:hover{background:var(--blue-l)}
+
 .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
 .card{background:var(--mist);border-radius:var(--r-sm);padding:15px 16px}
 .card .k{font-size:12px;color:var(--muted);font-weight:600}
-.card .v{font-size:27px;font-weight:800;letter-spacing:-1px;margin-top:5px}
+.card .v{font-size:26px;font-weight:800;letter-spacing:-1px;margin-top:5px}
 .card .v small{font-size:13px;font-weight:600;color:var(--muted)}
 .card .d{font-size:11px;font-weight:700;margin-top:3px} .up{color:var(--grow-d)} .down{color:var(--crit)}
+
 .panel{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;margin-top:8px}
 .navycard{background:var(--navy);border-radius:var(--r);padding:24px 26px;color:#fff}
 .navycard .lab{font-size:12px;font-weight:700;letter-spacing:1.5px;color:#9DB6CC;text-transform:uppercase}
@@ -253,6 +291,18 @@ h1.ah .hl{background:var(--mint);box-shadow:0 0 0 4px var(--mint);border-radius:
 .diag h3{font-size:16px;font-weight:800;margin:8px 0 10px;letter-spacing:-.3px}
 .diag p{font-size:14px;color:var(--muted);line-height:1.6}
 .diag .focus{margin-top:14px;padding:12px 14px;background:var(--mint);border-radius:var(--r-sm);font-size:13px;font-weight:700;color:#3C5A1E}
+
+/* competition table */
+.comp{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.comp .crow{display:grid;grid-template-columns:1.6fr 90px 1fr 110px;gap:12px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line);font-size:13.5px}
+.comp .crow:last-child{border-bottom:none}
+.comp .crow.chead{background:var(--mist);font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+.comp .cdomain{font-weight:700} .comp .cdr{font-weight:800}
+.ovbar{height:8px;border-radius:999px;background:var(--line);overflow:hidden;position:relative}
+.ovbar i{position:absolute;left:0;top:0;bottom:0;background:var(--blue);border-radius:999px;font-style:normal}
+.ov-label{font-size:11px;color:var(--muted);font-weight:600;margin-top:3px}
+
+/* engines */
 .engines{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
 .eng{border:1px solid var(--line);border-radius:var(--r);padding:18px;position:relative;overflow:hidden}
 .eng::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--blue)}
@@ -261,7 +311,23 @@ h1.ah .hl{background:var(--mint);box-shadow:0 0 0 4px var(--mint);border-radius:
 .eng p{font-size:12px;color:var(--muted);line-height:1.5;min-height:48px}
 .eng .st{margin-top:12px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;display:inline-block}
 .st.ready{background:var(--mint);color:#3C5A1E} .st.setup{background:#FBE3D4;color:#9A4A12}
-.deliv{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:14px}
+
+/* fixes list */
+.fixes{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.fixrow{padding:14px 18px;border-bottom:1px solid var(--line)}
+.fixrow:last-child{border-bottom:none}
+.fixtop{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.fixkind{font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:var(--blue-l);color:var(--blue-d)}
+.fixkind.schema{background:#EDE7FB;color:#5B3FB0} .fixkind.faq{background:#E7F3D6;color:#3C5A1E}
+.fixkind.title{background:var(--gold-l);color:#8A6D12} .fixkind.meta{background:var(--ga4-l);color:#9A4A12}
+.fixkind.link{background:var(--gbp-l);color:#1E6B33}
+.fixtarget{font-size:12.5px;font-weight:700;color:var(--ink)}
+.fixcode{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11.5px;background:var(--mist);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;color:var(--navy);white-space:pre-wrap;word-break:break-word;line-height:1.5;margin-top:4px}
+.fixbefore{font-size:11.5px;color:var(--muted);margin-top:4px}
+.fixbefore s{opacity:.8}
+
+/* deliverables */
+.deliv{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:8px}
 .drow{display:grid;grid-template-columns:26px 1fr auto auto;gap:14px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line);font-size:14px}
 .drow:last-child{border-bottom:none}
 .drow.dhead{background:var(--mist);font-size:11px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--muted)}
@@ -269,42 +335,166 @@ h1.ah .hl{background:var(--mint);box-shadow:0 0 0 4px var(--mint);border-radius:
 .chk.pend{background:var(--line);color:var(--muted)}
 .dpill{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--blue-l);color:var(--blue-d)}
 .dtag{font-size:11px;font-weight:700;color:var(--muted)}
-.report-cta{display:flex;align-items:center;justify-content:space-between;gap:18px;background:linear-gradient(120deg,var(--navy),var(--navy-2));border-radius:var(--r);padding:20px 24px;color:#fff;margin-bottom:14px}
-.report-cta .rc-l .rc-eye{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);margin-bottom:4px}
-.report-cta .rc-l h4{font-size:17px;font-weight:800;letter-spacing:-.3px}
-.report-cta .rc-l p{font-size:12.5px;color:#9DB6CC;margin-top:3px}
-.report-cta .rc-btn{font-weight:700;font-size:14px;color:var(--navy);background:var(--gold);border:none;border-radius:999px;padding:12px 22px;white-space:nowrap;transition:.12s}
-.report-cta .rc-btn:hover{filter:brightness(1.08)}
 
-/* ── toast ───────────────────────────────────────────────────── */
-.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--navy);color:#fff;font-size:13px;font-weight:600;padding:11px 20px;border-radius:999px;opacity:0;transition:all .25s;pointer-events:none;z-index:100;white-space:nowrap}
+/* report — white-labeled preview (the client-facing artifact) */
+.report-wl{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:14px}
+.rwl-bar{height:8px}
+.rwl-body{display:flex;align-items:center;gap:18px;padding:20px 24px}
+.rwl-logo{width:54px;height:54px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;color:#fff;flex-shrink:0;overflow:hidden}
+.rwl-logo img{width:100%;height:100%;object-fit:contain;background:#fff}
+.rwl-txt .rwl-eye{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:3px}
+.rwl-txt h4{font-size:17px;font-weight:800;letter-spacing:-.3px}
+.rwl-txt p{font-size:12.5px;color:var(--muted);margin-top:3px}
+.rwl-spacer{flex:1}
+.rwl-btn{font-weight:700;font-size:14px;color:#fff;border:none;border-radius:999px;padding:12px 22px;white-space:nowrap;transition:.12s}
+.rwl-btn:hover{filter:brightness(1.08)}
+
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--navy);color:#fff;font-size:13px;font-weight:600;padding:11px 20px;border-radius:999px;opacity:0;transition:all .25s;pointer-events:none;z-index:100;white-space:nowrap;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)} .toast.err{background:var(--crit)} .toast.gold{background:var(--gold);color:var(--navy)}
 
 footer{margin:40px 0 36px;padding-top:20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
 footer .fbadges{display:flex;gap:18px}
 
 @media(max-width:1080px){
+  .groups{grid-template-columns:repeat(2,1fr)} .strip{grid-template-columns:repeat(2,1fr)}
   .triage{grid-template-columns:repeat(2,1fr)}
-  .ct-cols{grid-template-columns:1.6fr 110px 86px 150px 150px}
-  .ct-head>*:nth-child(2),.ct-row>*:nth-child(2),
-  .ct-head>*:nth-child(6),.ct-row>*:nth-child(6){display:none}
+  .ct-cols{grid-template-columns:1.6fr 84px 150px 132px 140px}
+  .ct-head>*:nth-child(2),.ct-row>*:nth-child(2),.ct-head>*:nth-child(6),.ct-row>*:nth-child(6){display:none}
 }
 @media(max-width:880px){
   .cards{grid-template-columns:repeat(3,1fr)} .panel{grid-template-columns:1fr}
   .engines{grid-template-columns:repeat(2,1fr)} .intake{grid-template-columns:1fr}
-  .acp{grid-template-columns:repeat(2,1fr)} h1.ah{font-size:28px}
+  .acp{grid-template-columns:repeat(2,1fr)} .ghrouting{display:none}
 }
 @media(max-width:680px){
-  .wrap{padding:0 16px} .acp{grid-template-columns:1fr}
-  .ct-cols{grid-template-columns:1.4fr 86px 140px}
-  .ct-head>*:nth-child(3),.ct-row>*:nth-child(3),
-  .ct-head>*:nth-child(6),.ct-row>*:nth-child(6){display:none}
-  .report-cta{flex-direction:column;align-items:flex-start}
+  .wrap{padding:0 16px} .groups{grid-template-columns:1fr} .acp{grid-template-columns:1fr}
+  .ct-cols{grid-template-columns:1.4fr 132px 132px}
+  .ct-head>*:nth-child(2),.ct-row>*:nth-child(2),.ct-head>*:nth-child(3),.ct-row>*:nth-child(3),.ct-head>*:nth-child(6),.ct-row>*:nth-child(6){display:none}
+  .comp .crow{grid-template-columns:1.4fr 70px 90px} .comp .crow>*:nth-child(3){display:none}
+  .pkg-hero{flex-wrap:wrap} .rwl-body{flex-wrap:wrap}
 }
+
+/* ── v8: competitive analysis + content plan ────────────────── */
+.subh{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.4px;margin:18px 0 9px;display:flex;align-items:center;gap:8px}
+.subh .sct{font-size:11px;font-weight:700;color:var(--blue-d)}
+
+/* editable competitor table */
+.comp .crow{grid-template-columns:1.5fr 80px 1fr 104px 30px}
+.comp .crow .cx{text-align:center}
+.cxbtn{background:none;border:none;color:var(--muted);font-size:14px;line-height:1;padding:2px 4px;border-radius:5px;transition:.12s}
+.cxbtn:hover{color:var(--crit);background:var(--crit-l)}
+.crow.manual .cdomain::after{content:" ·added";font-size:10px;font-weight:700;color:var(--blue-d);letter-spacing:.3px}
+.addrow{display:flex;gap:8px;align-items:center;padding:11px 18px;background:var(--mist);border-top:1px solid var(--line)}
+.addrow input{font-family:inherit;font-size:13px;padding:7px 11px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;color:var(--ink)}
+.addrow input:focus{outline:none;border-color:var(--blue)}
+.addrow .dom{flex:1} .addrow .dr{width:74px}
+.addbtn{font-size:12px;font-weight:700;padding:8px 14px;border-radius:999px;border:1px solid var(--blue);background:#fff;color:var(--blue-d);transition:.12s}
+.addbtn:hover{background:var(--blue-l)}
+
+/* competitor pages */
+.cpages{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.cprow{display:grid;grid-template-columns:1fr 150px 96px;gap:12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--line);font-size:13px}
+.cprow:last-child{border-bottom:none}
+.cprow.cphead{background:var(--mist);font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+.cppage{font-weight:600} .cppage small{display:block;font-size:11px;font-weight:500;color:var(--muted);margin-top:1px}
+.cpkw{font-size:12px;color:var(--muted)} .cptraf{font-weight:700;text-align:right}
+
+/* content gap (selectable) */
+.gaps{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.grow{display:grid;grid-template-columns:30px 1.5fr 1fr 78px 70px 30px;gap:12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--line);font-size:13px}
+.grow:last-child{border-bottom:none}
+.grow.ghead{background:var(--mist);font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+.gchk{width:18px;height:18px;border-radius:5px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;transition:.12s;background:#fff}
+.gchk.on{background:var(--grow-d);border-color:var(--grow-d);color:#fff}
+.gkw{font-weight:700} .gwho{font-size:12px;color:var(--muted)} .gwho b{color:var(--ink);font-weight:700}
+.gvol{font-weight:700} .gkd{font-size:12px;color:var(--muted)}
+.gsel-note{font-size:12px;color:var(--grow-d);font-weight:700;padding:10px 18px;background:var(--mint);border-top:1px solid var(--line)}
+
+/* content queue (editable) + model split */
+.model-legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px;font-size:12px;color:var(--muted)}
+.model-legend .ml{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.mtag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.3px;padding:3px 8px;border-radius:999px}
+.mtag.opus{background:#EDE7FB;color:#5B3FB0}
+.mtag.sonnet{background:var(--blue-l);color:var(--blue-d)}
+.mtag.haiku{background:var(--mint);color:#3C5A1E}
+.queue{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.qrow{display:grid;grid-template-columns:1.7fr 126px 132px 96px 30px;gap:12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--line);font-size:13px}
+.qrow:last-child{border-bottom:none}
+.qrow.qhead{background:var(--mist);font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+.qtitle{font-family:inherit;font-size:13px;font-weight:600;padding:7px 10px;border:1px solid transparent;border-radius:var(--r-sm);background:transparent;color:var(--ink);width:100%}
+.qtitle:hover{border-color:var(--line)} .qtitle:focus{outline:none;border-color:var(--blue);background:#fff}
+.qtitle .qkw{display:block;font-size:11px;color:var(--muted);font-weight:500}
+.qsel{font-family:inherit;font-size:12px;font-weight:600;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;color:var(--ink);width:100%}
+.qsel:focus{outline:none;border-color:var(--blue)}
+.qstatus{font-size:11px;font-weight:700;padding:4px 9px;border-radius:999px;text-align:center}
+.qs-queued{background:var(--mist);color:var(--muted)} .qs-drafting{background:var(--high-l);color:#9A4A12}
+.qs-drafted{background:var(--blue-l);color:var(--blue-d)} .qs-approved{background:var(--mint);color:#3C5A1E}
+.qbar{display:flex;align-items:center;justify-content:space-between;padding:11px 18px;background:var(--mist);border-top:1px solid var(--line)}
+.qbar .qsum{font-size:12px;color:var(--muted);font-weight:600}
+.qgen{font-size:12px;font-weight:700;padding:9px 16px;border-radius:999px;border:none;background:var(--blue);color:#fff;transition:.12s}
+.qgen:hover{background:var(--blue-d)}
+.qempty{padding:22px 18px;text-align:center;font-size:13px;color:var(--muted)}
+@media(max-width:680px){
+  .comp .crow{grid-template-columns:1.4fr 60px 30px} .comp .crow>*:nth-child(3),.comp .crow>*:nth-child(4){display:none}
+  .grow{grid-template-columns:30px 1.5fr 70px 30px} .grow>*:nth-child(3),.grow>*:nth-child(5){display:none}
+  .qrow{grid-template-columns:1.5fr 110px 30px} .qrow>*:nth-child(3),.qrow>*:nth-child(4){display:none}
+  .cprow{grid-template-columns:1fr 80px} .cprow>*:nth-child(2){display:none}
+}
+
+/* ── v9: roles, strategist assignment, content editor ───────── */
+.role-chip{font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:3px 9px;border-radius:999px;margin-right:2px}
+.role-admin{background:#EDE7FB;color:#5B3FB0}
+.role-am{background:var(--gold-l);color:#8A6D12}
+.role-strategist{background:var(--blue-l);color:var(--blue-d)}
+
+/* strategist cell in client table */
+.strat-cell{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600}
+.strat-av{width:24px;height:24px;border-radius:50%;background:var(--blue-d);color:#fff;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex-shrink:0}
+.strat-unassigned{font-size:11px;font-weight:700;color:var(--high);background:var(--high-l);padding:4px 10px;border-radius:999px;cursor:pointer;border:none;transition:.12s}
+.strat-unassigned:hover{filter:brightness(.97)}
+
+/* package header strategist line */
+.pk-strat{display:flex;align-items:center;gap:9px;margin-top:8px;font-size:12.5px}
+.pk-strat .pks-lab{font-weight:700;color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.4px}
+.pk-strat select{font-family:inherit;font-size:13px;font-weight:600;padding:6px 10px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;color:var(--ink)}
+.pk-strat select:focus{outline:none;border-color:var(--blue)}
+.pk-strat .pks-static{display:inline-flex;align-items:center;gap:7px;font-weight:700}
+
+/* "need strategist" triage variant */
+.tstat.str .tbar{background:#5B3FB0} .tstat.str .tnum{color:#5B3FB0}
+
+/* content queue: open-draft affordance */
+.qopen{font-size:11px;font-weight:700;padding:5px 11px;border-radius:999px;border:1px solid var(--blue);background:#fff;color:var(--blue-d);transition:.12s;white-space:nowrap}
+.qopen:hover{background:var(--blue-l)}
+.qrow.qedit{grid-template-columns:1.7fr 126px 132px 96px 78px 30px}
+
+/* draft editor modal */
+.modal.draft{max-width:680px}
+.dm-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:6px}
+.dm-head h2{font-size:18px;font-weight:800;letter-spacing:-.3px;line-height:1.25}
+.dm-sub{font-size:12.5px;color:var(--muted);margin-bottom:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dm-kw{color:var(--muted)} .dm-rev{font-weight:700;color:var(--blue-d)}
+.dm-section-lab{font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:4px 0 8px}
+.dm-body{font-family:inherit;font-size:13.5px;line-height:1.6;width:100%;min-height:230px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;color:var(--ink);resize:vertical}
+.dm-body:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.12)}
+.dm-body:disabled{background:var(--mist);color:var(--muted)}
+.dm-rewrite{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+.dm-instr{font-family:inherit;font-size:13px;line-height:1.5;width:100%;min-height:74px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;color:var(--ink);resize:vertical}
+.dm-instr:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.12)}
+.dm-instr:disabled{background:var(--mist)}
+.dm-readonly{font-size:12px;font-weight:600;color:var(--high);background:var(--high-l);padding:9px 12px;border-radius:var(--r-sm);margin-bottom:14px}
+.dm-foot{display:flex;gap:10px;align-items:center;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.dm-foot .spacer{flex:1}
+.dm-btn{font-weight:700;font-size:13.5px;padding:10px 18px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted);transition:.12s}
+.dm-btn:hover{border-color:var(--blue-d);color:var(--ink)}
+.dm-btn.save{border-color:var(--blue);color:var(--blue-d)} .dm-btn.save:hover{background:var(--blue-l)}
+.dm-btn.approve{background:var(--grow-d);border-color:var(--grow-d);color:#fff} .dm-btn.approve:hover{filter:brightness(1.05)}
+.dm-btn.rewrite{background:var(--navy);border-color:var(--navy);color:#fff} .dm-btn.rewrite:hover{background:var(--navy-2)}
+.dm-btn:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:680px){ .qrow.qedit{grid-template-columns:1.5fr 110px 78px 30px} .qrow.qedit>*:nth-child(3),.qrow.qedit>*:nth-child(4){display:none} }
 </style>
 </head>
 <body>
-
 <div class="toast" id="toast"></div>
 
 <!-- ═══════════ LOGIN ═══════════ -->
@@ -314,12 +504,12 @@ footer .fbadges{display:flex;gap:18px}
     <div class="login-h">Staff sign in</div>
     <div class="login-sub">SEO/AEO Delivery System · internal use only</div>
     <div class="lfield"><label>Email</label>
-      <input id="l-email" type="email" placeholder="you@44idigital.com" autocomplete="email"></div>
+      <input id="l-email" type="email" placeholder="james@44idigital.com" autocomplete="email"></div>
     <div class="lfield"><label>Password</label>
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · v6</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · v9</div>
   </div>
 </div>
 
@@ -327,15 +517,16 @@ footer .fbadges{display:flex;gap:18px}
 <div id="v-app">
   <header id="app-header">
     <div class="wrap hbar">
-      <div class="logo" onclick="navigate('clients')">
+      <div class="logo" onclick="navigate('groups')">
         <span class="icn">44</span><span>44i<small>DIGITAL</small></span>
         <span class="internal-chip">Internal</span>
       </div>
       <nav class="hnav">
-        <button id="nav-clients" onclick="navigate('clients')">Clients</button>
-        <button id="nav-audit"   onclick="newAudit()">New Audit</button>
+        <button id="nav-groups" onclick="navigate('groups')">Partner Groups</button>
+        <button id="nav-new" onclick="newPackage()">New Package</button>
       </nav>
       <div class="hright">
+        <span class="role-chip" id="h-role"></span>
         <span class="hname" id="h-name">Specialist</span>
         <span class="av" id="h-av">SP</span>
         <button class="hbtn" onclick="doLogout()">Sign out</button>
@@ -343,97 +534,121 @@ footer .fbadges{display:flex;gap:18px}
     </div>
   </header>
 
-  <!-- ── CLIENTS / DASHBOARD ── -->
-  <div id="v-clients" style="display:none">
+  <!-- breadcrumb -->
+  <div class="wrap"><div class="crumb" id="crumb" style="display:none"></div></div>
+
+  <!-- ── GROUPS (top level) ── -->
+  <div id="v-groups" style="display:none">
     <div class="wrap">
       <div class="view-head">
-        <div><h1>Book of business</h1><div class="vsub" id="book-sub">—</div></div>
-        <button class="add-btn" onclick="openAddModal()">＋ Add client</button>
+        <div><h1>Partner Groups</h1><div class="vsub" id="groups-sub">—</div></div>
+        <button class="add-btn" onclick="newPackage()">＋ New package</button>
       </div>
-
-      <!-- triage: manage by exception -->
-      <div class="triage" id="triage"></div>
-
-      <!-- filters -->
-      <div class="fbar">
-        <input class="search" id="search" type="text" placeholder="Search domain, name, market…" oninput="onSearch(this.value)">
-        <select class="fsel" id="f-tier" onchange="onFilter()">
-          <option value="all">All tiers</option>
-          <option value="starter">Starter</option>
-          <option value="builder">Builder</option>
-          <option value="pro">Pro</option>
-        </select>
-        <select class="fsel" id="f-status" onchange="onFilter()">
-          <option value="all">All statuses</option>
-          <option value="active">Active</option>
-          <option value="onboarding">Onboarding</option>
-          <option value="paused">Paused</option>
-          <option value="churned">Churned</option>
-        </select>
-        <select class="fsel" id="f-assignee" onchange="onFilter()"></select>
-        <select class="fsel" id="f-sort" onchange="onFilter()">
-          <option value="created.desc">Newest first</option>
-          <option value="name.asc">Name A–Z</option>
-          <option value="audit.asc">Stalest audit</option>
-          <option value="tier.desc">Tier (Pro→Starter)</option>
-        </select>
-        <button class="fclear" id="f-clear" onclick="clearFilters()" style="display:none">Clear filters</button>
+      <div class="strip" id="strip"></div>
+      <div class="gsearch">
+        <input id="g-search" type="text" placeholder="Search partner groups…" oninput="onGroupSearch(this.value)">
+        <select class="fsel" id="g-am" onchange="renderGroups()"></select>
       </div>
-
-      <div class="ctable">
-        <div class="ct-head ct-cols">
-          <span>Client</span><span>Owner</span><span>Status</span><span>Tier</span>
-          <span>Platform access</span><span>Last audit</span><span></span>
-        </div>
-        <div id="client-rows"></div>
-      </div>
-
-      <div class="pager">
-        <span id="pager-range">—</span>
-        <div class="nav">
-          <button class="pbtn" id="prev-btn" onclick="changePage(-1)">← Prev</button>
-          <button class="pbtn" id="next-btn" onclick="changePage(1)">Next →</button>
-        </div>
-      </div>
-
+      <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · v6</span>
+        <span>44i, Inc. · Internal Ops Console · v9</span>
         <div class="fbadges"><span>Ahrefs + Google Search Console</span><span>· Supabase</span></div>
       </footer>
     </div>
   </div>
 
-  <!-- ── AUDIT ── -->
-  <div id="v-audit" class="wrap" style="display:none">
-    <button class="back-link" onclick="navigate('clients')">← Back to clients</button>
-    <section class="hero">
-      <div class="eyebrow" id="audit-eyebrow">Specialist Console</div>
-      <h1 class="ah">One URL in. A full <span class="hl">SEO/AEO program</span> out.</h1>
-      <p class="sub">Pulls live Ahrefs and Search Console data, grades it, drafts the content, specs the fixes, and builds the monthly report — in 44i brand standards.</p>
-      <div class="intake">
-        <div style="display:flex;flex-direction:column;gap:14px">
-          <div class="ifield"><label>Client URL</label><input id="url" type="text" value="parkerbrothersroofing.com"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-            <div class="ifield"><label>Target market</label><input id="market" type="text" value="Oklahoma, US"></div>
-            <div class="ifield"><label>Tier</label>
-              <div class="tiers" id="tiers">
-                <div class="tsel" data-t="starter">Starter<small>$199</small></div>
-                <div class="tsel" data-t="builder">Builder<small>$599</small></div>
-                <div class="tsel on" data-t="pro">Pro<small>$799</small></div>
-              </div>
+  <!-- ── GROUP DETAIL / CLIENTS ── -->
+  <div id="v-group" style="display:none">
+    <div class="wrap">
+      <div class="ghero">
+        <div class="glogo" id="gh-logo"></div>
+        <div>
+          <h1 id="gh-name">—</h1>
+          <div class="ghmeta" id="gh-meta"></div>
+        </div>
+        <div class="ghero-spacer"></div>
+        <div class="ghrouting" id="gh-routing"></div>
+      </div>
+
+      <div class="triage" id="triage"></div>
+
+      <div class="fbar">
+        <input class="search" id="search" type="text" placeholder="Search this group's clients…" oninput="onSearch(this.value)">
+        <select class="fsel" id="f-tier" onchange="onFilter()">
+          <option value="all">All tiers</option><option value="starter">Starter</option>
+          <option value="builder">Builder</option><option value="pro">Pro</option>
+        </select>
+        <select class="fsel" id="f-status" onchange="onFilter()">
+          <option value="all">All statuses</option><option value="active">Active</option>
+          <option value="onboarding">Onboarding</option><option value="paused">Paused</option><option value="churned">Churned</option>
+        </select>
+        <select class="fsel" id="f-sort" onchange="onFilter()">
+          <option value="created.desc">Newest first</option><option value="name.asc">Name A–Z</option>
+          <option value="audit.asc">Stalest audit</option><option value="tier.desc">Tier (Pro→Starter)</option>
+        </select>
+        <button class="add-btn" style="margin-left:auto;padding:9px 18px;font-size:13px" onclick="openAddModal()">＋ Add client</button>
+      </div>
+      <button class="fclear" id="f-clear" onclick="clearFilters()" style="display:none">Clear filters</button>
+
+      <div class="ctable">
+        <div class="ct-head ct-cols">
+          <span>Client</span><span>Strategist</span><span>Status</span><span>Tier</span><span>Platform access</span>
+          <span>Package</span><span></span>
+        </div>
+        <div id="client-rows"></div>
+      </div>
+      <div class="pager">
+        <span id="pager-range">—</span>
+        <div class="pnav">
+          <button class="pbtn" id="prev-btn" onclick="changePage(-1)">← Prev</button>
+          <button class="pbtn" id="next-btn" onclick="changePage(1)">Next →</button>
+        </div>
+      </div>
+      <footer>
+        <span>44i, Inc. · Internal Ops Console · v9</span>
+        <div class="fbadges"><span>Ahrefs + Google Search Console</span><span>· Supabase</span></div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ── PACKAGE (one client) ── -->
+  <div id="v-package" class="wrap" style="display:none">
+    <div class="pkg-hero">
+      <div class="glogo" id="pk-logo"></div>
+      <div>
+        <h1 id="pk-title">—</h1>
+        <div class="ph-meta" id="pk-meta"></div>
+        <div class="pk-strat" id="pk-strat"></div>
+      </div>
+      <div class="pkg-hero-spacer"></div>
+      <div class="pkg-statline">
+        <span class="pkg-statbig" id="pk-statbig"><i></i><span>—</span></span>
+        <button class="deploy-btn" id="pk-deploy" onclick="deployPackage()">Deploy package →</button>
+      </div>
+    </div>
+
+    <div class="intake">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="ifield"><label>Client URL</label><input id="url" type="text" value=""></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="ifield"><label>Target market</label><input id="market" type="text" value=""></div>
+          <div class="ifield"><label>Tier</label>
+            <div class="tiers" id="tiers">
+              <div class="tsel" data-t="starter">Starter<small>$199</small></div>
+              <div class="tsel" data-t="builder">Builder<small>$599</small></div>
+              <div class="tsel on" data-t="pro">Pro<small>$799</small></div>
             </div>
           </div>
         </div>
-        <button class="run" onclick="runAudit()">Run audit →</button>
       </div>
-    </section>
+      <button class="run" onclick="generatePackage()">Generate package →</button>
+    </div>
 
     <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
     <div class="acp" id="access-panel"></div>
 
-    <div class="section-h"><h2>Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
+    <div class="section-h"><h2>1 · Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
     <div class="cards" id="cards"></div>
-
     <div class="panel">
       <div class="navycard">
         <div class="lab">Findings by severity</div><h3>What the audit surfaced</h3>
@@ -446,21 +661,28 @@ footer .fbadges{display:flex;gap:18px}
       </div>
     </div>
 
-    <div class="section-h"><h2>The Four Engines</h2><div class="ln"></div><span class="tag" id="tiertag">Pro tier</span></div>
-    <div class="engines" id="engines"></div>
+    <div class="section-h"><h2>2 · Competitive Analysis</h2><div class="ln"></div><span class="tag" id="comp-tag">run up-front · editable</span></div>
+    <div class="comp" id="comp"></div>
+    <div class="subh">Top competitor pages <span class="sct">— what's pulling their traffic</span></div>
+    <div class="cpages" id="cpages"></div>
+    <div class="subh">Content gap <span class="sct">— keywords they rank for that you don't · select what to target</span></div>
+    <div class="gaps" id="gaps"></div>
 
-    <div class="section-h"><h2>Deliverables this cycle</h2><div class="ln"></div><span class="tag" id="delivtag"></span></div>
+    <div class="section-h"><h2>3 · Content Plan</h2><div class="ln"></div><span class="tag" id="queue-tag">Engine 2 · Claude</span></div>
+    <div class="model-legend" id="model-legend"></div>
+    <div class="queue" id="queue"></div>
+
+    <div class="section-h"><h2>4 · Technical Fixes</h2><div class="ln"></div><span class="tag" id="fix-tag">paste-ready</span></div>
+    <div class="fixes" id="fixes"></div>
+
+    <div class="section-h"><h2>5 · Deliverables this cycle</h2><div class="ln"></div><span class="tag" id="delivtag"></span></div>
     <div class="deliv" id="deliv"></div>
 
-    <!-- the ONLY client-facing artifact -->
-    <div class="report-cta">
-      <div class="rc-l">
-        <div class="rc-eye">Client-facing deliverable</div>
-        <h4>Monthly report</h4>
-        <p>The one artifact that leaves the building. Branded .docx — movement, deliverables, next cycle.</p>
-      </div>
-      <button class="rc-btn" id="rc-btn" onclick="downloadReport(activeClient ? activeClient.id : null)">↓ Generate report</button>
-    </div>
+    <div class="section-h"><h2>6 · Monthly Report</h2><div class="ln"></div><span class="tag">white-labeled · client-facing</span></div>
+    <div class="report-wl" id="report-wl"></div>
+
+    <div class="section-h"><h2>The Four Engines</h2><div class="ln"></div><span class="tag" id="tiertag">Pro tier</span></div>
+    <div class="engines" id="engines"></div>
 
     <footer>
       <span>44i, Inc. · Specialist Console · draft outputs require specialist review</span>
@@ -473,10 +695,11 @@ footer .fbadges{display:flex;gap:18px}
 <div class="overlay" id="modal">
   <div class="modal">
     <div class="modal-h"><h2>Add client</h2><button class="xbtn" onclick="closeAddModal()">✕</button></div>
-    <div class="mfield"><label>Client name</label><input id="m-name" type="text" placeholder="Parker Brothers Roofing"></div>
-    <div class="mfield"><label>Domain URL</label><input id="m-url" type="text" placeholder="parkerbrothersroofing.com"></div>
+    <div class="modal-grp" id="modal-grp"></div>
+    <div class="mfield"><label>Client name</label><input id="m-name" type="text" placeholder="Acme Roofing"></div>
+    <div class="mfield"><label>Domain URL</label><input id="m-url" type="text" placeholder="acmeroofing.com"></div>
     <div class="mrow">
-      <div class="mfield"><label>Target market</label><input id="m-market" type="text" placeholder="Oklahoma, US"></div>
+      <div class="mfield"><label>Target market</label><input id="m-market" type="text" placeholder="Tulsa, OK"></div>
       <div class="mfield"><label>Tier</label>
         <select id="m-tier" onchange="renderReqNote()">
           <option value="starter">Starter — $199/mo</option>
@@ -486,26 +709,97 @@ footer .fbadges{display:flex;gap:18px}
       </div>
     </div>
     <div class="mrow">
-      <div class="mfield"><label>Owner (specialist)</label><select id="m-assignee"></select></div>
+      <div class="mfield"><label>SEO/AEO Strategist</label>
+        <select id="m-strat"></select>
+      </div>
       <div class="mfield"><label>Status</label>
         <select id="m-status">
-          <option value="onboarding">Onboarding</option>
-          <option value="active">Active</option>
-          <option value="paused">Paused</option>
+          <option value="onboarding">Onboarding</option><option value="active">Active</option><option value="paused">Paused</option>
         </select>
       </div>
     </div>
     <div class="access-label">Platform access granted</div>
     <div class="atacc" id="access-toggles"></div>
     <div class="req-note" id="req-note"></div>
+    <div class="gen-note" id="gen-note">On save, the system generates the full deployment package — audit, competition, fixes, deliverables, and the white-labeled report.</div>
     <div class="mfoot">
       <button class="mbtn" onclick="closeAddModal()">Cancel</button>
-      <button class="mbtn primary" onclick="saveClient()">Add client</button>
+      <button class="mbtn primary" onclick="saveClient()">Add &amp; generate</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ DRAFT EDITOR MODAL ═══════════ -->
+<div class="overlay" id="draft-modal">
+  <div class="modal draft">
+    <div class="dm-head">
+      <div>
+        <h2 id="dm-title">—</h2>
+        <div class="dm-sub" id="dm-sub"></div>
+      </div>
+      <button class="xbtn" onclick="closeDraft()">✕</button>
+    </div>
+    <div class="dm-readonly" id="dm-readonly" style="display:none">View only — SEO/AEO strategists and admins edit content.</div>
+    <div class="dm-section-lab">Generated draft — edit directly to overwrite</div>
+    <textarea class="dm-body" id="dm-body"></textarea>
+    <div class="dm-rewrite">
+      <div class="dm-section-lab">Or ask Claude for a rewrite — give instructions</div>
+      <textarea class="dm-instr" id="dm-instr" placeholder="e.g. Make it more local to [CITY], add a section on financing options, tighten the intro, keep the FAQ…"></textarea>
+    </div>
+    <div class="dm-foot">
+      <button class="dm-btn rewrite" id="dm-rewrite-btn" onclick="requestRewrite()">↻ Request rewrite</button>
+      <div class="spacer"></div>
+      <button class="dm-btn save" id="dm-save-btn" onclick="saveDraft()">Save edits</button>
+      <button class="dm-btn approve" id="dm-approve-btn" onclick="approveDraft()">Approve ✓</button>
     </div>
   </div>
 </div>
 
 <script>
+const PARTNER_GROUPS = [
+  {id:'pg0',name:'44i',am:'Darren',amEmail:'darren@44i.com',strategist:'Sydney',color:'#489BD4',color2:'#000000',logo:'https://44i.com/wp-content/uploads/2021/05/44i.svg',trello:'6890f5fdb1bb4aaeade9ff44',io:'sara@44interactive.com, darren@44i.com'},
+  {id:'pg1',name:'712 Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Sydney',color:'#004C97',color2:'#000000',logo:'https://712digitalgroup.com/wp-content/uploads/712Digital-logo.svg',trello:'636abe1c0a62a9020d913ee4',io:'knodfm@harlannet.com, jj.kdsnradio@gmail.com, kjanads@metc.net'},
+  {id:'pg2',name:'BK Media Solutions',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Kolton',color:'#1A4BA8',color2:'',logo:'https://bkmediasolutions.com/wp-content/uploads/Screenshot-2024-11-13-at-2.13.41-PM.png',trello:'651b0e13f3f93751e929d532',io:'kellytrask@gmail.com'},
+  {id:'pg3',name:'Bravo Mic Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#F57E20',color2:'',logo:'https://bravomicdigital.com/wp-content/uploads/Bravo-Mic-Digital-Logo.svg',trello:'61f2ba4730e86031d7d5ddc8',io:'msmith@bravomic.com'},
+  {id:'pg4',name:'Brazos Digital',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Kolton',color:'#D83030',color2:'#0C317D',logo:'https://brazosdigitalmedia.com/wp-content/uploads/2023/05/logonew.png',trello:'644bc660a882a19216babcee',io:'tommy@vascocu.com, johns@brazosradio.com, rpick@brazosradio.com'},
+  {id:'pg5',name:'Brewer Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Sydney',color:'#454194',color2:'#000000',logo:'https://brewer-digital.com/wp-content/uploads/Brewer-Digital-Logo.svg',trello:'64df7b23387279b4b6dec42f',io:'amyd@kicks96.com, andrear@kicks96.com'},
+  {id:'pg6',name:'CF Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#36C3F2',color2:'',logo:'https://cfdigitalgroup.com/wp-content/uploads/CFDigital_logo.svg',trello:'5da611d5c4c6f075b070b1b9',io:'neil@dakotabroadcasting.com, ljohnston@dakotabroadcasting.com, terri@dakotabroadcasting.com, wendyh@dakotabroadcasting.com'},
+  {id:'pg7',name:'Choice Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Sydney',color:'#0000E1',color2:'#000000',logo:'https://choicedigitalguam.com/wp-content/uploads/logo-choice-digital-2.svg',trello:'663a6f5e77975074cc20a488',io:'raygibsonradio@gmail.com, reden.terbio@calypsoguam.com, Kevin.Aguon@choicebroadcasting.net'},
+  {id:'pg8',name:'CI Digital',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Kolton',color:'#FFE400',color2:'#000000',logo:'https://cidigitalgroup.com/wp-content/uploads/CI-Digital-Logo.svg',trello:'5d9d551fe3f6500291c9050a',io:'sales@kzia.com, loretta@kzia.com, vikki@kzia.com'},
+  {id:'pg9',name:'Claude Test Group',am:'Jim',amEmail:'james@44i.com',strategist:'Sydney',color:'#4B9BD7',color2:'',logo:'',trello:'69b59ae8ce5662600fbf6b3d',io:''},
+  {id:'pg10',name:'EAB',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Sydney',color:'#FF0000',color2:'#000000',logo:'https://eabmarketinggroup.com/wp-content/uploads/logo-eab.svg',trello:'663a6bfd28864bb31466a645',io:'scottsiler@eabjonesboro.com, mattstolz@eabjonesboro.com'},
+  {id:'pg11',name:'Elevated Results',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Kolton',color:'#CBA65C',color2:'#000000',logo:'https://erdigitalsolutions.com/wp-content/uploads/elevated-results.svg',trello:'67f53a37b808ef0bce516bb4',io:'april@erdigitalsolutions.com'},
+  {id:'pg12',name:'ESPN Arkansas',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Kolton',color:'#DD0000',color2:'#000000',logo:'https://espnarkansasdigital.com/wp-content/uploads/ESPN-Arkansas-Digital-Logo.svg',trello:'6398a719f01d54017f5345b7',io:'Tommy.craft@hitthatline.com, dale.daniels@hitthatline.com'},
+  {id:'pg13',name:'Galaxy Media Interactive',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Sydney',color:'#25408E',color2:'',logo:'https://galaxymediapartners.com/wp-content/uploads/Galaxy-Media-Logo.svg',trello:'5f9182016d518c1dad63614e',io:'nmaine@galaxymediapartners.com'},
+  {id:'pg14',name:'Gulf Coast Digital Group',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#002366',color2:'#AC1C24',logo:'https://gulfcoastmediagroup.net/wp-content/uploads/gulf-coast-media-group.svg',trello:'6978cd47729a4b5d56ce9b62',io:'scott@wpnnradio.com, jamie@wpnnradio.com'},
+  {id:'pg15',name:'HL Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Sydney',color:'#4B9BD7',color2:'',logo:'',trello:'',io:''},
+  {id:'pg16',name:'Iowa Digital Connect',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#B7231A',color2:'#000000',logo:'https://iowadigitalconnect.com/wp-content/uploads/IowaDigitalConnect-logo.svg',trello:'64021a0650bb9de57aa4f04a',io:'michaelsuhr@me.com, tedfeldman@kniakrls.com'},
+  {id:'pg17',name:'Kensington Digital Media',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Levi',color:'#70BE44',color2:'',logo:'https://kensingtondigital.media/wp-content/uploads/Kensington-Digital-HorizLogo.svg',trello:'657c5ea87f06add5cae5670f',io:'ktaksey@kensington.media'},
+  {id:'pg18',name:'Kingfish Pro Digital',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Levi',color:'#0EA2C8',color2:'',logo:'https://kingfishprodigital.com/wp-content/uploads/logo-kingfish.svg',trello:'67b6203d4dfee4fd0f980ab8',io:'todd@tigerrag.com, carolyn@louisianaradionetwork.com'},
+  {id:'pg19',name:'KXLG',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Kolton',color:'#DF0002',color2:'#000000',logo:'https://kxlgdigitalworks.com/wp-content/uploads/2020/07/logo-kxlg-digital.svg',trello:'6859942ef0a83ee6df76e78a',io:'melissa.herrboldt@kxlgradio.com'},
+  {id:'pg20',name:'Mavrik Media Group',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#0078C1',color2:'',logo:'https://www.mavrikmediagroup.com/wp-content/uploads/2026/04/Mavrik-Media-Group-Logo-Tag-Rev.png',trello:'66cf379f235fc41bf07bfd52',io:'richard@mavrikmediagroup.com'},
+  {id:'pg21',name:'Michels Digital Solutions',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#C1272C',color2:'',logo:'https://michelsdigitalsolutions.com/wp-content/uploads/Michels-Digital-Logo.svg',trello:'5dcebbd7d6ffb64daea49497',io:'steve@michelscom.com, hanna@michelscom.com'},
+  {id:'pg22',name:'Ohana Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Kolton',color:'#019FDF',color2:'',logo:'https://ohanadigitalservices.com/wp-content/uploads/logo-ohana-1.svg',trello:'65202e418a97c6ff9c2dc832',io:'scott.lindahl@ohanamediagroup.com'},
+  {id:'pg23',name:'Online Visibility Pros',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#EC7834',color2:'#29AAE1',logo:'https://onlinevisibilitypros.com/wp-content/uploads/2022/12/Maxx-3Liner-OVP-logo.png',trello:'65b030aee6cf7427f20135e3',io:'brian@onlinevisibilitypros.com, krysti@onlinevisibilitypros.com'},
+  {id:'pg24',name:'P5 Digital',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Sydney',color:'#C0262E',color2:'',logo:'https://p5digitalgroup.com/wp-content/uploads/P5Digital-Logo.svg',trello:'6696b132170f21a6d0a2a7d4',io:'paul@alexanderbroadcasting.com'},
+  {id:'pg25',name:'Paradise Digital',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Sydney',color:'#000000',color2:'',logo:'https://paradisedigitalgroup.com/wp-content/uploads/Paradise-Digital-Logo.svg',trello:'66f2d31d5f24f63832dbebe1',io:'j.boles@paradisebroadcasting.com, landon@paradisebroadcasting.com, traffic@paradisebroadcasting.com'},
+  {id:'pg26',name:'Paragon Marketing',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#BE1E2D',color2:'#000000',logo:'https://paragondigitaladvertising.com/wp-content/uploads/Paragon-Digital-Advertising-Logo-Outline.svg',trello:'654eab28dafcd3d9f12f4174',io:'aaron@kecofm.com'},
+  {id:'pg27',name:'Piedmont Digital Group',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Levi',color:'#2A3C92',color2:'#000000',logo:'https://piedmontdigitalgroup.com/wp-content/uploads/logo-piedmont.svg',trello:'6724fe60fceb61634a3437e2',io:'sherric@wakg.com, gwoodson@wakg.com, robinslade@wakg.com'},
+  {id:'pg28',name:'RB Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Sydney',color:'#D0131C',color2:'#000000',logo:'https://rb-digitalmedia.com/wp-content/uploads/RB-DIGITAL-Logo-01.svg',trello:'640f253654e864cfa9659fa0',io:'donald.grassman@gmail.com, voightt@yahoo.com'},
+  {id:'pg29',name:'Ready Prospect.ai',am:'Olivia',amEmail:'peggy@44idigital.com',strategist:'Kolton',color:'#3C62CD',color2:'#000000',logo:'https://images.leadconnectorhq.com/image/f_webp/q_80/r_1200/u_https://assets.cdn.filesafe.space/4RgbSgjB1aMe19P5t7zC/media/696f171015885e4569dd6336.png',trello:'66a17377c3ff4a0772abe3b8',io:'dmhively@gmail.com'},
+  {id:'pg30',name:'Riverfront Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#C1272D',color2:'#000000',logo:'https://riverfrontdigital.com/wp-content/uploads/RiverfrontDigital_Logo.svg',trello:'5da9c2e52d99235ff759ad4d',io:'carolynb@riverfrontbroadcasting.com, deann@riverfrontbroadcasting.com'},
+  {id:'pg31',name:'RiverMedia.biz',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Sydney',color:'#0079AF',color2:'#000000',logo:'https://rivermedia.devlink8.info/wp-content/uploads/river-media-Logo.svg',trello:'68cd6db945784e94b8030742',io:'ron@cbciradio.com'},
+  {id:'pg32',name:'Sagamore Hills Digital',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Sydney',color:'#694E26',color2:'#000000',logo:'https://sagamorehilldigital.com/wp-content/uploads/logo-sagamore.svg',trello:'67cf3746eea192006b3a95f5',io:'steve@shbtv.com, aiten@telemunomsp.com, arecci@telemundostl.com, jrussell@keva34.com, manny@telemundoportland.com, mgaines@nbcwatertown.com, eburke@nbcwatertown.com'},
+  {id:'pg33',name:'SAGE Media',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Sydney',color:'#B2819D',color2:'#000000',logo:'https://sagegrp.media/wp-content/uploads/Arrows-Logo.gif',trello:'67c9e213cbe81cbeb00a16fc',io:'dmartele@sagegrp.consulting, ehuggins@sagegrp.consulting'},
+  {id:'pg34',name:'Shake Broadcasting + Digital',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Levi',color:'#FC0000',color2:'#000000',logo:'https://shakebroadcastingdigital.com/wp-content/uploads/shake-broadcasting-digital-Logo.svg',trello:'6899f87c5eb5418937e924c2',io:'dshake@shakebroadcasting.com, lgray@shakebroadcasting.com, cshake@shakebroadcasting.com'},
+  {id:'pg35',name:'Small Business Enterprise',am:'Peggy',amEmail:'peggy@44idigital.com',strategist:'Sydney',color:'#071D91',color2:'',logo:'https://smallbusinessenterprise.devlink9.info/wp-content/uploads/small-business-enterprise-center-L12.png',trello:'69d7bc2debd0c6c9a9bd441a',io:'rbradley@smallbusinessec.com'},
+  {id:'pg36',name:'SnapMe',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Sydney',color:'#F15A2D',color2:'#00AEEF',logo:'https://snapmecreative.com/wp-content/uploads/2025/01/snap-me-creative-agency-logo-1.avif',trello:'63ada119f73d7d016c8a19c1',io:'cfrye@snapmecreative.com'},
+  {id:'pg37',name:'STMM Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#F5B01E',color2:'',logo:'https://stmmdigital.com/wp-content/uploads/logo-stmm-digital.svg',trello:'6102f2da956132044a8e0ac6',io:'tim.stewart@supertalk.fm, lee.gattas@supertalk.fm, laura@supertalk.fm'},
+  {id:'pg38',name:'The Lake Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Sydney',color:'#50D430',color2:'#000000',logo:'https://thelakedigital.com/wp-content/uploads/the-lake-digital.png',trello:'69c15cf2f838bf070cfae237',io:'ali@1019thelake.com, ksugfm@gmail.com'},
+  {id:'pg39',name:'Titan Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Levi',color:'#21401F',color2:'',logo:'https://titandigitalgroup.com/wp-content/uploads/logo-titan-digital.svg',trello:'5dd2f6ba170a4403bc0dbe99',io:'lj@titanburlington.com, tommy@titanburlington.com'},
+  {id:'pg40',name:'Warrior Media (SnapMe)',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Sydney',color:'#4B9BD7',color2:'',logo:'',trello:'6938a0e084b59f72f2358eb0',io:'jcarroll@snapmecreative.com, cfrye@snapmecreative.com'},
+  {id:'pg41',name:'West Texas Digital',am:'Carol',amEmail:'carol@44idigital.com',strategist:'Kolton',color:'#DB1419',color2:'#000000',logo:'https://westtexasdigitalmarketing.devlink9.info/wp-content/uploads/West_Texas_Digital_Marketing_logo_2_1-1-e1777058285386.png',trello:'69e13e76a9077c7b6a99b1fc',io:'johnmoesch@westtexasradio.net'}
+];
 // ════════════════════════════════════════════════════════════
 //  SUPABASE SETUP   //SB
 // ════════════════════════════════════════════════════════════
@@ -515,100 +809,97 @@ const SB_KEY = 'YOUR_SUPABASE_ANON_KEY';               // //SB
 const OFFLINE = true;                                   // //SB flip to false in prod
 const PAGE_SIZE = 25;
 
+// PARTNER_GROUPS literal is injected above this script (from group-assignments.xlsx).
+
 // ════════════════════════════════════════════════════════════
-//  PLATFORMS  — aligns to schema columns gsc/gbp/wp/ga4_connected
+//  TEAM & ROLES  — //SB: from `profiles` table; auth via Supabase
+// ════════════════════════════════════════════════════════════
+const USERS = [
+  {id:'u-james',  name:'James',  email:'james@44idigital.com',  role:'admin',      initials:'JA'},
+  {id:'u-jon',    name:'Jon',    email:'jon@44idigital.com',    role:'admin',      initials:'JO'},
+  {id:'u-carol',  name:'Carol',  email:'carol@44idigital.com',  role:'am',         initials:'CA'},
+  {id:'u-shania', name:'Shania', email:'shania@44idigital.com', role:'am',         initials:'SH'},
+  {id:'u-peggy',  name:'Peggy',  email:'peggy@44idigital.com',  role:'am',         initials:'PE'},
+  {id:'u-sarah',  name:'Sarah',  email:'sarah@44idigital.com',  role:'strategist', initials:'SA'},
+  {id:'u-olivia', name:'Olivia', email:'olivia@44idigital.com', role:'strategist', initials:'OL'},
+];
+const DEMO_PASSWORD = '44idemo';   // //SB: demo only — replaced by Supabase Auth in prod
+const ROLE_LABEL = {admin:'Super Admin', am:'Account Manager', strategist:'SEO/AEO Strategist'};
+const STRATEGISTS = USERS.filter(u=>u.role==='strategist');
+const userById = id => USERS.find(u=>u.id===id);
+const canAssign      = () => me.role==='am' || me.role==='admin';
+const canEditContent = () => me.role==='strategist' || me.role==='admin';
+
+// ════════════════════════════════════════════════════════════
+//  PLATFORMS — aligns to schema columns gsc/gbp/wp/ga4_connected
 // ════════════════════════════════════════════════════════════
 const PLATFORMS = [
-  {key:'gsc',dbcol:'gsc_connected',short:'GSC',name:'Google Search Console',sub:'Keyword & crawl data',icon:'G',
+  {key:'gsc',short:'GSC',name:'Google Search Console',sub:'Keyword & crawl data',icon:'G',
    on_desc:'Keyword rankings, impression & click data, crawl errors, sitemap submission.',
    off_desc:'Restricted (Read Only) access needed to unlock audit & reporting.'},
-  {key:'gbp',dbcol:'gbp_connected',short:'GBP',name:'Google Business Profile',sub:'Local map pack signals',icon:'G',
+  {key:'gbp',short:'GBP',name:'Google Business Profile',sub:'Local map pack signals',icon:'G',
    on_desc:'GBP Insights, post scheduling, review responses, service menu editing.',
    off_desc:'Manager access needed — no read-only level provides useful audit data.'},
-  {key:'wp', dbcol:'wp_connected', short:'WP', name:'WordPress Admin',sub:'On-page implementation',icon:'W',
+  {key:'wp', short:'WP', name:'WordPress Admin',sub:'On-page implementation',icon:'W',
    on_desc:'Schema deployment, plugin config, new page builds, title & meta rewrites.',
    off_desc:'Administrator access needed — most fixes cannot ship without it.'},
-  {key:'ga4',dbcol:'ga4_connected',short:'GA4',name:'Google Analytics 4',sub:'Conversion attribution',icon:'A',
+  {key:'ga4',short:'GA4',name:'Google Analytics 4',sub:'Conversion attribution',icon:'A',
    on_desc:'Organic session data, landing page performance, conversion event tracking.',
    off_desc:'Viewer access unlocks reporting; Editor unlocks conversion setup.'},
 ];
-
-// Per-tier REQUIRED platforms (drives the "access gap" triage flag)
-//  GSC + GBP required for every tier (audit foundation + local signals).
-//  WP additionally required for Builder/Pro (schema, new pages, sitemap fixes).
-//  GA4 is recommended everywhere but not a hard gate.
-function requiredFor(tier){
-  const base = ['gsc','gbp'];
-  if(tier === 'builder' || tier === 'pro') base.push('wp');
-  return base;
-}
-function accessGap(c){ return requiredFor(c.tier).some(k => !c[k]); }
-function needsAudit(c){
-  if(!c.last_audit) return true;
-  return (Date.now() - new Date(c.last_audit + 'T00:00:00')) / 86400000 > 30;
-}
-function reportDue(c){ return c.status === 'active' && !c.report_this_cycle; }
+function requiredFor(tier){ const b=['gsc','gbp']; if(tier==='builder'||tier==='pro') b.push('wp'); return b; }
+function accessGap(c){ return requiredFor(c.tier).some(k=>!c[k]); }
+function needsAudit(c){ if(!c.last_audit) return true; return (Date.now()-new Date(c.last_audit+'T00:00:00'))/86400000>30; }
+function reportDue(c){ return c.status==='active' && !c.report_this_cycle; }
+function pkgReady(c){ return c.pkg_status==='ready'; }
+function needsStrategist(c){ return !c.strategist_id; }
 
 // ════════════════════════════════════════════════════════════
-//  STAFF (internal team) — //SB: from `profiles` table
-// ════════════════════════════════════════════════════════════
-const STAFF = [
-  {id:'u1', name:'James R.',  initials:'JR'},
-  {id:'u2', name:'Dana K.',   initials:'DK'},
-  {id:'u3', name:'Miguel S.', initials:'MS'},
-  {id:'u4', name:'Priya N.',  initials:'PN'},
-];
-let me = STAFF[0];
-
-// ════════════════════════════════════════════════════════════
-//  MOCK CLIENT GENERATOR — proves the scale architecture
-//  //SB: in prod this array never exists; queryClients() hits Postgres.
+//  MOCK CLIENT GENERATOR — distributes clients across the 42 groups
+//  //SB: in prod clients come from Postgres; this array never exists.
 // ════════════════════════════════════════════════════════════
 const REAL_SEED = [
   {name:'Parker Brothers Roofing', url:'parkerbrothersroofing.com', market:'Oklahoma, US', tier:'pro',
-   gsc:true,gbp:true,wp:true,ga4:false, status:'active', assigned_to:'u1', last_audit:'2026-06-15', report_this_cycle:false},
+   gsc:true,gbp:true,wp:true,ga4:false, status:'active', last_audit:'2026-06-15', report_this_cycle:false, pkg_status:'ready', grp:'Mavrik Media Group', strategist_id:'u-sarah'},
   {name:'Sioux City Symphony Orchestra', url:'siouxcitysymphony.org', market:'Sioux City, IA', tier:'builder',
-   gsc:true,gbp:false,wp:false,ga4:false, status:'onboarding', assigned_to:'u1', last_audit:'2026-06-10', report_this_cycle:false},
+   gsc:true,gbp:false,wp:false,ga4:false, status:'onboarding', last_audit:'2026-06-10', report_this_cycle:false, pkg_status:'generating', grp:'Iowa Digital Connect', strategist_id:null},
   {name:'Naples Golf Academy', url:'naplesacademygolf.com', market:'Naples, FL', tier:'starter',
-   gsc:false,gbp:false,wp:false,ga4:false, status:'onboarding', assigned_to:'u2', last_audit:null, report_this_cycle:false},
+   gsc:false,gbp:false,wp:false,ga4:false, status:'onboarding', last_audit:null, report_this_cycle:false, pkg_status:'none', grp:'Gulf Coast Digital Group', strategist_id:null},
 ];
-const BIZ = ['Roofing','Dental','HVAC & Air','Law Group','Plumbing','Landscaping','Bistro','Orthodontics',
-  'Chiropractic','Realty','Electric','Med Spa','Auto Repair','CPA','Pest Control','Family Dentistry',
-  'Physical Therapy','Garage Doors','Painting','Tree Service','Veterinary','Insurance','Flooring','Bakery'];
-const SURN = ['Summit','Heartland','Riverside','Cornerstone','Prairie','Lakeshore','Ironwood','Cedar',
-  'Maple','Granite','Beacon','Northgate','Silverline','Hometown','Bluestem','Redbud','Copperfield','Anchor'];
-const CITY = [['Sioux Falls','SD'],['Omaha','NE'],['Des Moines','IA'],['Fargo','ND'],['Tulsa','OK'],
-  ['Wichita','KS'],['Lincoln','NE'],['Rochester','MN'],['Naples','FL'],['Fort Myers','FL'],
-  ['Bonita Springs','FL'],['Rapid City','SD'],['Bismarck','ND'],['Cedar Rapids','IA']];
-const TIERS = ['starter','builder','pro'];
-const STATUSES = ['active','active','active','onboarding','paused','churned'];
+const BIZ=['Roofing','Dental','HVAC & Air','Law Group','Plumbing','Landscaping','Bistro','Orthodontics','Chiropractic','Realty','Electric','Med Spa','Auto Repair','CPA','Pest Control','Family Dentistry','Physical Therapy','Garage Doors','Painting','Tree Service','Veterinary','Insurance','Flooring','Bakery'];
+const SURN=['Summit','Heartland','Riverside','Cornerstone','Prairie','Lakeshore','Ironwood','Cedar','Maple','Granite','Beacon','Northgate','Silverline','Hometown','Bluestem','Redbud','Copperfield','Anchor'];
+const CITY=[['Sioux Falls','SD'],['Omaha','NE'],['Des Moines','IA'],['Fargo','ND'],['Tulsa','OK'],['Wichita','KS'],['Lincoln','NE'],['Rochester','MN'],['Naples','FL'],['Fort Myers','FL'],['Bonita Springs','FL'],['Rapid City','SD'],['Bismarck','ND'],['Cedar Rapids','IA']];
+const TIERS=['starter','builder','pro'];
+const STATUSES=['active','active','active','onboarding','paused','churned'];
+const PKG=['ready','ready','deployed','generating','none','ready'];
+
+let DB=[];                 // OFFLINE clients
+let GROUPS=PARTNER_GROUPS; // alias
 
 function genClients(n){
-  const out = [];
+  // groups eligible to receive generated clients (skip the bare test/no-site rows)
+  const elig=GROUPS.filter(g=>g.logo).map(g=>g.id);
+  const out=[];
   for(let i=0;i<n;i++){
     const biz=BIZ[i%BIZ.length], sur=SURN[(i*3)%SURN.length], city=CITY[(i*5)%CITY.length];
     const tier=TIERS[(i*7)%3], status=STATUSES[(i*11)%STATUSES.length];
     const slug=(sur+biz).toLowerCase().replace(/[^a-z]/g,'');
-    // deterministic-ish access spread so triage has signal
     const gsc=(i%4)!==0, gbp=(i%3)!==0, wp=(i%2)===0, ga4=(i%5)===0;
-    let last=null;
-    if((i%6)!==0){ const days=(i*13)%70; last=new Date(Date.now()-days*86400000).toISOString().slice(0,10); }
-    out.push({name:`${sur} ${biz}`, url:`${slug}.com`, market:`${city[0]}, ${city[1]}`,
-      tier, gsc,gbp,wp,ga4, status, assigned_to:STAFF[(i)%STAFF.length].id,
-      last_audit:last, report_this_cycle:(i%3)===0});
+    let last=null; if((i%6)!==0){ const d=(i*13)%70; last=new Date(Date.now()-d*86400000).toISOString().slice(0,10); }
+    // AMs assign strategists one by one based on workload — clients start unassigned
+    out.push({name:`${sur} ${biz}`, url:`${slug}.com`, market:`${city[0]}, ${city[1]}`, tier,
+      gsc,gbp,wp,ga4, status, last_audit:last, report_this_cycle:(i%3)===0,
+      pkg_status: last?PKG[i%PKG.length]:'none', grpId:elig[(i*5)%elig.length], strategist_id:null});
   }
   return out;
 }
-
-let DB = [];  // OFFLINE store only
-function seedDB(){
-  DB = [...REAL_SEED, ...genClients(57)].map((c,i)=>({id:'c'+i, created_at:Date.now()-i*36e5, ...c}));
-}
+function seedDB(){ DB=[]; }   // no mock clients — real clients come from Supabase / Add client
 
 // ════════════════════════════════════════════════════════════
-//  AUDIT MOCK PAYLOAD (Parker golden run) — unchanged from v5
+//  AUDIT / PACKAGE MOCK PAYLOAD (Parker golden run + generated package)
+//  //SB: in prod these are rows in audits/findings/competitors/fixes.
 // ════════════════════════════════════════════════════════════
-const AUDIT = {
+const AUDIT={
   metrics:[
     {k:'Domain Rating',v:'13',s:'/100',d:'low authority',dc:''},
     {k:'Organic keywords',v:'14',s:'',d:'thin capture',dc:'down'},
@@ -620,15 +911,69 @@ const AUDIT = {
   severity:[{l:'Critical',v:4,c:'#C0392B'},{l:'High',v:7,c:'#E67E22'},{l:'Medium',v:6,c:'#4B9BD7'},{l:'Low',v:2,c:'#9FCC6B'}],
   diag:{h:'Authority exists — targeting doesn\'t convert it',
     p:'A strong link profile (287 referring domains) paired with only 14 ranking keywords means the authority is there but on-page targeting isn\'t capturing it.',
-    focus:'Recommended focus: keyword expansion + on-page optimization — not more link-building.'}
+    focus:'Recommended focus: keyword expansion + on-page optimization — not more link-building.'},
+  competitors:[
+    {domain:'tulsaroofingpros.com', dr:28, common:9, total:142, overlap:64, traffic:1240, manual:false},
+    {domain:'greencountryroofing.com', dr:21, common:7, total:88, overlap:50, traffic:610, manual:false},
+    {domain:'oklahomaroofco.com', dr:19, common:6, total:103, overlap:43, traffic:740, manual:false},
+    {domain:'soonerexteriors.com', dr:16, common:4, total:61, overlap:29, traffic:330, manual:false},
+    {domain:'redhawkroofing.com', dr:11, common:3, total:44, overlap:21, traffic:180, manual:false},
+  ],
+  comp_pages:[
+    {page:'/storm-damage-roof-repair/', site:'tulsaroofingpros.com', kw:'storm damage roof repair tulsa', traffic:210},
+    {page:'/metal-roof-cost/', site:'tulsaroofingpros.com', kw:'metal roof cost', traffic:185},
+    {page:'/roof-replacement-financing/', site:'oklahomaroofco.com', kw:'roof replacement financing', traffic:140},
+    {page:'/commercial-tpo-roofing/', site:'greencountryroofing.com', kw:'tpo roofing commercial', traffic:96},
+  ],
+  gaps:[
+    {kw:'metal roof cost tulsa', who:'tulsaroofingpros.com', pos:4, vol:480, kd:18, sel:true},
+    {kw:'storm damage roof repair', who:'tulsaroofingpros.com', pos:3, vol:720, kd:24, sel:true},
+    {kw:'roof replacement financing', who:'oklahomaroofco.com', pos:6, vol:260, kd:15, sel:true},
+    {kw:'tpo roofing commercial', who:'greencountryroofing.com', pos:5, vol:190, kd:22, sel:false},
+    {kw:'roof inspection checklist', who:'soonerexteriors.com', pos:8, vol:320, kd:12, sel:false},
+    {kw:'hail damage insurance claim roof', who:'tulsaroofingpros.com', pos:7, vol:410, kd:20, sel:true},
+  ],
+  fixes:[
+    {kind:'schema_jsonld', kindLabel:'LocalBusiness Schema', kindClass:'schema', target:'Homepage /',
+     code:'{\n  "@context":"https://schema.org",\n  "@type":"RoofingContractor",\n  "name":"[CLIENT NAME]",\n  "telephone":"[PHONE]",\n  "areaServed":"[CITY], [ST]",\n  "aggregateRating":{"@type":"AggregateRating","ratingValue":"4.9","reviewCount":"63"}\n}'},
+    {kind:'title_tag', kindLabel:'Title Tag', kindClass:'title', target:'/services/',
+     before:'Services | Home', after:'Roof Repair & Replacement in [CITY], [ST] | [CLIENT]'},
+    {kind:'meta_description', kindLabel:'Meta Description', kindClass:'meta', target:'/services/',
+     before:'(missing)', after:'Licensed [CITY] roofing contractor — repairs, replacement & free inspections. Trusted by 600+ local homeowners. Call today for a same-week estimate.'},
+    {kind:'faq_schema', kindLabel:'FAQPage Schema', kindClass:'faq', target:'/services/',
+     code:'{\n  "@context":"https://schema.org",\n  "@type":"FAQPage",\n  "mainEntity":[{"@type":"Question","name":"How much does a roof replacement cost in [CITY]?",\n    "acceptedAnswer":{"@type":"Answer","text":"[DECLARATIVE ANSWER PARAGRAPH]"}}]\n}'},
+    {kind:'internal_link', kindLabel:'Internal Link Plan', kindClass:'link', target:'8 service pages',
+     after:'Link each new lesson/service landing page to the homepage hub and to 2 sibling pages with exact-match anchors. Adds 24 internal links across the cluster.'},
+  ],
 };
-const ENGINES = [
+const ENGINES=[
   {n:'Engine 1',t:'Audit',p:'Live Ahrefs + GSC pulls, graded into findings and a styled report.',st:'ready'},
-  {n:'Engine 2',t:'Content',p:'Drafts blogs, GBP posts, landing & pillar pages on the boilerplate.',st:'ready'},
+  {n:'Engine 2',t:'Content',p:'Claude writes the drafts — Sonnet 4.6 for blogs/posts/pages, Opus 4.8 for pillars, Haiku 4.5 for snippets.',st:'ready'},
   {n:'Engine 3',t:'Technical Fix',p:'Paste-ready schema, title/meta rewrites, internal-link plans.',st:'ready'},
   {n:'Engine 4',t:'Reporting',p:'Monthly cadence report mapped to the tier deliverable checklist.',st:'ready'},
 ];
-const DELIVS = {
+
+// ── content engine model routing (Engine 2) ──
+// Claude via the Anthropic API. //SB: the generate-content Edge Function selects the
+// model per topic kind, grounds the prompt in audit keywords + selected gaps + the
+// 44i boilerplate brand voice, and writes AEO-structured output (declarative answers,
+// FAQ blocks, schema hooks). Drafts land in content_drafts with the model recorded.
+const MODELS = {
+  opus:   {api:'claude-opus-4-8',   label:'Opus 4.8',   cls:'opus'},
+  sonnet: {api:'claude-sonnet-4-6', label:'Sonnet 4.6', cls:'sonnet'},
+  haiku:  {api:'claude-haiku-4-5',  label:'Haiku 4.5',  cls:'haiku'},
+};
+const CONTENT_KINDS = [
+  {k:'blog',     label:'Blog post',    model:'sonnet'},
+  {k:'pillar',   label:'AEO pillar',   model:'opus'},
+  {k:'landing',  label:'Landing page', model:'sonnet'},
+  {k:'service',  label:'Service page', model:'sonnet'},
+  {k:'gbp_post', label:'GBP post',     model:'haiku'},
+  {k:'faq',      label:'FAQ block',    model:'haiku'},
+];
+function modelForKind(k){ const c=CONTENT_KINDS.find(x=>x.k===k); return c?c.model:'sonnet'; }
+function kindLabel(k){ const c=CONTENT_KINDS.find(x=>x.k===k); return c?c.label:k; }
+const DELIVS={
   starter:[['GBP posts','Content','1×/mo',1],['Branded blog','Content','M1',1],['Reputation monitoring','Reporting','ongoing',1],['Local listing optimization','Fix','ongoing',1],['Monthly report','Reporting','monthly',1]],
   builder:[['GBP posts','Content','2×/mo',1],['Branded blog','Content','M2',1],['Keyword research & strategy','Audit','M1',1],['Site health scan','Audit','monthly',0],['High-intent keyword targeting','Audit','monthly',1],['Core SEO monitoring','Audit','monthly',1],['Internal link strategy','Fix','M1',1],['Sitemap refresh','Fix','monthly',1],['Monthly report','Reporting','monthly',1]],
   pro:[['GBP posts','Content','3×/mo',1],['Branded blog','Content','M2·M3·M5',1],['Keyword research & strategy','Audit','M1',1],['Site health scan','Audit','monthly',0],['High-intent keyword targeting','Audit','monthly',1],['Core SEO monitoring','Audit','monthly',1],['Internal link strategy','Fix','M1',1],['Sitemap refresh','Fix','monthly',1],['Schema implementation','Fix','M1',1],['AEO research & optimization','Audit','monthly',0],['AEO pillar pages','Content','per plan',1],['Monthly report','Reporting','monthly',1]],
@@ -637,405 +982,678 @@ const DELIVS = {
 // ════════════════════════════════════════════════════════════
 //  STATE
 // ════════════════════════════════════════════════════════════
-let activeClient = null;
-let activeTier   = 'pro';
-let session      = null;
-let page         = 0;
-let lastCount    = 0;
-let filters      = { search:'', tier:'all', status:'all', assignee:'all', flag:null, sort:'created.desc' };
-let _searchTimer;
+let session=null, me={name:'Specialist',initials:'SP'};
+let activeGroup=null, activeClient=null, activeTier='pro';
+let page=0, lastCount=0;
+let filters={search:'',tier:'all',status:'all',flag:null,sort:'created.desc'};
+let groupFilters={search:'',am:'all',strat:'all'};
+let _st, _gt;
+// per-package editable working state (competitors / gaps / content queue)
+let PK={competitors:[], comp_pages:[], gaps:[], topics:[]};
+let _topicSeq=0;
 
 // ════════════════════════════════════════════════════════════
 //  AUTH
 // ════════════════════════════════════════════════════════════
 async function doLogin(){
-  const email=document.getElementById('l-email').value.trim();
-  const pass=document.getElementById('l-pass').value;
-  const btn=document.getElementById('l-btn'), errEl=document.getElementById('l-err');
-  errEl.style.display='none';
+  const email=document.getElementById('l-email').value.trim(), pass=document.getElementById('l-pass').value;
+  const btn=document.getElementById('l-btn'), errEl=document.getElementById('l-err'); errEl.style.display='none';
   if(!email||!pass){ showErr('Enter your email and password.'); return; }
   btn.disabled=true; btn.textContent='Signing in…';
   if(OFFLINE){
-    // //SB: const {data,error}=await sb.auth.signInWithPassword({email,password:pass})
-    // //SB: if(error){showErr(error.message);btn.disabled=false;btn.textContent='Sign in →';return;}
-    // //SB: session=data.session; me = await loadProfile(session.user.id);
-    await wait(500); session={email}; onAuth();
+    await wait(450);
+    const u=USERS.find(x=>x.email.toLowerCase()===email.toLowerCase());
+    // //SB: const {data,error}=await sb.auth.signInWithPassword({email,password:pass}); me=await loadProfile(...)
+    if(!u || pass!==DEMO_PASSWORD){ showErr('Incorrect email or password.'); btn.disabled=false; btn.textContent='Sign in →'; return; }
+    session={email:u.email}; me=u; onAuth();
   }
   btn.disabled=false; btn.textContent='Sign in →';
 }
-async function doLogout(){ /* //SB: await sb.auth.signOut() */ session=null; navigate('login'); }
+async function doLogout(){ /* //SB: await sb.auth.signOut() */ session=null; me={name:'Specialist',initials:'SP',role:'admin'}; navigate('login'); }
 function onAuth(){
-  const handle=(session?.email||'specialist').split('@')[0];
-  document.getElementById('h-name').textContent=handle;
-  document.getElementById('h-av').textContent=handle.slice(0,2).toUpperCase();
-  navigate('clients');
+  document.getElementById('h-name').textContent=me.name;
+  document.getElementById('h-av').textContent=me.initials;
+  const rc=document.getElementById('h-role'); rc.textContent=ROLE_LABEL[me.role]; rc.className='role-chip role-'+me.role;
+  navigate('groups');
 }
-function showErr(msg){ const e=document.getElementById('l-err'); e.textContent=msg; e.style.display='block'; }
+function showErr(m){ const e=document.getElementById('l-err'); e.textContent=m; e.style.display='block'; }
 
 // ════════════════════════════════════════════════════════════
-//  ROUTING
+//  ROUTING + BREADCRUMB
 // ════════════════════════════════════════════════════════════
 function navigate(view){
-  document.getElementById('v-login').style.display='none';
-  document.getElementById('v-app').style.display='none';
-  document.getElementById('v-clients').style.display='none';
-  document.getElementById('v-audit').style.display='none';
+  ['v-login','v-app','v-groups','v-group','v-package'].forEach(id=>document.getElementById(id).style.display='none');
   document.getElementById('app-header').classList.remove('show');
   document.querySelectorAll('.hnav button').forEach(b=>b.classList.remove('active'));
   if(view==='login'){ document.getElementById('v-login').style.display=''; return; }
   document.getElementById('v-app').style.display='';
   document.getElementById('app-header').classList.add('show');
-  if(view==='clients'){
-    document.getElementById('v-clients').style.display='';
-    document.getElementById('nav-clients').classList.add('active');
-    refreshDashboard();
-  } else if(view==='audit'){
-    document.getElementById('v-audit').style.display='';
-    document.getElementById('nav-audit').classList.add('active');
-    renderAccessPanel(); renderMetrics(); renderBars(); renderEngines(); renderDeliverables();
+  if(view==='groups'){
+    document.getElementById('v-groups').style.display='';
+    document.getElementById('nav-groups').classList.add('active');
+    renderStrip(); populateGroupFilters(); renderGroups(); renderCrumb('groups');
+  } else if(view==='group'){
+    document.getElementById('v-group').style.display='';
+    renderGroupHeader(); renderTriage(); page=0; loadPage(); renderCrumb('group');
+  } else if(view==='package'){
+    document.getElementById('v-package').style.display='';
+    renderPackage(); renderCrumb('package');
   }
 }
-function newAudit(){
-  activeClient=null; activeTier='pro';
-  document.getElementById('audit-eyebrow').textContent='New audit · unsaved';
-  document.getElementById('url').value='';
-  document.getElementById('market').value='';
-  document.querySelectorAll('.tsel').forEach(t=>t.classList.toggle('on',t.dataset.t==='pro'));
-  document.getElementById('domtag').textContent='—';
-  navigate('audit');
+function renderCrumb(view){
+  const c=document.getElementById('crumb');
+  if(view==='groups'){ c.style.display='none'; return; }
+  c.style.display='flex';
+  let html=`<button onclick="navigate('groups')">Partner Groups</button>`;
+  if(activeGroup){ html+=`<span class="sep">/</span>`;
+    if(view==='group') html+=`<span class="here">${activeGroup.name}</span>`;
+    else html+=`<button onclick="openGroup('${activeGroup.id}')">${activeGroup.name}</button>`;
+  }
+  if(view==='package' && activeClient){ html+=`<span class="sep">/</span><span class="here">${activeClient.url}</span>`; }
+  c.innerHTML=html;
 }
 
 // ════════════════════════════════════════════════════════════
-//  DASHBOARD  — triage + paginated query layer
+//  BRAND HELPERS
 // ════════════════════════════════════════════════════════════
-function refreshDashboard(){
-  populateAssigneeFilter();
-  renderTriage();
-  loadPage();
-}
-
-// TRIAGE — //SB: live, run COUNT queries against the `client_health` VIEW,
-//          NOT a full table pull. e.g.
-//   const {count:total} = await sb.from('clients').select('*',{count:'exact',head:true})
-//   const {count:aud}   = await sb.from('client_health').select('*',{count:'exact',head:true}).eq('needs_audit',true)
-//   const {count:gap}   = await sb.from('client_health').select('*',{count:'exact',head:true}).eq('access_gap',true)
-//   const {count:rep}   = await sb.from('client_health').select('*',{count:'exact',head:true}).eq('report_due',true)
-function computeTriage(){
-  // OFFLINE: derive from DB (in prod these are 4 cheap server COUNTs)
-  return {
-    total: DB.length,
-    aud:   DB.filter(needsAudit).length,
-    gap:   DB.filter(accessGap).length,
-    rep:   DB.filter(reportDue).length,
-  };
-}
-function renderTriage(){
-  const t=computeTriage();
-  const card=(flag,cls,num,lab)=>`
-    <button class="tstat ${cls} ${filters.flag===flag?'active':''}" onclick="setFlag('${flag}')">
-      <span class="tbar"></span><div class="tnum">${num}</div><div class="tlab">${lab}</div>
-    </button>`;
-  document.getElementById('triage').innerHTML =
-    card('',   'all','' + t.total, 'Total clients') +
-    card('aud','aud', t.aud, 'Need an audit (30d+ / never)') +
-    card('gap','gap', t.gap, 'Platform access gaps') +
-    card('rep','rep', t.rep, 'Reports due this cycle');
-}
-function setFlag(flag){
-  filters.flag = (filters.flag === flag || flag === '') ? null : flag;
-  page=0; renderTriage(); syncClearBtn(); loadPage();
-}
-
-// QUERY LAYER — shaped exactly like a Supabase paginated query.
-// OFFLINE: filter/sort/slice the mock. LIVE: see //SB chain below.
-async function queryClients(){
-  if(OFFLINE){
-    let rows = DB.filter(c=>{
-      if(filters.search){
-        const q=filters.search.toLowerCase();
-        if(!(c.url.toLowerCase().includes(q)||c.name.toLowerCase().includes(q)||(c.market||'').toLowerCase().includes(q))) return false;
-      }
-      if(filters.tier!=='all' && c.tier!==filters.tier) return false;
-      if(filters.status!=='all' && c.status!==filters.status) return false;
-      if(filters.assignee!=='all' && c.assigned_to!==filters.assignee) return false;
-      if(filters.flag==='aud' && !needsAudit(c)) return false;
-      if(filters.flag==='gap' && !accessGap(c)) return false;
-      if(filters.flag==='rep' && !reportDue(c)) return false;
-      return true;
-    });
-    rows.sort((a,b)=>{
-      switch(filters.sort){
-        case 'name.asc':  return a.name.localeCompare(b.name);
-        case 'audit.asc': return (a.last_audit||'0')<(b.last_audit||'0')?-1:1;
-        case 'tier.desc': return TIERS.indexOf(b.tier)-TIERS.indexOf(a.tier);
-        default:          return b.created_at-a.created_at;
-      }
-    });
-    const count=rows.length;
-    const start=page*PAGE_SIZE;
-    return { rows: rows.slice(start,start+PAGE_SIZE), count };
+function groupOf(c){ return GROUPS.find(g=>g.id===c.grpId) || {name:'—',color:'#4B9BD7',color2:''}; }
+function monogram(name){ return name.replace(/[^A-Za-z0-9 ]/g,'').split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'··'; }
+function logoTile(g, cls){
+  // try the partner logo; fall back to a brand-colored monogram tile
+  const bg=g.color||'#4B9BD7';
+  if(g.logo){
+    return `<div class="${cls}" style="background:${bg}"><img src="${g.logo}" alt="" onerror="this.parentNode.innerHTML='${monogram(g.name)}'"></div>`;
   }
-  // //SB ── LIVE QUERY (one page at a time; never pulls the whole table) ──
-  // let q = sb.from('clients').select('*, owner:profiles!assigned_to(name)', { count:'exact' });
-  // if(filters.search) q = q.or(`url.ilike.%${filters.search}%,name.ilike.%${filters.search}%,market.ilike.%${filters.search}%`);
-  // if(filters.tier   !=='all') q = q.eq('tier', filters.tier);
-  // if(filters.status !=='all') q = q.eq('status', filters.status);
-  // if(filters.assignee!=='all')q = q.eq('assigned_to', filters.assignee);
-  // // flag filters join the client_health view:
-  // if(filters.flag) q = q.in('id', sb.from('client_health').select('id').eq(flagCol(filters.flag), true));
-  // const [col,dir] = ({'name.asc':['name','asc'],'audit.asc':['last_audit_at','asc'],
-  //                     'tier.desc':['tier','desc'],'created.desc':['created_at','desc']})[filters.sort];
-  // q = q.order(col, { ascending: dir==='asc' }).range(page*PAGE_SIZE, page*PAGE_SIZE+PAGE_SIZE-1);
-  // const { data, count, error } = await q;
-  // return { rows: data, count };
+  return `<div class="${cls}" style="background:${bg}">${monogram(g.name)}</div>`;
 }
 
-async function loadPage(){
-  const { rows, count } = await queryClients();
-  lastCount = count;
-  renderRows(rows, count);
-  renderPager(count);
-  document.getElementById('book-sub').textContent =
-    `${count} client${count===1?'':'s'} match${count===1?'es':''} · managed internally · ${STAFF.length} specialists`;
+// ════════════════════════════════════════════════════════════
+//  GLOBAL STAT STRIP (group-level rollup)
+//  //SB live: 4 COUNT queries over group_rollup / client_health views.
+// ════════════════════════════════════════════════════════════
+function renderStrip(){
+  const ready=DB.filter(c=>c.pkg_status==='ready').length;
+  const deployed=DB.filter(c=>c.pkg_status==='deployed').length;
+  const aud=DB.filter(needsAudit).length;
+  document.getElementById('strip').innerHTML=
+    `<div class="sstat g"><span class="sbar"></span><div class="snum">${GROUPS.length}</div><div class="slab">Partner groups</div></div>
+     <div class="sstat r"><span class="sbar"></span><div class="snum">${ready}</div><div class="slab">Packages ready to deploy</div></div>
+     <div class="sstat d"><span class="sbar"></span><div class="snum">${deployed}</div><div class="slab">Packages deployed</div></div>
+     <div class="sstat a"><span class="sbar"></span><div class="snum">${aud}</div><div class="slab">Clients needing an audit</div></div>`;
+  document.getElementById('groups-sub').textContent=`${GROUPS.length} white-label partners · ${DB.length} end clients · managed internally`;
 }
 
-function renderRows(rows, count){
-  const el=document.getElementById('client-rows');
-  if(!rows.length){
-    el.innerHTML=`<div class="empty"><h3>No matching clients</h3><p>Adjust the filters or clear them to see the full book.</p></div>`;
-    return;
-  }
-  el.innerHTML = rows.map(c=>{
-    const owner=STAFF.find(s=>s.id===c.assigned_to)||{initials:'—',name:'Unassigned'};
-    const stale=needsAudit(c);
-    return `<div class="ct-row ct-cols" onclick="openClientAudit('${c.id}')">
-      <div class="ct-client">
-        <div class="dn">${c.url}</div><div class="nm">${c.name}</div><div class="mk">${c.market||''}</div>
-      </div>
-      <div><span class="assignee-av" title="${owner.name}">${owner.initials}</span></div>
-      <div><span class="status-dot sd-${c.status}"><i></i>${cap(c.status)}</span></div>
-      <div><span class="tier-pill ${c.tier}">${cap(c.tier)}</span></div>
-      <div class="pbadges">${PLATFORMS.map(p=>`<span class="pbadge ${p.key} ${c[p.key]?'on':'off'}" title="${p.name}: ${c[p.key]?'Connected':'Not connected'}">${p.short}</span>`).join('')}</div>
-      <div class="ct-date ${stale?'stale':''}">${c.last_audit?fmtDate(c.last_audit):'Never'}</div>
-      <div class="ct-act" onclick="event.stopPropagation()">
-        <button class="abtn report" onclick="downloadReport('${c.id}')" title="Generate the client-facing monthly report">↓ Report</button>
-        <button class="abtn audit" onclick="openClientAudit('${c.id}')">Audit →</button>
+// ════════════════════════════════════════════════════════════
+//  PARTNER GROUP CARDS
+// ════════════════════════════════════════════════════════════
+function populateGroupFilters(){
+  const amSel=document.getElementById('g-am');
+  if(amSel.dataset.filled) return;
+  const ams=[...new Set(GROUPS.map(g=>g.am).filter(Boolean))].sort();
+  amSel.innerHTML=`<option value="all">All account managers</option>`+ams.map(a=>`<option value="${a}">${a}</option>`).join('');
+  amSel.dataset.filled='1';
+}
+function onGroupSearch(v){ clearTimeout(_gt); _gt=setTimeout(()=>{groupFilters.search=v.trim().toLowerCase();renderGroups();},180); }
+function clientCounts(gid){
+  const cs=DB.filter(c=>c.grpId===gid);
+  return { total:cs.length, ready:cs.filter(c=>c.pkg_status==='ready').length, deployed:cs.filter(c=>c.pkg_status==='deployed').length };
+}
+function renderGroups(){
+  groupFilters.am=document.getElementById('g-am').value;
+  let list=GROUPS.filter(g=>{
+    if(groupFilters.search && !g.name.toLowerCase().includes(groupFilters.search)) return false;
+    if(groupFilters.am!=='all' && g.am!==groupFilters.am) return false;
+    return true;
+  });
+  const el=document.getElementById('groups-grid');
+  if(!list.length){ el.innerHTML=`<div class="empty" style="grid-column:1/-1"><h3>No matching partner groups</h3><p>Adjust the search or filters.</p></div>`; return; }
+  el.innerHTML=list.map(g=>{
+    const ct=clientCounts(g.id);
+    const inactive = !g.logo && !ct.total;
+    return `<div class="gcard" onclick="openGroup('${g.id}')">
+      <div class="gtop" style="background:${g.color}${g.color2?`;background:linear-gradient(90deg,${g.color},${g.color2})`:''}"></div>
+      ${inactive?'<span class="ginactive">No automation</span>':''}
+      <div class="gbody">
+        <div class="ghead">
+          ${logoTile(g,'glogo')}
+          <div><div class="gname">${g.name}</div>
+          <div class="gpeople">${g.am||'—'} · AM</div></div>
+        </div>
+        <div class="gstats">
+          <div class="gstat"><div class="gv ${ct.total?'':'zero'}">${ct.total}</div><div class="gl">Clients</div></div>
+          <div class="gstat"><div class="gv ${ct.ready?'ready':'zero'}">${ct.ready}</div><div class="gl">Ready</div></div>
+          <div class="gstat"><div class="gv ${ct.deployed?'':'zero'}">${ct.deployed}</div><div class="gl">Deployed</div></div>
+        </div>
       </div>
     </div>`;
   }).join('');
 }
 
+// ════════════════════════════════════════════════════════════
+//  GROUP DETAIL (clients)
+// ════════════════════════════════════════════════════════════
+function openGroup(id){ activeGroup=GROUPS.find(g=>g.id===id); filters={search:'',tier:'all',status:'all',flag:null,sort:'created.desc'}; navigate('group'); }
+function renderGroupHeader(){
+  const g=activeGroup;
+  document.getElementById('gh-logo').outerHTML=logoTile(g,'glogo').replace('class="glogo"','class="glogo" id="gh-logo"');
+  document.getElementById('gh-name').textContent=g.name;
+  document.getElementById('gh-meta').innerHTML=`<b>${g.am||'—'}</b> · account manager &nbsp;·&nbsp; <span style="color:var(--muted)">strategists assigned per account</span>`;
+  const route=document.getElementById('gh-routing');
+  const bits=[];
+  if(g.trello) bits.push(`<span class="rk">Trello board</span> connected`);
+  if(g.io) bits.push(`<span class="rk">IO recipients</span> ${g.io.split(',').length}`);
+  route.innerHTML = bits.length ? `Deployment routes to:<br>${bits.join(' &nbsp;·&nbsp; ')}` : `<span style="opacity:.7">No deployment automation configured</span>`;
+}
+function renderTriage(){
+  const cs=DB.filter(c=>c.grpId===activeGroup.id);
+  const t={total:cs.length, str:cs.filter(needsStrategist).length, gap:cs.filter(accessGap).length, rdy:cs.filter(pkgReady).length};
+  const card=(flag,cls,num,lab)=>`<button class="tstat ${cls} ${filters.flag===flag?'active':''}" onclick="setFlag('${flag}')">
+    <span class="tbar"></span><div class="tnum">${num}</div><div class="tlab">${lab}</div></button>`;
+  document.getElementById('triage').innerHTML=
+    card('','all',t.total,'Clients in group')+card('str','str',t.str,'Need a strategist')+
+    card('gap','gap',t.gap,'Platform access gaps')+card('rdy','rdy',t.rdy,'Packages ready');
+}
+function setFlag(f){ filters.flag=(filters.flag===f||f==='')?null:f; page=0; renderTriage(); syncClear(); loadPage(); }
+
+async function queryClients(){
+  if(OFFLINE){
+    let rows=DB.filter(c=>{
+      if(c.grpId!==activeGroup.id) return false;
+      if(filters.search){ const q=filters.search.toLowerCase();
+        if(!(c.url.toLowerCase().includes(q)||c.name.toLowerCase().includes(q)||(c.market||'').toLowerCase().includes(q))) return false; }
+      if(filters.tier!=='all'&&c.tier!==filters.tier) return false;
+      if(filters.status!=='all'&&c.status!==filters.status) return false;
+      if(filters.flag==='aud'&&!needsAudit(c)) return false;
+      if(filters.flag==='gap'&&!accessGap(c)) return false;
+      if(filters.flag==='rdy'&&!pkgReady(c)) return false;
+      if(filters.flag==='str'&&!needsStrategist(c)) return false;
+      return true;
+    });
+    rows.sort((a,b)=>{switch(filters.sort){
+      case 'name.asc': return a.name.localeCompare(b.name);
+      case 'audit.asc': return (a.last_audit||'0')<(b.last_audit||'0')?-1:1;
+      case 'tier.desc': return TIERS.indexOf(b.tier)-TIERS.indexOf(a.tier);
+      default: return b.created_at-a.created_at; }});
+    return { rows: rows.slice(page*PAGE_SIZE,page*PAGE_SIZE+PAGE_SIZE), count: rows.length };
+  }
+  // //SB LIVE: sb.from('clients').select('*',{count:'exact'}).eq('partner_group_id',activeGroup.id)
+  // //SB   .or(ilike search).eq(tier).eq(status).order(col,dir).range(page*PAGE_SIZE, ...)
+  // //SB   flag filters join client_health view (needs_audit / access_gap / package_ready)
+}
+async function loadPage(){
+  const {rows,count}=await queryClients(); lastCount=count;
+  renderRows(rows); renderPager(count);
+}
+function pkgBadge(s){
+  const map={none:['pkg-none','No package'],generating:['pkg-generating','Generating'],ready:['pkg-ready','Ready'],deployed:['pkg-deployed','Deployed']};
+  const [cls,lab]=map[s||'none']; return `<span class="pkg-badge ${cls}"><i></i>${lab}</span>`;
+}
+function renderRows(rows){
+  const el=document.getElementById('client-rows');
+  if(!rows.length){ el.innerHTML=`<div class="empty"><h3>No matching clients</h3><p>Adjust filters, or add a client to this group.</p></div>`; return; }
+  el.innerHTML=rows.map(c=>{
+    const stale=needsAudit(c);
+    const su=userById(c.strategist_id);
+    const stratCell = su
+      ? `<div class="strat-cell"><span class="strat-av">${su.initials}</span>${su.name}</div>`
+      : (canAssign()
+          ? `<button class="strat-unassigned" onclick="event.stopPropagation();openClient('${c.id}')">Assign ▾</button>`
+          : `<span class="strat-unassigned" style="cursor:default">Unassigned</span>`);
+    return `<div class="ct-row ct-cols" onclick="openClient('${c.id}')">
+      <div class="ct-client"><div class="dn">${c.url}</div><div class="nm">${c.name}</div><div class="mk">${c.market||''}</div></div>
+      <div>${stratCell}</div>
+      <div><span class="status-dot sd-${c.status}"><i></i>${cap(c.status)}</span></div>
+      <div><span class="tier-pill ${c.tier}">${cap(c.tier)}</span></div>
+      <div class="pbadges">${PLATFORMS.map(p=>`<span class="pbadge ${p.key} ${c[p.key]?'on':'off'}" title="${p.name}: ${c[p.key]?'Connected':'Not connected'}">${p.short}</span>`).join('')}</div>
+      <div>${pkgBadge(c.pkg_status)}</div>
+      <div class="ct-act" onclick="event.stopPropagation()"><button class="abtn open" onclick="openClient('${c.id}')">Open package →</button></div>
+    </div>`;
+  }).join('');
+}
 function renderPager(count){
-  const start=count?page*PAGE_SIZE+1:0;
-  const end=Math.min(count,(page+1)*PAGE_SIZE);
+  const start=count?page*PAGE_SIZE+1:0, end=Math.min(count,(page+1)*PAGE_SIZE);
   document.getElementById('pager-range').textContent=`${start}–${end} of ${count}`;
-  document.getElementById('prev-btn').disabled = page===0;
-  document.getElementById('next-btn').disabled = end>=count;
+  document.getElementById('prev-btn').disabled=page===0;
+  document.getElementById('next-btn').disabled=end>=count;
 }
-function changePage(d){
-  const maxPage=Math.max(0,Math.ceil(lastCount/PAGE_SIZE)-1);
-  page=Math.min(maxPage,Math.max(0,page+d));
-  loadPage();
-  window.scrollTo({top:0,behavior:'smooth'});
-}
-
-// filters
-function onSearch(v){ clearTimeout(_searchTimer); _searchTimer=setTimeout(()=>{filters.search=v.trim();page=0;syncClearBtn();loadPage();},220); }
-function onFilter(){
-  filters.tier=document.getElementById('f-tier').value;
-  filters.status=document.getElementById('f-status').value;
-  filters.assignee=document.getElementById('f-assignee').value;
-  filters.sort=document.getElementById('f-sort').value;
-  page=0; syncClearBtn(); loadPage();
-}
-function clearFilters(){
-  filters={search:'',tier:'all',status:'all',assignee:'all',flag:null,sort:'created.desc'};
-  document.getElementById('search').value='';
-  document.getElementById('f-tier').value='all';
-  document.getElementById('f-status').value='all';
-  document.getElementById('f-assignee').value='all';
-  document.getElementById('f-sort').value='created.desc';
-  page=0; renderTriage(); syncClearBtn(); loadPage();
-}
-function syncClearBtn(){
-  const active = filters.search||filters.tier!=='all'||filters.status!=='all'||filters.assignee!=='all'||filters.flag||filters.sort!=='created.desc';
-  document.getElementById('f-clear').style.display = active?'':'none';
-}
-function populateAssigneeFilter(){
-  const sel=document.getElementById('f-assignee');
-  if(sel.dataset.filled) return;
-  sel.innerHTML = `<option value="all">All owners</option>` +
-    STAFF.map(s=>`<option value="${s.id}">${s.name}${s.id===me.id?' (me)':''}</option>`).join('');
-  sel.dataset.filled='1';
-}
+function changePage(d){ const mp=Math.max(0,Math.ceil(lastCount/PAGE_SIZE)-1); page=Math.min(mp,Math.max(0,page+d)); loadPage(); window.scrollTo({top:0,behavior:'smooth'}); }
+function onSearch(v){ clearTimeout(_st); _st=setTimeout(()=>{filters.search=v.trim();page=0;syncClear();loadPage();},200); }
+function onFilter(){ filters.tier=document.getElementById('f-tier').value; filters.status=document.getElementById('f-status').value; filters.sort=document.getElementById('f-sort').value; page=0; syncClear(); loadPage(); }
+function clearFilters(){ filters={search:'',tier:'all',status:'all',flag:null,sort:'created.desc'};
+  document.getElementById('search').value=''; document.getElementById('f-tier').value='all';
+  document.getElementById('f-status').value='all'; document.getElementById('f-sort').value='created.desc';
+  page=0; renderTriage(); syncClear(); loadPage(); }
+function syncClear(){ const a=filters.search||filters.tier!=='all'||filters.status!=='all'||filters.flag||filters.sort!=='created.desc';
+  document.getElementById('f-clear').style.display=a?'':'none'; }
 
 // ════════════════════════════════════════════════════════════
-//  OPEN A CLIENT → AUDIT
-// ════════════════════════════════════════════════════════════
-function openClientAudit(id){
-  const c=DB.find(x=>x.id===id); if(!c) return;
-  activeClient=c; activeTier=c.tier;
-  document.getElementById('audit-eyebrow').textContent=`${c.name} · ${cap(c.status)}`;
-  document.getElementById('url').value=c.url;
-  document.getElementById('market').value=c.market||'';
-  document.querySelectorAll('.tsel').forEach(t=>t.classList.toggle('on',t.dataset.t===c.tier));
-  document.getElementById('domtag').textContent=c.url+' · loaded';
-  document.getElementById('tiertag').textContent=cap(c.tier)+' tier';
-  navigate('audit');
-}
-
-// ════════════════════════════════════════════════════════════
-//  ADD CLIENT MODAL
+//  ADD CLIENT (within active group) → generates a package
 // ════════════════════════════════════════════════════════════
 function openAddModal(){
   ['m-name','m-url','m-market'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('m-tier').value='starter';
-  document.getElementById('m-status').value='onboarding';
-  const asel=document.getElementById('m-assignee');
-  asel.innerHTML=STAFF.map(s=>`<option value="${s.id}"${s.id===me.id?' selected':''}>${s.name}</option>`).join('');
+  document.getElementById('m-tier').value='starter'; document.getElementById('m-status').value='onboarding';
+  document.getElementById('m-strat').innerHTML=`<option value="">— assign later —</option>`+STRATEGISTS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  document.getElementById('modal-grp').innerHTML=`Adding to <b>${activeGroup.name}</b> — package deploys in this partner's brand. As ${ROLE_LABEL[me.role]||'staff'}, assign the SEO/AEO strategist here.`;
   document.getElementById('access-toggles').innerHTML=PLATFORMS.map(p=>`
     <div class="atrow" id="at-${p.key}" onclick="toggleAt('${p.key}')">
       <div class="atleft"><div class="at-icon ${p.key}">${p.icon}</div>
         <div><div class="at-name">${p.name}</div><div class="at-sub">${p.sub}</div></div></div>
-      <div class="at-chk" id="atchk-${p.key}"></div>
-    </div>`).join('');
-  renderReqNote();
-  document.getElementById('modal').classList.add('open');
+      <div class="at-chk" id="atchk-${p.key}"></div></div>`).join('');
+  renderReqNote(); document.getElementById('modal').classList.add('open');
 }
 function closeAddModal(){ document.getElementById('modal').classList.remove('open'); }
-function toggleAt(key){
-  const row=document.getElementById('at-'+key);
-  const on=row.classList.toggle('on');
-  document.getElementById('atchk-'+key).textContent=on?'✓':'';
-  renderReqNote();
-}
+function toggleAt(k){ const r=document.getElementById('at-'+k); const on=r.classList.toggle('on'); document.getElementById('atchk-'+k).textContent=on?'✓':''; renderReqNote(); }
 function renderReqNote(){
-  const tier=document.getElementById('m-tier').value;
-  const req=requiredFor(tier);
-  const missing=req.filter(k=>!document.getElementById('at-'+k)?.classList.contains('on'));
-  const note=document.getElementById('req-note');
-  if(missing.length){
-    const names=missing.map(k=>PLATFORMS.find(p=>p.key===k).short).join(', ');
-    note.textContent=`${cap(tier)} tier needs ${names} to clear the access gap — you can add the client now and grant access later.`;
-  } else { note.textContent=''; }
+  const tier=document.getElementById('m-tier').value, req=requiredFor(tier);
+  const miss=req.filter(k=>!document.getElementById('at-'+k)?.classList.contains('on'));
+  const n=document.getElementById('req-note');
+  n.textContent=miss.length?`${cap(tier)} tier needs ${miss.map(k=>PLATFORMS.find(p=>p.key===k).short).join(', ')} to clear the access gap — add now, grant access later.`:'';
 }
 async function saveClient(){
   const name=document.getElementById('m-name').value.trim();
   const url=document.getElementById('m-url').value.trim().replace(/^https?:\/\//,'');
   const market=document.getElementById('m-market').value.trim();
-  const tier=document.getElementById('m-tier').value;
-  const status=document.getElementById('m-status').value;
-  const assigned_to=document.getElementById('m-assignee').value;
+  const tier=document.getElementById('m-tier').value, status=document.getElementById('m-status').value;
+  const strat=document.getElementById('m-strat').value||null;
   if(!url){ showToast('Enter a domain URL',true); return; }
-  const access={}; PLATFORMS.forEach(p=>access[p.key]=document.getElementById('at-'+p.key).classList.contains('on'));
-  // //SB: await sb.from('clients').insert([{
-  // //SB:   agency_id: session.user.user_metadata.agency_id,  // internal agency id
-  // //SB:   name:name||url, url, market, tier, status, assigned_to,
-  // //SB:   gsc_connected:access.gsc, gbp_connected:access.gbp,
-  // //SB:   wp_connected:access.wp,   ga4_connected:access.ga4 }])
-  const c={id:'c'+Date.now(), created_at:Date.now(), name:name||url, url, market, tier, status, assigned_to,
-    gsc:access.gsc,gbp:access.gbp,wp:access.wp,ga4:access.ga4, last_audit:null, report_this_cycle:false};
-  DB.unshift(c);
-  closeAddModal(); page=0; refreshDashboard();
-  showToast(`${c.name} added`);
+  const a={}; PLATFORMS.forEach(p=>a[p.key]=document.getElementById('at-'+p.key).classList.contains('on'));
+  // //SB: insert client (partner_group_id, strategist_id, assigned_by=me.id) → invoke('run-audit') → package 'ready'
+  const c={id:'c'+Date.now(), created_at:Date.now(), grpId:activeGroup.id, name:name||url, url, market, tier, status,
+    gsc:a.gsc,gbp:a.gbp,wp:a.wp,ga4:a.ga4, last_audit:new Date().toISOString().slice(0,10),
+    report_this_cycle:false, pkg_status:'generating', strategist_id:strat};
+  DB.unshift(c); closeAddModal();
+  showToast(`${c.name} added — generating package…`);
+  // simulate generation completing
+  setTimeout(()=>{ c.pkg_status='ready'; if(activeGroup) loadPage(); renderTriage(); }, 1500);
+  page=0; loadPage(); renderTriage();
 }
 
 // ════════════════════════════════════════════════════════════
-//  PLATFORM ACCESS PANEL (audit view)
+//  OPEN CLIENT → PACKAGE VIEW
 // ════════════════════════════════════════════════════════════
+function openClient(id){
+  activeClient=DB.find(c=>c.id===id); if(!activeClient) return;
+  activeTier=activeClient.tier;
+  initPackageData();
+  navigate('package');
+}
+// hydrate the editable working copy from the audit run (//SB: from competitors/content_gaps rows)
+function initPackageData(){
+  PK.competitors = AUDIT.competitors.map(x=>({...x}));
+  PK.comp_pages  = AUDIT.comp_pages.map(x=>({...x}));
+  PK.gaps        = AUDIT.gaps.map(x=>({...x}));
+  PK.topics      = [];
+  PK.gaps.filter(g=>g.sel).forEach(addTopicFromGap);
+}
+function addTopicFromGap(g){
+  PK.topics.push({id:'t'+(_topicSeq++), title:defaultTitle(g.kw), keyword:g.kw,
+    kind:'blog', model:modelForKind('blog'), status:'queued', source:'gap'});
+}
+function defaultTitle(kw){
+  const t=kw.replace(/\b\w/g,c=>c.toUpperCase());
+  return `${t} — A [CITY] Homeowner's Guide`;
+}
+function newPackage(){
+  // "New package" starts at the groups grid so the specialist picks the partner first,
+  // then Add client inside the group runs generation. (Group is mandatory context.)
+  showToast('Pick a partner group, then “Add client” to generate a package');
+  navigate('groups');
+}
+
+function pkgStatBig(s){
+  const map={none:['var(--pk-none)','No package yet'],generating:['var(--pk-gen)','Generating…'],ready:['var(--pk-ready)','Package ready'],deployed:['var(--pk-deployed)','Deployed']};
+  const [col,lab]=map[s||'none'];
+  return {col,lab};
+}
+function renderPackage(){
+  const c=activeClient, g=groupOf(c);
+  document.getElementById('pk-logo').outerHTML=logoTile(g,'glogo').replace('class="glogo"','class="glogo" id="pk-logo"');
+  document.getElementById('pk-title').textContent=c.url;
+  document.getElementById('pk-meta').innerHTML=`<b>${c.name}</b> · ${c.market||'—'} &nbsp;·&nbsp; ${g.name} (AM: ${g.am||'—'})`;
+  renderStratLine();
+  const sb=pkgStatBig(c.pkg_status), el=document.getElementById('pk-statbig');
+  el.style.background=g.color&&c.pkg_status!=='none'?'var(--mist)':'var(--mist)';
+  el.style.color=sb.col; el.innerHTML=`<i style="background:${sb.col}"></i><span>${sb.lab}</span>`;
+  const dep=document.getElementById('pk-deploy');
+  if(c.pkg_status==='deployed'){ dep.textContent='✓ Deployed'; dep.classList.add('deployed'); dep.disabled=false; }
+  else { dep.textContent='Deploy package →'; dep.classList.remove('deployed'); dep.disabled=(c.pkg_status!=='ready'); }
+
+  // intake
+  document.getElementById('url').value=c.url;
+  document.getElementById('market').value=c.market||'';
+  document.querySelectorAll('.tsel').forEach(t=>t.classList.toggle('on',t.dataset.t===c.tier));
+  document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
+  document.getElementById('tiertag').textContent=cap(c.tier)+' tier';
+
+  renderAccessPanel(); renderMetrics(); renderBars();
+  renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
+  renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
+}
+
+// ── strategist assignment (AM/admin assigns; others see read-only) ──
+function renderStratLine(){
+  const c=activeClient, su=userById(c.strategist_id), el=document.getElementById('pk-strat');
+  if(canAssign()){
+    el.innerHTML=`<span class="pks-lab">SEO/AEO Strategist</span>
+      <select onchange="assignStrategist(this.value)">
+        <option value="">— unassigned —</option>
+        ${STRATEGISTS.map(s=>`<option value="${s.id}" ${s.id===c.strategist_id?'selected':''}>${s.name}</option>`).join('')}
+      </select>`;
+  } else {
+    el.innerHTML=`<span class="pks-lab">SEO/AEO Strategist</span>
+      <span class="pks-static">${su?`<span class="strat-av">${su.initials}</span>${su.name}`:'<span style="color:var(--high)">Unassigned</span>'}</span>`;
+  }
+}
+function assignStrategist(id){
+  activeClient.strategist_id=id||null;
+  // //SB: sb.from('clients').update({strategist_id:id||null, assigned_by:me.id, assigned_at:new Date()}).eq('id',activeClient.id)
+  const su=userById(id);
+  showToast(su?`Assigned to ${su.name}`:'Strategist unassigned');
+}
+
+// ── 3 · CONTENT DRAFT EDITOR (edit / overwrite / request rewrite) ──
+let _draftIdx=null;
+function genBody(t){
+  const kw=t.keyword==='(manual)'?t.title:t.keyword;
+  return `# ${t.title}\n\n`+
+    `Looking for ${kw} in [CITY]? Here's what [CLIENT] wants every homeowner to know.\n\n`+
+    `**Short answer:** [DECLARATIVE ANSWER PARAGRAPH — 2–3 sentences that directly answer the query so it can be lifted into an AI Overview or featured snippet.]\n\n`+
+    `## Why it matters in [CITY], [ST]\n`+
+    `[Local context paragraph grounded in the market — climate, codes, common issues — written in the ${groupOf(activeClient).name} client's voice.]\n\n`+
+    `## What to expect\n`+
+    `- [Point one tied to ${kw}]\n- [Point two]\n- [Point three]\n\n`+
+    `## Frequently asked questions\n`+
+    `**How much does it cost in [CITY]?** [Answer]\n`+
+    `**How long does it take?** [Answer]\n\n`+
+    `[CTA — book an inspection / request a quote, linking to the booking page.]`;
+}
+function openDraft(i){
+  _draftIdx=i; const t=PK.topics[i];
+  if(!t.body) t.body=genBody(t);
+  document.getElementById('dm-title').textContent=t.title;
+  const m=MODELS[t.model];
+  document.getElementById('dm-sub').innerHTML=`<span class="mtag ${m.cls}">${m.label}</span><span class="dm-kw">↳ ${esc(t.keyword)}</span><span class="dm-rev">rev ${t.revision||1}</span><span class="qstatus qs-${t.status}">${cap(t.status)}</span>`;
+  const edit=canEditContent();
+  document.getElementById('dm-readonly').style.display=edit?'none':'block';
+  const body=document.getElementById('dm-body'); body.value=t.body; body.disabled=!edit;
+  const instr=document.getElementById('dm-instr'); instr.value=''; instr.disabled=!edit;
+  ['dm-rewrite-btn','dm-save-btn','dm-approve-btn'].forEach(id=>document.getElementById(id).disabled=!edit);
+  document.getElementById('draft-modal').classList.add('open');
+}
+function closeDraft(){ document.getElementById('draft-modal').classList.remove('open'); _draftIdx=null; }
+function saveDraft(){
+  if(_draftIdx==null||!canEditContent()) return;
+  const t=PK.topics[_draftIdx]; t.body=document.getElementById('dm-body').value;
+  t.edited=true; if(t.status==='queued') t.status='drafted';
+  // //SB: sb.from('content_drafts').update({body:t.body, edited_by:me.id, updated_at:now()}).eq(...)
+  renderQueue(); showToast('Draft saved — your edits overwrite the generated copy');
+}
+function approveDraft(){
+  if(_draftIdx==null||!canEditContent()) return;
+  const t=PK.topics[_draftIdx]; t.body=document.getElementById('dm-body').value; t.status='approved';
+  // //SB: sb.from('content_drafts').update({approved:true, body:t.body}).eq(...)
+  renderQueue(); closeDraft(); showToast('Draft approved ✓', false, true);
+}
+function requestRewrite(){
+  if(_draftIdx==null||!canEditContent()) return;
+  const t=PK.topics[_draftIdx];
+  const instr=document.getElementById('dm-instr').value.trim();
+  if(!instr){ showToast('Add rewrite instructions first',true); return; }
+  const m=MODELS[t.model];
+  t.status='drafting'; t.revision=(t.revision||1)+1; t.lastInstruction=instr;
+  document.getElementById('dm-sub').innerHTML=`<span class="mtag ${m.cls}">${m.label}</span><span class="dm-rev">rewriting…</span>`;
+  // //SB: invoke('generate-content',{topic:t, model:m.api, instruction:instr, prior:t.body}) → new draft revision
+  showToast(`Sending to ${m.label} with your notes…`);
+  setTimeout(()=>{
+    t.body=`[Rev ${t.revision} — rewritten per: "${instr}"]\n\n`+genBody(t);
+    t.status='drafted';
+    if(_draftIdx!=null){ // refresh modal if still open on same topic
+      const body=document.getElementById('dm-body'); body.value=t.body;
+      document.getElementById('dm-instr').value='';
+      document.getElementById('dm-sub').innerHTML=`<span class="mtag ${m.cls}">${m.label}</span><span class="dm-kw">↳ ${esc(t.keyword)}</span><span class="dm-rev">rev ${t.revision}</span><span class="qstatus qs-drafted">Drafted</span>`;
+    }
+    renderQueue(); showToast(`${m.label} returned a new revision`, false, true);
+  }, 1700);
+}
+
+// ── platform access panel ──
 function renderAccessPanel(){
-  const c=activeClient||{};
-  const connected=PLATFORMS.filter(p=>c[p.key]).length;
-  const gap=activeClient && accessGap(activeClient);
-  document.getElementById('access-tag').innerHTML =
-    `${connected} of 4 connected` + (gap?` · <span style="color:var(--high);font-weight:700">access gap for ${cap(activeClient.tier)}</span>`:'');
+  const c=activeClient||{}, connected=PLATFORMS.filter(p=>c[p.key]).length, gap=activeClient&&accessGap(activeClient);
+  document.getElementById('access-tag').innerHTML=`${connected} of 4 connected`+(gap?` · <span style="color:var(--high);font-weight:700">access gap for ${cap(activeClient.tier)}</span>`:'');
   document.getElementById('access-panel').innerHTML=PLATFORMS.map(p=>{
     const on=!!c[p.key];
-    return `<div class="apc ${on?'on':'off'} ${p.key}">
-      <div class="apc-status">${on?'✓ Connected':'✗ Not connected'}</div>
-      <div class="apc-name">${p.name}</div>
-      <div class="apc-desc">${on?p.on_desc:p.off_desc}</div>
-      <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button>
-    </div>`;
+    return `<div class="apc ${on?'on':'off'} ${p.key}"><div class="apc-status">${on?'✓ Connected':'✗ Not connected'}</div>
+      <div class="apc-name">${p.name}</div><div class="apc-desc">${on?p.on_desc:p.off_desc}</div>
+      <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button></div>`;
   }).join('');
 }
-function togglePlatform(key){
-  if(!activeClient){ showToast('Open from a client to edit access',true); return; }
-  activeClient[key]=!activeClient[key];
-  // //SB: await sb.from('clients').update({[PLATFORMS.find(p=>p.key===key).dbcol]:activeClient[key]}).eq('id',activeClient.id)
-  const idx=DB.findIndex(c=>c.id===activeClient.id); if(idx>-1) DB[idx]={...activeClient};
-  renderAccessPanel();
-  const p=PLATFORMS.find(p=>p.key===key);
-  showToast(activeClient[key]?`${p.name} connected`:`${p.name} disconnected`);
+function togglePlatform(k){
+  if(!activeClient) return; activeClient[k]=!activeClient[k];
+  // //SB: sb.from('clients').update({[k+'_connected']:activeClient[k]}).eq('id',activeClient.id)
+  renderAccessPanel(); const p=PLATFORMS.find(p=>p.key===k); showToast(activeClient[k]?`${p.name} connected`:`${p.name} disconnected`);
 }
 
-// ════════════════════════════════════════════════════════════
-//  AUDIT RENDERERS
-// ════════════════════════════════════════════════════════════
-function renderMetrics(){
-  document.getElementById('cards').innerHTML=AUDIT.metrics.map(m=>`
-    <div class="card"><div class="k">${m.k}</div>
-    <div class="v">${m.v}<small>${m.s}</small></div>
-    <div class="d ${m.dc}">${m.dc==='up'?'▲ ':''}${m.dc==='down'?'▼ ':''}${m.d}</div></div>`).join('');
-}
+// ── audit renderers ──
+function renderMetrics(){ document.getElementById('cards').innerHTML=AUDIT.metrics.map(m=>`<div class="card"><div class="k">${m.k}</div><div class="v">${m.v}<small>${m.s}</small></div><div class="d ${m.dc}">${m.dc==='up'?'▲ ':''}${m.dc==='down'?'▼ ':''}${m.d}</div></div>`).join(''); }
 function renderBars(){
-  const max=Math.max(...AUDIT.severity.map(s=>s.v));
-  const total=AUDIT.severity.reduce((a,b)=>a+b.v,0);
-  document.getElementById('bars').innerHTML=AUDIT.severity.map(s=>`
-    <div class="bcol"><div class="bwrap"><div class="bar" style="height:${s.v/max*100}%;background:${s.c}">
-      <div class="bv">${s.v}</div></div></div><div class="bl">${s.l}</div></div>`).join('');
+  const max=Math.max(...AUDIT.severity.map(s=>s.v)), total=AUDIT.severity.reduce((a,b)=>a+b.v,0);
+  document.getElementById('bars').innerHTML=AUDIT.severity.map(s=>`<div class="bcol"><div class="bwrap"><div class="bar" style="height:${s.v/max*100}%;background:${s.c}"><div class="bv">${s.v}</div></div></div><div class="bl">${s.l}</div></div>`).join('');
   document.getElementById('f-total').innerHTML=`${total} <span>findings</span>`;
   document.getElementById('f-sub').textContent=AUDIT.severity.map(s=>`${s.v} ${s.l.toLowerCase()}`).join(' · ');
-  document.getElementById('diag-h').textContent=AUDIT.diag.h;
-  document.getElementById('diag-p').textContent=AUDIT.diag.p;
-  document.getElementById('diag-f').textContent=AUDIT.diag.focus;
+  document.getElementById('diag-h').textContent=AUDIT.diag.h; document.getElementById('diag-p').textContent=AUDIT.diag.p; document.getElementById('diag-f').textContent=AUDIT.diag.focus;
 }
-function renderEngines(){
-  document.getElementById('engines').innerHTML=ENGINES.map(e=>`
-    <div class="eng"><div class="en">${e.n}</div><h4>${e.t}</h4><p>${e.p}</p>
-    <span class="st ${e.st}">${e.st==='ready'?'Ready':'Setup required'}</span></div>`).join('');
+// ── 2 · COMPETITIVE ANALYSIS (editable) ──
+function renderCompetitors(){
+  const maxOv=Math.max(1,...PK.competitors.map(x=>x.overlap||0));
+  document.getElementById('comp-tag').textContent=`${PK.competitors.length} competitors · editable`;
+  document.getElementById('comp').innerHTML=
+    `<div class="crow chead"><span>Competitor domain</span><span>DR</span><span>Keyword overlap</span><span>Est. traffic</span><span></span></div>`+
+    PK.competitors.map((x,i)=>`<div class="crow ${x.manual?'manual':''}">
+      <span class="cdomain">${esc(x.domain)}</span>
+      <span class="cdr">${x.dr??'—'}</span>
+      <span><div class="ovbar"><i style="width:${(x.overlap||0)/maxOv*100}%"></i></div><div class="ov-label">${x.common?x.common+' shared kw · ':''}${x.overlap||0}%</div></span>
+      <span>${x.traffic?x.traffic.toLocaleString()+'/mo':'—'}</span>
+      <span class="cx"><button class="cxbtn" title="Remove competitor" onclick="removeCompetitor(${i})">✕</button></span>
+    </div>`).join('')+
+    `<div class="addrow">
+      <input class="dom" id="newcomp-dom" type="text" placeholder="add competitor domain…">
+      <input class="dr"  id="newcomp-dr"  type="text" placeholder="DR">
+      <button class="addbtn" onclick="addCompetitor()">＋ Add</button>
+    </div>`;
+}
+function removeCompetitor(i){ PK.competitors.splice(i,1); renderCompetitors(); /* //SB: delete competitors row */ }
+function addCompetitor(){
+  const dom=document.getElementById('newcomp-dom').value.trim().replace(/^https?:\/\//,'');
+  const dr=parseInt(document.getElementById('newcomp-dr').value)||null;
+  if(!dom){ showToast('Enter a competitor domain',true); return; }
+  PK.competitors.push({domain:dom, dr, common:null, total:null, overlap:0, traffic:null, manual:true});
+  // //SB: insert competitors row (is_manual=true); a follow-up Ahrefs pull can backfill metrics
+  renderCompetitors(); showToast(`${dom} added — re-run pull to backfill metrics`);
+}
+
+function renderCompPages(){
+  document.getElementById('cpages').innerHTML=
+    `<div class="cprow cphead"><span>Page</span><span>Top keyword</span><span>Traffic</span></div>`+
+    PK.comp_pages.map(p=>`<div class="cprow">
+      <span class="cppage">${esc(p.page)}<small>${esc(p.site)}</small></span>
+      <span class="cpkw">${esc(p.kw)}</span>
+      <span class="cptraf">${p.traffic.toLocaleString()}/mo</span></div>`).join('');
+}
+
+// ── content gap (selectable → feeds the content queue) ──
+function renderGaps(){
+  const sel=PK.gaps.filter(g=>g.sel).length;
+  document.getElementById('gaps').innerHTML=
+    `<div class="grow ghead"><span></span><span>Gap keyword</span><span>Ranks for it</span><span>Volume</span><span>KD</span><span></span></div>`+
+    PK.gaps.map((g,i)=>`<div class="grow">
+      <span><span class="gchk ${g.sel?'on':''}" onclick="toggleGap(${i})">${g.sel?'✓':''}</span></span>
+      <span class="gkw">${esc(g.kw)}</span>
+      <span class="gwho"><b>${esc(g.who)}</b> · #${g.pos}</span>
+      <span class="gvol">${g.vol.toLocaleString()}</span>
+      <span class="gkd">${g.kd}</span>
+      <span class="cx"><button class="cxbtn" title="Remove gap" onclick="removeGap(${i})">✕</button></span>
+    </div>`).join('')+
+    `<div class="addrow">
+      <input class="dom" id="newgap-kw" type="text" placeholder="add a target keyword…">
+      <input class="dr"  id="newgap-vol" type="text" placeholder="vol">
+      <button class="addbtn" onclick="addGap()">＋ Add</button>
+    </div>`+
+    `<div class="gsel-note">${sel} keyword${sel===1?'':'s'} selected → ${sel} content piece${sel===1?'':'s'} queued below</div>`;
+}
+function toggleGap(i){
+  const g=PK.gaps[i]; g.sel=!g.sel;
+  if(g.sel){ if(!PK.topics.some(t=>t.source==='gap'&&t.keyword===g.kw)) addTopicFromGap(g); }
+  else { PK.topics=PK.topics.filter(t=>!(t.source==='gap'&&t.keyword===g.kw)); }
+  // //SB: update content_gaps.selected; sync content_topics
+  renderGaps(); renderQueue();
+}
+function removeGap(i){
+  const g=PK.gaps[i];
+  PK.topics=PK.topics.filter(t=>!(t.source==='gap'&&t.keyword===g.kw));
+  PK.gaps.splice(i,1); renderGaps(); renderQueue();
+}
+function addGap(){
+  const kw=document.getElementById('newgap-kw').value.trim();
+  const vol=parseInt(document.getElementById('newgap-vol').value)||0;
+  if(!kw){ showToast('Enter a keyword',true); return; }
+  PK.gaps.push({kw, who:'(manual)', pos:'—', vol, kd:'—', sel:true});
+  addTopicFromGap(PK.gaps[PK.gaps.length-1]);
+  renderGaps(); renderQueue(); showToast(`"${kw}" added & queued`);
+}
+
+// ── 3 · CONTENT PLAN (editable queue, model per topic) ──
+function renderQueue(){
+  document.getElementById('model-legend').innerHTML=
+    `<span class="ml"><span class="mtag sonnet">${MODELS.sonnet.label}</span> blogs · posts · pages</span>
+     <span class="ml"><span class="mtag opus">${MODELS.opus.label}</span> AEO pillars · cornerstone</span>
+     <span class="ml"><span class="mtag haiku">${MODELS.haiku.label}</span> titles · meta · FAQ snippets</span>`;
+  const q=document.getElementById('queue');
+  const kindOpts=k=>CONTENT_KINDS.map(c=>`<option value="${c.k}" ${c.k===k?'selected':''}>${c.label}</option>`).join('');
+  const modelOpts=m=>Object.keys(MODELS).map(key=>`<option value="${key}" ${key===m?'selected':''}>${MODELS[key].label}</option>`).join('');
+  let rows=PK.topics.map((t,i)=>{
+    const openable=(t.status==='drafted'||t.status==='approved');
+    return `<div class="qrow qedit">
+      <span><input class="qtitle" value="${esc(t.title)}" oninput="editTopicTitle(${i},this.value)"><span class="qkw" style="font-size:11px;color:var(--muted);padding-left:10px">↳ ${esc(t.keyword)}${t.source==='manual'?' · manual':''}</span></span>
+      <span><select class="qsel" onchange="changeKind(${i},this.value)">${kindOpts(t.kind)}</select></span>
+      <span><select class="qsel" onchange="changeModel(${i},this.value)">${modelOpts(t.model)}</select></span>
+      <span><span class="qstatus qs-${t.status}">${cap(t.status)}</span></span>
+      <span>${openable?`<button class="qopen" onclick="openDraft(${i})">Open</button>`:''}</span>
+      <span class="cx"><button class="cxbtn" title="Remove from queue" onclick="removeTopic(${i})">✕</button></span>
+    </div>`;
+  }).join('');
+  if(!PK.topics.length) rows=`<div class="qempty">No content queued. Select gap keywords above, or add a topic.</div>`;
+  const counts=PK.topics.reduce((a,t)=>{a[t.model]=(a[t.model]||0)+1;return a;},{});
+  const summary=Object.keys(MODELS).filter(k=>counts[k]).map(k=>`${counts[k]} ${MODELS[k].label}`).join(' · ')||'—';
+  q.innerHTML=
+    `<div class="qrow qedit qhead"><span>Planned content</span><span>Type</span><span>Model</span><span>Status</span><span>Draft</span><span></span></div>`+
+    rows+
+    `<div class="addrow"><input class="dom" id="newtopic" type="text" placeholder="add a custom topic…"><button class="addbtn" onclick="addTopic()">＋ Add topic</button></div>`+
+    `<div class="qbar"><span class="qsum">${PK.topics.length} piece${PK.topics.length===1?'':'s'} · ${summary}</span>
+      <button class="qgen" onclick="generateDrafts()">Generate drafts with Claude →</button></div>`;
+  document.getElementById('queue-tag').textContent=`${PK.topics.length} queued · Engine 2`;
+}
+function editTopicTitle(i,v){ PK.topics[i].title=v; /* no re-render: keep focus */ }
+function changeKind(i,k){ PK.topics[i].kind=k; PK.topics[i].model=modelForKind(k); renderQueue(); }
+function changeModel(i,m){ PK.topics[i].model=m; renderQueue(); }
+function removeTopic(i){
+  const t=PK.topics[i];
+  if(t.source==='gap'){ const g=PK.gaps.find(g=>g.kw===t.keyword); if(g) g.sel=false; }
+  PK.topics.splice(i,1); renderGaps(); renderQueue();
+}
+function addTopic(){
+  const v=document.getElementById('newtopic').value.trim();
+  if(!v){ showToast('Enter a topic',true); return; }
+  PK.topics.push({id:'t'+(_topicSeq++), title:v, keyword:'(manual)', kind:'blog', model:modelForKind('blog'), status:'queued', source:'manual'});
+  renderQueue(); showToast('Topic added to queue');
+}
+function generateDrafts(){
+  const n=PK.topics.length;
+  if(!n){ showToast('Queue is empty',true); return; }
+  PK.topics.forEach(t=>t.status='drafting'); renderQueue();
+  // //SB: for each topic, invoke('generate-content',{topic, model:MODELS[t.model].api, keyword:t.keyword,
+  // //SB:   context:{audit keywords, selected gaps, boilerplate brand voice}}) → content_drafts row.
+  const byModel=PK.topics.reduce((a,t)=>{a[t.model]=(a[t.model]||0)+1;return a;},{});
+  const msg=Object.keys(MODELS).filter(k=>byModel[k]).map(k=>`${byModel[k]} on ${MODELS[k].label}`).join(', ');
+  showToast(`Drafting ${n} piece${n===1?'':'s'} — ${msg}…`);
+  setTimeout(()=>{ PK.topics.forEach(t=>{ t.status='drafted'; if(!t.body) t.body=genBody(t); t.revision=t.revision||1; }); renderQueue(); showToast(`${n} draft${n===1?'':'s'} ready for review`, false, true); }, 1700);
+}
+function renderFixes(){
+  document.getElementById('fix-tag').textContent=`${AUDIT.fixes.length} fixes · paste-ready`;
+  document.getElementById('fixes').innerHTML=AUDIT.fixes.map(f=>`
+    <div class="fixrow">
+      <div class="fixtop"><span class="fixkind ${f.kindClass}">${f.kindLabel}</span><span class="fixtarget">${f.target}</span></div>
+      ${f.before?`<div class="fixbefore">Current: <s>${esc(f.before)}</s></div>`:''}
+      ${f.code?`<div class="fixcode">${esc(f.code)}</div>`:`<div class="fixcode">${esc(f.after)}</div>`}
+    </div>`).join('');
 }
 function renderDeliverables(){
-  const rows=DELIVS[activeTier]||[];
-  const done=rows.filter(r=>r[3]).length;
+  const rows=DELIVS[activeTier]||[], done=rows.filter(r=>r[3]).length;
   document.getElementById('delivtag').textContent=`${done} of ${rows.length} ready`;
-  document.getElementById('deliv').innerHTML=
-    `<div class="drow dhead"><span></span><span>Deliverable</span><span>Engine</span><span>Cadence</span></div>`+
-    rows.map(r=>`<div class="drow"><span class="chk ${r[3]?'':'pend'}">${r[3]?'✓':'…'}</span>
-      <span style="font-weight:600">${r[0]}</span><span class="dpill">${r[1]}</span><span class="dtag">${r[2]}</span></div>`).join('');
+  document.getElementById('deliv').innerHTML=`<div class="drow dhead"><span></span><span>Deliverable</span><span>Engine</span><span>Cadence</span></div>`+
+    rows.map(r=>`<div class="drow"><span class="chk ${r[3]?'':'pend'}">${r[3]?'✓':'…'}</span><span style="font-weight:600">${r[0]}</span><span class="dpill">${r[1]}</span><span class="dtag">${r[2]}</span></div>`).join('');
 }
-function runAudit(){
-  const u=document.getElementById('url').value.trim().replace(/^https?:\/\//,'');
+function renderEngines(){ document.getElementById('engines').innerHTML=ENGINES.map(e=>`<div class="eng"><div class="en">${e.n}</div><h4>${e.t}</h4><p>${e.p}</p><span class="st ${e.st}">${e.st==='ready'?'Ready':'Setup required'}</span></div>`).join(''); }
+
+// ── white-labeled report (the client-facing artifact) ──
+function renderReportWL(){
+  const c=activeClient, g=groupOf(c);
+  const c1=g.color||'#4B9BD7', c2=g.color2||c1;
+  document.getElementById('report-wl').innerHTML=`
+    <div class="rwl-bar" style="background:linear-gradient(90deg,${c1},${c2})"></div>
+    <div class="rwl-body">
+      ${logoTile(g,'rwl-logo')}
+      <div class="rwl-txt">
+        <div class="rwl-eye" style="color:${c1}">${g.name} · ${monthName()} ${new Date().getFullYear()}</div>
+        <h4>${c.name} — SEO/AEO Monthly Report</h4>
+        <p>White-labeled in ${g.name}'s brand — the one artifact the end client sees. Movement, deliverables shipped, next cycle.</p>
+      </div>
+      <div class="rwl-spacer"></div>
+      <button class="rwl-btn" style="background:${c1}" onclick="downloadReport()">↓ Generate report</button>
+    </div>`;
+}
+function downloadReport(){
+  const c=activeClient, g=groupOf(c);
+  // //SB: invoke('build-report',{client_id,cycle_month}) → renders branded .docx using
+  // //SB:   partner_groups.brand_color + logo_url → returns signed report_url → download
+  showToast(`Generating ${monthName()} report for ${c.name}…`);
+  setTimeout(()=>showToast(`Report ready — branded in ${g.name}'s colors`, false, true), 1300);
+}
+
+// ── generate / deploy ──
+function generatePackage(){
+  const c=activeClient, u=document.getElementById('url').value.trim().replace(/^https?:\/\//,'');
   if(!u){ showToast('Enter a client URL',true); return; }
-  document.getElementById('domtag').textContent=u+' · live';
-  document.getElementById('tiertag').textContent=cap(activeTier)+' tier';
-  // //SB: await sb.functions.invoke('run-audit',{body:{url:u,tier:activeTier,client_id:activeClient?.id}})
-  // //SB: → Ahrefs + GSC pulls → insert audits + findings → trigger bumps clients.last_audit_at
-  renderAccessPanel(); renderMetrics(); renderBars(); renderEngines(); renderDeliverables();
-  document.getElementById('access-panel').scrollIntoView({behavior:'smooth',block:'start'});
-  showToast('Audit refreshed');
+  c.url=u; c.market=document.getElementById('market').value.trim(); c.tier=activeTier;
+  c.last_audit=new Date().toISOString().slice(0,10); c.pkg_status='generating';
+  initPackageData();
+  // //SB: invoke('run-audit',{url:u,tier:activeTier,client_id:c.id}) → Ahrefs+GSC pulls →
+  // //SB:   audits + findings + competitors + competitor_pages + content_gaps + fixes rows →
+  // //SB:   selected gaps seed content_topics → package 'ready'. Competitive analysis runs UP FRONT.
+  renderPackage(); showToast('Generating full package — audit, competitors, gaps, content plan…');
+  setTimeout(()=>{ c.pkg_status='ready'; renderPackage(); showToast('Package ready to deploy', false, true); }, 1600);
+}
+function deployPackage(){
+  const c=activeClient, g=groupOf(c);
+  if(c.pkg_status==='deployed'){ showToast(`Already deployed to ${g.name}`); return; }
+  if(c.pkg_status!=='ready'){ showToast('Generate the package first',true); return; }
+  // //SB: deploy = create Trello cards on g.trello_board_id (via g.trello_email),
+  // //SB:   email IO to g.io_recipients, publish content_drafts, mark package 'deployed'.
+  c.pkg_status='deploying'; renderPackage();
+  showToast(`Deploying to ${g.name}${g.trello?' · Trello board':''}…`);
+  setTimeout(()=>{ c.pkg_status='deployed'; renderPackage();
+    const who=g.io?` · IO to ${g.io.split(',').length} recipient${g.io.split(',').length>1?'s':''}`:'';
+    showToast(`Deployed to ${g.name}${who}`, false, true);
+  }, 1600);
 }
 
-// THE single client-facing artifact
-function downloadReport(id){
-  const c = id ? DB.find(x=>x.id===id) : activeClient;
-  const label = c ? c.name : 'this client';
-  // //SB: const {data,error}=await sb.functions.invoke('build-report',{body:{client_id:id,cycle_month:firstOfMonth()}})
-  // //SB:  → Engine 4 renders branded .docx → returns signed report_url → trigger download
-  // //SB: if(!error) window.open(data.report_url,'_blank')
-  showToast(`Generating ${monthName()} report for ${label}…`, false);
-  setTimeout(()=>showToast(`${monthName()} report ready — the only file that reaches the client`, false, true), 1400);
-}
-
-// ── tier toggle (audit view) ──
+// ── tier toggle (package view) ──
 document.getElementById('tiers').addEventListener('click',e=>{
-  const t=e.target.closest('.tsel'); if(!t) return;
-  activeTier=t.dataset.t;
+  const t=e.target.closest('.tsel'); if(!t) return; activeTier=t.dataset.t;
   document.querySelectorAll('.tsel').forEach(x=>x.classList.toggle('on',x===t));
-  document.getElementById('tiertag').textContent=cap(activeTier)+' tier';
-  renderDeliverables();
+  document.getElementById('tiertag').textContent=cap(activeTier)+' tier'; renderDeliverables();
 });
 document.getElementById('modal').addEventListener('click',e=>{ if(e.target===document.getElementById('modal')) closeAddModal(); });
+document.getElementById('draft-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('draft-modal')) closeDraft(); });
 document.getElementById('l-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
 
 // ════════════════════════════════════════════════════════════
@@ -1045,20 +1663,20 @@ const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
 const fmtDate=d=>new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const monthName=()=>new Date().toLocaleDateString('en-US',{month:'long'});
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 let _toastTimer;
 function showToast(msg,isErr=false,isGold=false){
   const t=document.getElementById('toast'); clearTimeout(_toastTimer);
   t.textContent=msg; t.className='toast'+(isErr?' err':'')+(isGold?' gold':'');
-  requestAnimationFrame(()=>t.classList.add('show'));
-  _toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
+  requestAnimationFrame(()=>t.classList.add('show')); _toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
 }
 
 // ════════════════════════════════════════════════════════════
-//  INIT
-//  //SB prod: sb.auth.onAuthStateChange((e,s)=>{session=s; s?onAuth():navigate('login')})
+//  INIT   //SB prod: sb.auth.onAuthStateChange(...)
 // ════════════════════════════════════════════════════════════
 seedDB();
 navigate('login');
+
 </script>
 </body>
 </html>
