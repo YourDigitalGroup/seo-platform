@@ -493,6 +493,7 @@ footer .fbadges{display:flex;gap:18px}
 .dm-btn:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:680px){ .qrow.qedit{grid-template-columns:1.5fr 110px 78px 30px} .qrow.qedit>*:nth-child(3),.qrow.qedit>*:nth-child(4){display:none} }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div class="toast" id="toast"></div>
@@ -803,10 +804,10 @@ const PARTNER_GROUPS = [
 // ════════════════════════════════════════════════════════════
 //  SUPABASE SETUP   //SB
 // ════════════════════════════════════════════════════════════
-const SB_URL = 'https://YOUR_PROJECT_ID.supabase.co';  // //SB
-const SB_KEY = 'YOUR_SUPABASE_ANON_KEY';               // //SB
-// const sb = window.supabase.createClient(SB_URL, SB_KEY);  // //SB
-const OFFLINE = true;                                   // //SB flip to false in prod
+const SB_URL = 'https://qjmwsxwoefixuuqvkqmz.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqbXdzeHdvZWZpeHV1cXZrcW16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4OTI3MzksImV4cCI6MjA5NzQ2ODczOX0.zHVpLiFa1G6o8fYza2AzBKjbbMH2I8veL-KRrWp2BJc';
+const sb = (typeof window!=='undefined' && window.supabase) ? window.supabase.createClient(SB_URL, SB_KEY) : null;
+const OFFLINE = false;  // LIVE — auth, partner groups, and clients read/write to Supabase
 const PAGE_SIZE = 25;
 
 // PARTNER_GROUPS literal is injected above this script (from group-assignments.xlsx).
@@ -874,7 +875,55 @@ const STATUSES=['active','active','active','onboarding','paused','churned'];
 const PKG=['ready','ready','deployed','generating','none','ready'];
 
 let DB=[];                 // OFFLINE clients
-let GROUPS=PARTNER_GROUPS; // alias
+let GROUPS=PARTNER_GROUPS;  // offline default; replaced by Supabase rows in live mode
+let groupClients=[];        // active group's clients (live: loaded from DB)
+let ROLLUP={};              // partner_group_id -> {total, ready, deployed}
+
+// map a Supabase clients row -> the app's client shape
+function mapClient(r){
+  const pk = Array.isArray(r.packages) && r.packages.length
+    ? r.packages.slice().sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''))[0].status
+    : 'none';
+  return { id:r.id, grpId:r.partner_group_id, name:r.name, url:r.url, market:r.market,
+    tier:r.tier, status:r.status, strategist_id:r.strategist_id,
+    gsc:r.gsc_connected, gbp:r.gbp_connected, wp:r.wp_connected, ga4:r.ga4_connected,
+    last_audit: r.last_audit_at ? r.last_audit_at.slice(0,10) : null,
+    report_this_cycle:false, pkg_status:pk,
+    created_at: r.created_at ? new Date(r.created_at).getTime() : Date.now() };
+}
+// the client array for the active group (offline: filter DB; live: groupClients)
+function groupClientList(){ return OFFLINE ? DB.filter(c=>c.grpId===activeGroup.id) : groupClients; }
+
+async function loadGroups(){
+  if(OFFLINE){ GROUPS=PARTNER_GROUPS; return; }
+  const {data,error}=await sb.from('partner_groups').select('*').order('name');
+  if(error){ console.error(error); showToast('Could not load partner groups',true); return; }
+  GROUPS=data.map(g=>({ id:g.id, name:g.name, am:g.am_name||'', amEmail:g.am_email||'',
+    strategist:'', color:g.brand_color||'#4B9BD7', color2:g.brand_color_2||'',
+    logo:g.logo_url||'', trello:g.trello_board_id||'', io:g.io_recipients||'' }));
+}
+async function loadRollup(){
+  if(OFFLINE) return;
+  const {data,error}=await sb.from('group_rollup').select('*');
+  if(error){ console.error(error); return; }
+  ROLLUP={}; data.forEach(r=>ROLLUP[r.partner_group_id]={
+    total:r.client_count||0, ready:r.packages_ready||0, deployed:r.packages_deployed||0 });
+}
+async function loadGroupClients(){
+  if(OFFLINE) return;
+  const {data,error}=await sb.from('clients').select('*, packages(status, created_at)')
+    .eq('partner_group_id', activeGroup.id);
+  if(error){ console.error(error); showToast('Could not load clients',true); groupClients=[]; return; }
+  groupClients=(data||[]).map(mapClient);
+}
+async function loadMe(uid){
+  const {data,error}=await sb.from('profiles').select('name,email,role').eq('id',uid).single();
+  if(error||!data){ console.error(error); return false; }
+  const roleMap={super_admin:'admin', account_manager:'am', strategist:'strategist'};
+  me={ id:uid, name:data.name, email:data.email, role:roleMap[data.role]||'strategist',
+       initials:(data.name||'?').replace(/[^A-Za-z]/g,'').slice(0,2).toUpperCase()||'··' };
+  return true;
+}
 
 function genClients(n){
   // groups eligible to receive generated clients (skip the bare test/no-site rows)
@@ -1003,13 +1052,18 @@ async function doLogin(){
   if(OFFLINE){
     await wait(450);
     const u=USERS.find(x=>x.email.toLowerCase()===email.toLowerCase());
-    // //SB: const {data,error}=await sb.auth.signInWithPassword({email,password:pass}); me=await loadProfile(...)
     if(!u || pass!==DEMO_PASSWORD){ showErr('Incorrect email or password.'); btn.disabled=false; btn.textContent='Sign in →'; return; }
     session={email:u.email}; me=u; onAuth();
+  } else {
+    const {data,error}=await sb.auth.signInWithPassword({email,password:pass});
+    if(error || !data?.user){ showErr('Incorrect email or password.'); btn.disabled=false; btn.textContent='Sign in →'; return; }
+    const ok=await loadMe(data.user.id);
+    if(!ok){ showErr('No staff profile found for this account.'); await sb.auth.signOut(); btn.disabled=false; btn.textContent='Sign in →'; return; }
+    session={email:data.user.email}; await loadGroups(); onAuth();
   }
   btn.disabled=false; btn.textContent='Sign in →';
 }
-async function doLogout(){ /* //SB: await sb.auth.signOut() */ session=null; me={name:'Specialist',initials:'SP',role:'admin'}; navigate('login'); }
+async function doLogout(){ if(!OFFLINE) await sb.auth.signOut(); session=null; me={name:'Specialist',initials:'SP',role:'admin'}; navigate('login'); }
 function onAuth(){
   document.getElementById('h-name').textContent=me.name;
   document.getElementById('h-av').textContent=me.initials;
@@ -1031,7 +1085,8 @@ function navigate(view){
   if(view==='groups'){
     document.getElementById('v-groups').style.display='';
     document.getElementById('nav-groups').classList.add('active');
-    renderStrip(); populateGroupFilters(); renderGroups(); renderCrumb('groups');
+    populateGroupFilters(); renderCrumb('groups');
+    (async()=>{ await loadRollup(); await renderStrip(); renderGroups(); })();
   } else if(view==='group'){
     document.getElementById('v-group').style.display='';
     renderGroupHeader(); renderTriage(); page=0; loadPage(); renderCrumb('group');
@@ -1071,16 +1126,28 @@ function logoTile(g, cls){
 //  GLOBAL STAT STRIP (group-level rollup)
 //  //SB live: 4 COUNT queries over group_rollup / client_health views.
 // ════════════════════════════════════════════════════════════
-function renderStrip(){
-  const ready=DB.filter(c=>c.pkg_status==='ready').length;
-  const deployed=DB.filter(c=>c.pkg_status==='deployed').length;
-  const aud=DB.filter(needsAudit).length;
+async function renderStrip(){
+  let ready, deployed, aud, totalClients;
+  if(OFFLINE){
+    ready=DB.filter(c=>c.pkg_status==='ready').length;
+    deployed=DB.filter(c=>c.pkg_status==='deployed').length;
+    aud=DB.filter(needsAudit).length; totalClients=DB.length;
+  } else {
+    const sums=Object.values(ROLLUP);
+    ready=sums.reduce((a,r)=>a+(r.ready||0),0);
+    deployed=sums.reduce((a,r)=>a+(r.deployed||0),0);
+    totalClients=sums.reduce((a,r)=>a+(r.total||0),0);
+    const cutoff=new Date(Date.now()-30*86400000).toISOString();
+    const {count}=await sb.from('clients').select('id',{count:'exact',head:true})
+      .or(`last_audit_at.is.null,last_audit_at.lt.${cutoff}`);
+    aud=count||0;
+  }
   document.getElementById('strip').innerHTML=
     `<div class="sstat g"><span class="sbar"></span><div class="snum">${GROUPS.length}</div><div class="slab">Partner groups</div></div>
      <div class="sstat r"><span class="sbar"></span><div class="snum">${ready}</div><div class="slab">Packages ready to deploy</div></div>
      <div class="sstat d"><span class="sbar"></span><div class="snum">${deployed}</div><div class="slab">Packages deployed</div></div>
      <div class="sstat a"><span class="sbar"></span><div class="snum">${aud}</div><div class="slab">Clients needing an audit</div></div>`;
-  document.getElementById('groups-sub').textContent=`${GROUPS.length} white-label partners · ${DB.length} end clients · managed internally`;
+  document.getElementById('groups-sub').textContent=`${GROUPS.length} white-label partners · ${totalClients} end clients · managed internally`;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1095,6 +1162,7 @@ function populateGroupFilters(){
 }
 function onGroupSearch(v){ clearTimeout(_gt); _gt=setTimeout(()=>{groupFilters.search=v.trim().toLowerCase();renderGroups();},180); }
 function clientCounts(gid){
+  if(!OFFLINE) return ROLLUP[gid] || {total:0, ready:0, deployed:0};
   const cs=DB.filter(c=>c.grpId===gid);
   return { total:cs.length, ready:cs.filter(c=>c.pkg_status==='ready').length, deployed:cs.filter(c=>c.pkg_status==='deployed').length };
 }
@@ -1132,7 +1200,7 @@ function renderGroups(){
 // ════════════════════════════════════════════════════════════
 //  GROUP DETAIL (clients)
 // ════════════════════════════════════════════════════════════
-function openGroup(id){ activeGroup=GROUPS.find(g=>g.id===id); filters={search:'',tier:'all',status:'all',flag:null,sort:'created.desc'}; navigate('group'); }
+async function openGroup(id){ activeGroup=GROUPS.find(g=>g.id===id); filters={search:'',tier:'all',status:'all',flag:null,sort:'created.desc'}; await loadGroupClients(); navigate('group'); }
 function renderGroupHeader(){
   const g=activeGroup;
   document.getElementById('gh-logo').outerHTML=logoTile(g,'glogo').replace('class="glogo"','class="glogo" id="gh-logo"');
@@ -1145,7 +1213,7 @@ function renderGroupHeader(){
   route.innerHTML = bits.length ? `Deployment routes to:<br>${bits.join(' &nbsp;·&nbsp; ')}` : `<span style="opacity:.7">No deployment automation configured</span>`;
 }
 function renderTriage(){
-  const cs=DB.filter(c=>c.grpId===activeGroup.id);
+  const cs=groupClientList();
   const t={total:cs.length, str:cs.filter(needsStrategist).length, gap:cs.filter(accessGap).length, rdy:cs.filter(pkgReady).length};
   const card=(flag,cls,num,lab)=>`<button class="tstat ${cls} ${filters.flag===flag?'active':''}" onclick="setFlag('${flag}')">
     <span class="tbar"></span><div class="tnum">${num}</div><div class="tlab">${lab}</div></button>`;
@@ -1156,29 +1224,26 @@ function renderTriage(){
 function setFlag(f){ filters.flag=(filters.flag===f||f==='')?null:f; page=0; renderTriage(); syncClear(); loadPage(); }
 
 async function queryClients(){
-  if(OFFLINE){
-    let rows=DB.filter(c=>{
-      if(c.grpId!==activeGroup.id) return false;
-      if(filters.search){ const q=filters.search.toLowerCase();
-        if(!(c.url.toLowerCase().includes(q)||c.name.toLowerCase().includes(q)||(c.market||'').toLowerCase().includes(q))) return false; }
-      if(filters.tier!=='all'&&c.tier!==filters.tier) return false;
-      if(filters.status!=='all'&&c.status!==filters.status) return false;
-      if(filters.flag==='aud'&&!needsAudit(c)) return false;
-      if(filters.flag==='gap'&&!accessGap(c)) return false;
-      if(filters.flag==='rdy'&&!pkgReady(c)) return false;
-      if(filters.flag==='str'&&!needsStrategist(c)) return false;
-      return true;
-    });
-    rows.sort((a,b)=>{switch(filters.sort){
-      case 'name.asc': return a.name.localeCompare(b.name);
-      case 'audit.asc': return (a.last_audit||'0')<(b.last_audit||'0')?-1:1;
-      case 'tier.desc': return TIERS.indexOf(b.tier)-TIERS.indexOf(a.tier);
-      default: return b.created_at-a.created_at; }});
-    return { rows: rows.slice(page*PAGE_SIZE,page*PAGE_SIZE+PAGE_SIZE), count: rows.length };
-  }
-  // //SB LIVE: sb.from('clients').select('*',{count:'exact'}).eq('partner_group_id',activeGroup.id)
-  // //SB   .or(ilike search).eq(tier).eq(status).order(col,dir).range(page*PAGE_SIZE, ...)
-  // //SB   flag filters join client_health view (needs_audit / access_gap / package_ready)
+  let rows=groupClientList().filter(c=>{
+    if(filters.search){ const q=filters.search.toLowerCase();
+      if(!(c.url.toLowerCase().includes(q)||c.name.toLowerCase().includes(q)||(c.market||'').toLowerCase().includes(q))) return false; }
+    if(filters.tier!=='all'&&c.tier!==filters.tier) return false;
+    if(filters.status!=='all'&&c.status!==filters.status) return false;
+    if(filters.flag==='aud'&&!needsAudit(c)) return false;
+    if(filters.flag==='gap'&&!accessGap(c)) return false;
+    if(filters.flag==='rdy'&&!pkgReady(c)) return false;
+    if(filters.flag==='str'&&!needsStrategist(c)) return false;
+    return true;
+  });
+  rows.sort((a,b)=>{switch(filters.sort){
+    case 'name.asc': return a.name.localeCompare(b.name);
+    case 'audit.asc': return (a.last_audit||'0')<(b.last_audit||'0')?-1:1;
+    case 'tier.desc': return TIERS.indexOf(b.tier)-TIERS.indexOf(a.tier);
+    default: return b.created_at-a.created_at; }});
+  return { rows: rows.slice(page*PAGE_SIZE,page*PAGE_SIZE+PAGE_SIZE), count: rows.length };
+  // Live note: groupClientList() is the active group's clients, loaded by loadGroupClients()
+  // from Supabase (clients + embedded latest package status). Per-group counts stay small,
+  // so filtering/sorting/paginating client-side is fine; cross-group rollups use group_rollup.
 }
 async function loadPage(){
   const {rows,count}=await queryClients(); lastCount=count;
@@ -1257,15 +1322,22 @@ async function saveClient(){
   const strat=document.getElementById('m-strat').value||null;
   if(!url){ showToast('Enter a domain URL',true); return; }
   const a={}; PLATFORMS.forEach(p=>a[p.key]=document.getElementById('at-'+p.key).classList.contains('on'));
-  // //SB: insert client (partner_group_id, strategist_id, assigned_by=me.id) → invoke('run-audit') → package 'ready'
-  const c={id:'c'+Date.now(), created_at:Date.now(), grpId:activeGroup.id, name:name||url, url, market, tier, status,
-    gsc:a.gsc,gbp:a.gbp,wp:a.wp,ga4:a.ga4, last_audit:new Date().toISOString().slice(0,10),
-    report_this_cycle:false, pkg_status:'generating', strategist_id:strat};
-  DB.unshift(c); closeAddModal();
-  showToast(`${c.name} added — generating package…`);
-  // simulate generation completing
-  setTimeout(()=>{ c.pkg_status='ready'; if(activeGroup) loadPage(); renderTriage(); }, 1500);
-  page=0; loadPage(); renderTriage();
+  if(OFFLINE){
+    const c={id:'c'+Date.now(), created_at:Date.now(), grpId:activeGroup.id, name:name||url, url, market, tier, status,
+      gsc:a.gsc,gbp:a.gbp,wp:a.wp,ga4:a.ga4, last_audit:new Date().toISOString().slice(0,10),
+      report_this_cycle:false, pkg_status:'generating', strategist_id:strat};
+    DB.unshift(c); closeAddModal(); showToast(`${c.name} added — generating package…`);
+    setTimeout(()=>{ c.pkg_status='ready'; if(activeGroup) loadPage(); renderTriage(); }, 1500);
+    page=0; loadPage(); renderTriage(); return;
+  }
+  // LIVE — insert the client row; package generation happens once the audit engine is connected
+  const row={ partner_group_id:activeGroup.id, name:name||url, url, market, tier, status,
+    strategist_id:strat, assigned_by: strat?me.id:null, assigned_at: strat?new Date().toISOString():null,
+    gsc_connected:a.gsc, gbp_connected:a.gbp, wp_connected:a.wp, ga4_connected:a.ga4 };
+  const {error}=await sb.from('clients').insert(row);
+  if(error){ console.error(error); showToast('Could not save client: '+error.message,true); return; }
+  closeAddModal(); showToast(`${name||url} added`);
+  await loadGroupClients(); page=0; loadPage(); renderTriage();
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1279,11 +1351,17 @@ function openClient(id){
 }
 // hydrate the editable working copy from the audit run (//SB: from competitors/content_gaps rows)
 function initPackageData(){
-  PK.competitors = AUDIT.competitors.map(x=>({...x}));
-  PK.comp_pages  = AUDIT.comp_pages.map(x=>({...x}));
-  PK.gaps        = AUDIT.gaps.map(x=>({...x}));
-  PK.topics      = [];
-  PK.gaps.filter(g=>g.sel).forEach(addTopicFromGap);
+  if(OFFLINE){
+    PK.competitors = AUDIT.competitors.map(x=>({...x}));
+    PK.comp_pages  = AUDIT.comp_pages.map(x=>({...x}));
+    PK.gaps        = AUDIT.gaps.map(x=>({...x}));
+    PK.topics      = [];
+    PK.gaps.filter(g=>g.sel).forEach(addTopicFromGap);
+  } else {
+    // Live: engine outputs come from the audit/content engines (next step — needs API keys).
+    // Until then the package opens empty rather than showing placeholder data.
+    PK.competitors=[]; PK.comp_pages=[]; PK.gaps=[]; PK.topics=[];
+  }
 }
 function addTopicFromGap(g){
   PK.topics.push({id:'t'+(_topicSeq++), title:defaultTitle(g.kw), keyword:g.kw,
@@ -1346,8 +1424,12 @@ function renderStratLine(){
 }
 function assignStrategist(id){
   activeClient.strategist_id=id||null;
-  // //SB: sb.from('clients').update({strategist_id:id||null, assigned_by:me.id, assigned_at:new Date()}).eq('id',activeClient.id)
   const su=userById(id);
+  if(!OFFLINE){
+    sb.from('clients').update({strategist_id:id||null, assigned_by: id?me.id:null, assigned_at: id?new Date().toISOString():null})
+      .eq('id',activeClient.id).then(({error})=>{ if(error){ console.error(error); showToast('Could not save assignment',true);} });
+    const gc=groupClients.find(c=>c.id===activeClient.id); if(gc) gc.strategist_id=id||null;
+  }
   showToast(su?`Assigned to ${su.name}`:'Strategist unassigned');
 }
 
@@ -1429,13 +1511,27 @@ function renderAccessPanel(){
 }
 function togglePlatform(k){
   if(!activeClient) return; activeClient[k]=!activeClient[k];
-  // //SB: sb.from('clients').update({[k+'_connected']:activeClient[k]}).eq('id',activeClient.id)
+  if(!OFFLINE){
+    sb.from('clients').update({[k+'_connected']:activeClient[k]}).eq('id',activeClient.id)
+      .then(({error})=>{ if(error){ console.error(error); showToast('Could not save access change',true);} });
+    const gc=groupClients.find(c=>c.id===activeClient.id); if(gc) gc[k]=activeClient[k];
+  }
   renderAccessPanel(); const p=PLATFORMS.find(p=>p.key===k); showToast(activeClient[k]?`${p.name} connected`:`${p.name} disconnected`);
 }
 
 // ── audit renderers ──
-function renderMetrics(){ document.getElementById('cards').innerHTML=AUDIT.metrics.map(m=>`<div class="card"><div class="k">${m.k}</div><div class="v">${m.v}<small>${m.s}</small></div><div class="d ${m.dc}">${m.dc==='up'?'▲ ':''}${m.dc==='down'?'▼ ':''}${m.d}</div></div>`).join(''); }
+function renderMetrics(){
+  if(!OFFLINE){ document.getElementById('cards').innerHTML=`<div class="card" style="grid-column:1/-1"><div class="k">Audit & intelligence</div><div class="v" style="font-size:15px;line-height:1.5">No audit yet — connect the audit engine (next step) to populate metrics, findings, competitors, and the content plan.</div></div>`; document.getElementById('domtag').textContent=activeClient.url+' · engine not connected'; return; }
+  document.getElementById('cards').innerHTML=AUDIT.metrics.map(m=>`<div class="card"><div class="k">${m.k}</div><div class="v">${m.v}<small>${m.s}</small></div><div class="d ${m.dc}">${m.dc==='up'?'▲ ':''}${m.dc==='down'?'▼ ':''}${m.d}</div></div>`).join('');
+}
 function renderBars(){
+  if(!OFFLINE){
+    document.getElementById('bars').innerHTML='';
+    document.getElementById('f-total').innerHTML='—';
+    document.getElementById('f-sub').textContent='findings populate after the first audit run';
+    document.getElementById('diag-h').textContent='Awaiting audit'; document.getElementById('diag-p').textContent='Run the audit engine to generate findings and the auto-diagnosis for this client.'; document.getElementById('diag-f').textContent='';
+    return;
+  }
   const max=Math.max(...AUDIT.severity.map(s=>s.v)), total=AUDIT.severity.reduce((a,b)=>a+b.v,0);
   document.getElementById('bars').innerHTML=AUDIT.severity.map(s=>`<div class="bcol"><div class="bwrap"><div class="bar" style="height:${s.v/max*100}%;background:${s.c}"><div class="bv">${s.v}</div></div></div><div class="bl">${s.l}</div></div>`).join('');
   document.getElementById('f-total').innerHTML=`${total} <span>findings</span>`;
@@ -1624,11 +1720,14 @@ function generatePackage(){
   const c=activeClient, u=document.getElementById('url').value.trim().replace(/^https?:\/\//,'');
   if(!u){ showToast('Enter a client URL',true); return; }
   c.url=u; c.market=document.getElementById('market').value.trim(); c.tier=activeTier;
+  if(!OFFLINE){
+    // run-audit / generate-content are Edge Functions that need API keys (next step).
+    showToast('Audit engine connects in the next step (API keys) — client saved',true);
+    if(c.url||c.market){ sb.from('clients').update({url:c.url, market:c.market, tier:c.tier}).eq('id',c.id).then(()=>{}); }
+    return;
+  }
   c.last_audit=new Date().toISOString().slice(0,10); c.pkg_status='generating';
   initPackageData();
-  // //SB: invoke('run-audit',{url:u,tier:activeTier,client_id:c.id}) → Ahrefs+GSC pulls →
-  // //SB:   audits + findings + competitors + competitor_pages + content_gaps + fixes rows →
-  // //SB:   selected gaps seed content_topics → package 'ready'. Competitive analysis runs UP FRONT.
   renderPackage(); showToast('Generating full package — audit, competitors, gaps, content plan…');
   setTimeout(()=>{ c.pkg_status='ready'; renderPackage(); showToast('Package ready to deploy', false, true); }, 1600);
 }
@@ -1672,10 +1771,20 @@ function showToast(msg,isErr=false,isGold=false){
 }
 
 // ════════════════════════════════════════════════════════════
-//  INIT   //SB prod: sb.auth.onAuthStateChange(...)
+//  INIT
 // ════════════════════════════════════════════════════════════
-seedDB();
-navigate('login');
+async function init(){
+  if(OFFLINE){ seedDB(); navigate('login'); return; }
+  try{
+    const {data}=await sb.auth.getSession();
+    if(data?.session?.user){
+      const ok=await loadMe(data.session.user.id);
+      if(ok){ session={email:data.session.user.email}; await loadGroups(); onAuth(); return; }
+    }
+  }catch(e){ console.error(e); }
+  navigate('login');
+}
+init();
 
 </script>
 </body>
