@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <!--
   44i SEO/AEO Delivery System — Internal Ops Console v8
-  Stack: GitHub Pages (static) · Supabase (DB + Auth + Edge Functions) · Ahrefs + GSC
+  Stack: static front-end · secure cloud backend · search & authority data
 
   THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
    · Dashboard opens on PARTNER GROUPS (42 white-label partners from group-assignments.xlsx)
@@ -325,6 +325,20 @@ header.show{display:block}
 .fixcode{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11.5px;background:var(--mist);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;color:var(--navy);white-space:pre-wrap;word-break:break-word;line-height:1.5;margin-top:4px}
 .fixbefore{font-size:11.5px;color:var(--muted);margin-top:4px}
 .fixbefore s{opacity:.8}
+.fixbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 18px;background:var(--mist);border-bottom:1px solid var(--line);font-size:12px;font-weight:700;color:var(--ink)}
+.fixall{background:var(--navy);color:#fff;border:none;border-radius:var(--r-sm);padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer}
+.fixall:hover{opacity:.9}
+.fixstat{margin-left:auto;font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:var(--mist);color:var(--muted)}
+.fixstat.s-suggested{background:var(--gold-l);color:#8A6D12}
+.fixstat.s-generating{background:var(--blue-l);color:var(--blue-d)}
+.fixstat.s-ready{background:#E7F3D6;color:#3C5A1E}
+.fixstat.s-edited{background:var(--ga4-l);color:#9A4A12}
+.fixstat.s-pushed{background:var(--gbp-l);color:#1E6B33}
+.fixact{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.fixact button{border:1px solid var(--line);background:#fff;border-radius:var(--r-sm);padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;color:var(--ink)}
+.fixgen{background:var(--navy)!important;color:#fff!important;border-color:var(--navy)!important}
+.fixact button:hover{border-color:var(--navy)}
+.fixedit{width:100%;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:11.5px;background:var(--mist);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;color:var(--navy);line-height:1.5;margin-top:6px;resize:vertical;box-sizing:border-box}
 
 /* deliverables */
 .deliv{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:8px}
@@ -492,6 +506,38 @@ footer .fbadges{display:flex;gap:18px}
 .dm-btn.rewrite{background:var(--navy);border-color:var(--navy);color:#fff} .dm-btn.rewrite:hover{background:var(--navy-2)}
 .dm-btn:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:680px){ .qrow.qedit{grid-template-columns:1.5fr 110px 78px 30px} .qrow.qedit>*:nth-child(3),.qrow.qedit>*:nth-child(4){display:none} }
+
+/* ── Pillar scorecard, AI/crawl insights, data-source ids ── */
+.scorecard{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+.sctile{border:1px solid var(--line);border-radius:var(--r);padding:12px 10px;text-align:center;background:#fff}
+.scgrade{font-size:30px;font-weight:800;line-height:1}
+.sclab{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:6px 0 8px}
+.scbar{height:5px;background:var(--mist);border-radius:999px;overflow:hidden}
+.scbar i{display:block;height:100%;border-radius:999px}
+.scbar.two{position:relative;height:6px;margin-top:8px;overflow:visible}
+.scbar.two i:first-child{border-radius:999px}
+.scbar.two .t{position:absolute;top:0;left:0;height:100%;border-radius:999px;background:repeating-linear-gradient(90deg,#C0651E,#C0651E 3px,transparent 3px,transparent 6px);opacity:.75}
+@media(max-width:900px){.scorecard{grid-template-columns:repeat(3,1fr)}}
+.insights{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px}
+.inscard{border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;background:#fff}
+.inslab{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.insbig{font-size:30px;font-weight:800;color:var(--navy);margin-top:4px;line-height:1.1}
+.insbig small{font-size:12px;font-weight:600;color:var(--muted);margin-left:6px}
+.insbig.sm{font-size:18px;color:var(--muted)}
+.insrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:12px;font-weight:700;color:var(--ink);align-items:center}
+.insbad{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.insbad.e{background:#FBE9E7;color:#C0392B}
+.insbad.w{background:var(--gold-l);color:#8A6D12}
+.insnote{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
+@media(max-width:760px){.insights{grid-template-columns:1fr}}
+.datasrc{margin-bottom:14px}
+.ds-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;padding:12px 14px;border:1px dashed var(--line);border-radius:var(--r);background:var(--mist)}
+.ds-field{flex:1;min-width:200px;display:flex;flex-direction:column;gap:5px}
+.ds-field label{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.ds-field label span{font-weight:600;text-transform:none;letter-spacing:0;opacity:.75}
+.ds-field input{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-size:13px;color:var(--ink);background:#fff}
+.ds-save{background:var(--navy);color:#fff;border:none;border-radius:var(--r-sm);padding:9px 18px;font-size:12px;font-weight:700;cursor:pointer}
+.ds-save:hover{opacity:.9}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -553,7 +599,7 @@ footer .fbadges{display:flex;gap:18px}
       <div class="groups" id="groups-grid"></div>
       <footer>
         <span>44i, Inc. · Internal Ops Console · v9</span>
-        <div class="fbadges"><span>Ahrefs + Google Search Console</span><span>· Supabase</span></div>
+        <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
   </div>
@@ -607,7 +653,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <footer>
         <span>44i, Inc. · Internal Ops Console · v9</span>
-        <div class="fbadges"><span>Ahrefs + Google Search Console</span><span>· Supabase</span></div>
+        <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
   </div>
@@ -647,8 +693,11 @@ footer .fbadges{display:flex;gap:18px}
 
     <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
     <div class="acp" id="access-panel"></div>
+    <div class="datasrc" id="datasrc"></div>
 
     <div class="section-h"><h2>1 · Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
+    <div class="scorecard" id="scorecard"></div>
+    <div class="insights" id="insights"></div>
     <div class="cards" id="cards"></div>
     <div class="panel">
       <div class="navycard">
@@ -669,7 +718,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="subh">Content gap <span class="sct">— keywords they rank for that you don't · select what to target</span></div>
     <div class="gaps" id="gaps"></div>
 
-    <div class="section-h"><h2>3 · Content Plan</h2><div class="ln"></div><span class="tag" id="queue-tag">Engine 2 · Claude</span></div>
+    <div class="section-h"><h2>3 · Content Plan</h2><div class="ln"></div><span class="tag" id="queue-tag">Engine 2 · AI Writer</span></div>
     <div class="model-legend" id="model-legend"></div>
     <div class="queue" id="queue"></div>
 
@@ -687,7 +736,7 @@ footer .fbadges{display:flex;gap:18px}
 
     <footer>
       <span>44i, Inc. · Specialist Console · draft outputs require specialist review</span>
-      <div class="fbadges"><span>Ahrefs + Google Search Console</span><span>· Supabase</span></div>
+      <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
 </div>
@@ -744,7 +793,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="dm-section-lab">Generated draft — edit directly to overwrite</div>
     <textarea class="dm-body" id="dm-body"></textarea>
     <div class="dm-rewrite">
-      <div class="dm-section-lab">Or ask Claude for a rewrite — give instructions</div>
+      <div class="dm-section-lab">Or request a rewrite — give instructions</div>
       <textarea class="dm-instr" id="dm-instr" placeholder="e.g. Make it more local to [CITY], add a section on financing options, tighten the intro, keep the FAQ…"></textarea>
     </div>
     <div class="dm-foot">
@@ -996,21 +1045,21 @@ const AUDIT={
   ],
 };
 const ENGINES=[
-  {n:'Engine 1',t:'Audit',p:'Live Ahrefs + GSC pulls, graded into findings and a styled report.',st:'ready'},
-  {n:'Engine 2',t:'Content',p:'Claude writes the drafts — Sonnet 4.6 for blogs/posts/pages, Opus 4.8 for pillars, Haiku 4.5 for snippets.',st:'ready'},
+  {n:'Engine 1',t:'Audit',p:'Live search & authority pulls, graded into findings and a styled report.',st:'ready'},
+  {n:'Engine 2',t:'Content',p:'The AI writer drafts everything — long-form for pillars, standard for blogs/posts/pages, quick for snippets.',st:'ready'},
   {n:'Engine 3',t:'Technical Fix',p:'Paste-ready schema, title/meta rewrites, internal-link plans.',st:'ready'},
   {n:'Engine 4',t:'Reporting',p:'Monthly cadence report mapped to the tier deliverable checklist.',st:'ready'},
 ];
 
 // ── content engine model routing (Engine 2) ──
-// Claude via the Anthropic API. //SB: the generate-content Edge Function selects the
+// the AI writer. //SB: the generate-content Edge Function selects the
 // model per topic kind, grounds the prompt in audit keywords + selected gaps + the
 // 44i boilerplate brand voice, and writes AEO-structured output (declarative answers,
 // FAQ blocks, schema hooks). Drafts land in content_drafts with the model recorded.
 const MODELS = {
-  opus:   {api:'claude-opus-4-8',   label:'Opus 4.8',   cls:'opus'},
-  sonnet: {api:'claude-sonnet-4-6', label:'Sonnet 4.6', cls:'sonnet'},
-  haiku:  {api:'claude-haiku-4-5',  label:'Haiku 4.5',  cls:'haiku'},
+  opus:   {api:'claude-opus-4-8',   label:'Long-form',   cls:'opus'},
+  sonnet: {api:'claude-sonnet-4-6', label:'Standard', cls:'sonnet'},
+  haiku:  {api:'claude-haiku-4-5',  label:'Quick',  cls:'haiku'},
 };
 const CONTENT_KINDS = [
   {k:'blog',     label:'Blog post',    model:'sonnet'},
@@ -1038,16 +1087,18 @@ let filters={search:'',tier:'all',status:'all',flag:null,sort:'created.desc'};
 let groupFilters={search:'',am:'all',strat:'all'};
 let _st, _gt;
 // per-package editable working state (competitors / gaps / content queue)
-let PK={competitors:[], comp_pages:[], gaps:[], topics:[], metrics:[], severity:[], diag:null, audit:null};
+let PK={competitors:[], comp_pages:[], gaps:[], topics:[], fixes:[], metrics:[], severity:[], diag:null, audit:null};
 
 // Load the latest live audit for the active client and map it into PK
 async function loadLiveAudit(){
-  PK={competitors:[], comp_pages:[], gaps:[], topics:[], metrics:[], severity:[], diag:null, audit:null};
+  PK={competitors:[], comp_pages:[], gaps:[], topics:[], fixes:[], metrics:[], severity:[], diag:null, audit:null};
   if(OFFLINE || !activeClient) return;
   const { data: aud } = await sb.from('audits').select('*')
     .eq('client_id', activeClient.id).order('run_at',{ascending:false}).limit(1).maybeSingle();
   if(!aud) return;  // no audit yet → placeholder state
   PK.audit=aud;
+  PK.grades={technical:aud.grade_technical, onpage:aud.grade_onpage, schema:aud.grade_schema, aeo:aud.grade_aeo, eeat:aud.grade_eeat, local:aud.grade_local};
+  PK.raw=aud.raw||{};
   const num=v=> v==null?'—':Number(v).toLocaleString();
   PK.metrics=[
     {k:'Domain Rating',    v:aud.domain_rating??'—', s:'/100', d:'', dc:''},
@@ -1057,13 +1108,18 @@ async function loadLiveAudit(){
     {k:'Live backlinks',   v:num(aud.live_backlinks), s:'', d:'', dc:''},
     {k:'Top-3 rankings',   v:num(aud.org_keywords_top3), s:'', d:'', dc:''},
   ];
-  const [cr, gr, fr] = await Promise.all([
+  const [cr, gr, fr, cp, ff] = await Promise.all([
     sb.from('competitors').select('*').eq('audit_id', aud.id),
     sb.from('content_gaps').select('*').eq('audit_id', aud.id),
     sb.from('findings').select('*').eq('audit_id', aud.id),
+    sb.from('competitor_pages').select('*').eq('audit_id', aud.id),
+    sb.from('fixes').select('*').eq('audit_id', aud.id),
   ]);
+  PK.fixes=(ff.data||[]).map(mapFix);
   PK.competitors=(cr.data||[]).map(c=>({_id:c.id, domain:c.domain, dr:c.domain_rating,
     common:c.common_keywords, total:c.total_keywords, overlap:c.overlap_pct, traffic:c.org_traffic, manual:c.is_manual}));
+  const domById={}; (cr.data||[]).forEach(c=>{ domById[c.id]=c.domain; });
+  PK.comp_pages=(cp.data||[]).map(p=>({ page:p.page_path, site:domById[p.competitor_id]||'', kw:p.top_keyword||'—', traffic:p.est_traffic||0 }));
   PK.gaps=(gr.data||[]).map(g=>({_id:g.id, kw:g.keyword, who:g.competitor_domain||'—',
     pos:g.their_position||0, vol:g.volume||0, kd:g.difficulty||0, sel:g.selected}));
   const COL={critical:'#C0392B',high:'#E67E22',medium:'#4B9BD7',low:'#9FCC6B'}, ORD=['critical','high','medium','low'];
@@ -1384,7 +1440,7 @@ async function openClient(id){
   if(!activeClient) return;
   activeTier=activeClient.tier;
   if(OFFLINE){ initPackageData(); navigate('package'); return; }
-  PK={competitors:[], comp_pages:[], gaps:[], topics:[], metrics:[], severity:[], diag:null, audit:null};
+  PK={competitors:[], comp_pages:[], gaps:[], topics:[], fixes:[], metrics:[], severity:[], diag:null, audit:null};
   navigate('package');          // show the shell immediately
   await loadLiveAudit();         // fetch any existing audit
   renderPackage();               // re-render with real data (or the empty state)
@@ -1400,7 +1456,7 @@ function initPackageData(){
   } else {
     // Live: engine outputs come from the audit/content engines (next step — needs API keys).
     // Until then the package opens empty rather than showing placeholder data.
-    PK.competitors=[]; PK.comp_pages=[]; PK.gaps=[]; PK.topics=[];
+    PK.competitors=[]; PK.comp_pages=[]; PK.gaps=[]; PK.topics=[]; PK.fixes=[];
   }
 }
 function addTopicFromGap(g){
@@ -1443,7 +1499,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=cap(c.tier)+' tier';
 
-  renderAccessPanel(); renderMetrics(); renderBars();
+  renderAccessPanel(); renderDataSources(); renderScorecard(); renderInsights(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
 }
@@ -1583,6 +1639,70 @@ function togglePlatform(k){
 }
 
 // ── audit renderers ──
+// ── Pillar scorecard + AI/crawl insights + data-source ids ───────────────────
+const GRADE_C={A:'#1E6B33',B:'#4B9BD7',C:'#8A6D12',D:'#C0651E',F:'#C0392B'};
+const gradeColor=g=>GRADE_C[g]||'#9AA';
+const num0=v=>v==null?'—':Number(v).toLocaleString();
+function renderScorecard(){
+  const el=document.getElementById('scorecard'); if(!el)return;
+  if(OFFLINE||!PK.grades){ el.innerHTML=''; return; }
+  const S=(PK.raw&&PK.raw.scores)||{};
+  const tiles=[['Technical',PK.grades.technical,S.techScore],['On-page',PK.grades.onpage,S.onpageScore],
+    ['Schema',PK.grades.schema,S.schemaScore],['AEO',PK.grades.aeo,S.aeoScore],
+    ['E-E-A-T',PK.grades.eeat,S.eeatScore],['Local',PK.grades.local,S.localScore]];
+  el.innerHTML=tiles.map(([lab,g,sc])=>`
+    <div class="sctile">
+      <div class="scgrade" style="color:${gradeColor(g)}">${g||'—'}</div>
+      <div class="sclab">${lab}</div>
+      <div class="scbar"><i style="width:${Math.max(0,Math.min(100,sc||0))}%;background:${gradeColor(g)}"></i></div>
+    </div>`).join('');
+}
+function renderInsights(){
+  const el=document.getElementById('insights'); if(!el)return;
+  if(OFFLINE||!PK.audit){ el.innerHTML=''; return; }
+  const raw=PK.raw||{}, cr=raw.crawl||{}, br=raw.brandRadar;
+  let crawlCard;
+  if(cr.used){ const t=cr.totals||{};
+    crawlCard=`<div class="inscard"><div class="inslab">Full-site crawl</div>
+      <div class="insbig">${cr.health??'—'}<small>/100 health</small></div>
+      <div class="insrow"><span>${num0(t.total)} pages</span><span class="insbad e">${num0(t.errors)} errors</span><span class="insbad w">${num0(t.warnings)} warnings</span></div></div>`;
+  } else {
+    crawlCard=`<div class="inscard"><div class="inslab">Site coverage</div>
+      <div class="insbig sm">Sampled pages</div>
+      <div class="insnote">No crawl project configured — add a crawl project ID below for full-site coverage.</div></div>`;
+  }
+  let aiCard;
+  if(br){ const our=Math.round((br.ourSov||0)*100), top=br.topCompetitor?Math.round((br.topCompetitor.sov||0)*100):0;
+    aiCard=`<div class="inscard"><div class="inslab">AI share of voice</div>
+      <div class="insbig" style="color:${our>=top?'#1E6B33':'#C0651E'}">${our}%<small>across AI assistants</small></div>
+      <div class="insrow"><span>${num0(br.mentions)} mentions</span>${br.topCompetitor?`<span class="insbad w">${esc(br.topCompetitor.brand)} ${top}%</span>`:''}</div>
+      <div class="scbar two"><i style="width:${our}%;background:#1E6B33"></i><i class="t" style="width:${top}%"></i></div></div>`;
+  } else {
+    aiCard=`<div class="inscard"><div class="inslab">AI visibility</div>
+      <div class="insbig sm">Not available</div>
+      <div class="insnote">AI-citation data isn't on the current plan, or add a brand report ID below.</div></div>`;
+  }
+  el.innerHTML=crawlCard+aiCard;
+}
+async function renderDataSources(){
+  const el=document.getElementById('datasrc'); if(!el)return;
+  if(OFFLINE||!activeClient){ el.innerHTML=''; return; }
+  let saId='', brId='';
+  try{ const {data}=await sb.from('clients').select('ahrefs_site_audit_project_id,brand_radar_report_id').eq('id',activeClient.id).maybeSingle();
+    if(data){ saId=data.ahrefs_site_audit_project_id||''; brId=data.brand_radar_report_id||''; } }catch(e){}
+  el.innerHTML=`<div class="ds-row">
+      <div class="ds-field"><label>Crawl project ID <span>full-site crawl</span></label><input id="ds-sa" type="text" value="${esc(saId)}" placeholder="auto-detected by domain if blank"></div>
+      <div class="ds-field"><label>Brand report ID <span>AI-citation</span></label><input id="ds-br" type="text" value="${esc(brId)}" placeholder="optional — uses brand name if blank"></div>
+      <button class="ds-save" onclick="saveDataSources()">Save</button></div>`;
+}
+async function saveDataSources(){
+  if(!activeClient)return;
+  const sa=document.getElementById('ds-sa').value.trim()||null;
+  const br=document.getElementById('ds-br').value.trim()||null;
+  const { error } = await sb.from('clients').update({ ahrefs_site_audit_project_id:sa, brand_radar_report_id:br }).eq('id',activeClient.id);
+  if(error){ showToast('Save failed: '+error.message); return; }
+  showToast('Data sources saved — applied on the next audit run');
+}
 function renderMetrics(){
   const M = OFFLINE ? AUDIT.metrics : PK.metrics;
   if(!M || !M.length){
@@ -1634,7 +1754,7 @@ function addCompetitor(){
   const dr=parseInt(document.getElementById('newcomp-dr').value)||null;
   if(!dom){ showToast('Enter a competitor domain',true); return; }
   PK.competitors.push({domain:dom, dr, common:null, total:null, overlap:0, traffic:null, manual:true});
-  // //SB: insert competitors row (is_manual=true); a follow-up Ahrefs pull can backfill metrics
+  // //SB: insert competitors row (is_manual=true); a follow-up data pull can backfill metrics
   renderCompetitors(); showToast(`${dom} added — re-run pull to backfill metrics`);
 }
 
@@ -1644,7 +1764,7 @@ function renderCompPages(){
     PK.comp_pages.map(p=>`<div class="cprow">
       <span class="cppage">${esc(p.page)}<small>${esc(p.site)}</small></span>
       <span class="cpkw">${esc(p.kw)}</span>
-      <span class="cptraf">${p.traffic.toLocaleString()}/mo</span></div>`).join('');
+      <span class="cptraf">${(p.traffic||0).toLocaleString()}/mo</span></div>`).join('');
 }
 
 // ── content gap (selectable → feeds the content queue) ──
@@ -1716,7 +1836,7 @@ function renderQueue(){
     rows+
     `<div class="addrow"><input class="dom" id="newtopic" type="text" placeholder="add a custom topic…"><button class="addbtn" onclick="addTopic()">＋ Add topic</button></div>`+
     `<div class="qbar"><span class="qsum">${PK.topics.length} piece${PK.topics.length===1?'':'s'} · ${summary}</span>
-      <button class="qgen" onclick="generateDrafts()">Generate drafts with Claude →</button></div>`;
+      <button class="qgen" onclick="generateDrafts()">Generate drafts →</button></div>`;
   document.getElementById('queue-tag').textContent=`${PK.topics.length} queued · Engine 2`;
 }
 function editTopicTitle(i,v){ PK.topics[i].title=v; /* no re-render: keep focus */ }
@@ -1744,19 +1864,76 @@ function generateDrafts(){
   showToast(`Drafting ${n} piece${n===1?'':'s'} — ${msg}…`);
   setTimeout(()=>{ PK.topics.forEach(t=>{ t.status='drafted'; if(!t.body) t.body=genBody(t); t.revision=t.revision||1; }); renderQueue(); showToast(`${n} draft${n===1?'':'s'} ready for review`, false, true); }, 1700);
 }
+// ── Remediation engine (live) ────────────────────────────────────────────────
+const FIX_LABEL={ title_tag:'Title tag', meta_description:'Meta description', h1:'H1 heading',
+  heading:'Heading outline', image_alt:'Image alt text', page_copy:'Page copy',
+  faq_schema:'FAQ + schema', local_business_schema:'LocalBusiness schema', org_schema:'Organization schema',
+  person_schema:'Person schema', breadcrumb_schema:'Breadcrumb schema', aggregate_rating_schema:'Rating schema',
+  internal_link:'Internal links', gbp_post:'Profile post', schema_jsonld:'Schema', canonical:'Canonical' };
+const FIX_STATUS={ suggested:'Suggested', generating:'Writing…', ready:'Ready to review',
+  edited:'Edited', pushed:'Pushed', dismissed:'Dismissed' };
+function mapFix(r){
+  return { id:r.id, kind:r.kind, label:FIX_LABEL[r.kind]||r.kind, target:(r.target_page||'').replace(/^https?:\/\/[^/]+/,'')||'/',
+    before:r.before_text||'', after:r.after_text||'', schema:r.schema_jsonld||null, status:r.status||'suggested' };
+}
 function renderFixes(){
-  const F = OFFLINE ? AUDIT.fixes : [];
-  document.getElementById('fix-tag').textContent = F.length ? `${F.length} fixes · paste-ready` : 'generated with the audit';
-  if(!F.length){
-    document.getElementById('fixes').innerHTML=`<div class="fixrow"><div class="fixtop"><span class="fixtarget">Technical fixes (schema, titles, meta) are added here as the fix engine comes online.</span></div></div>`;
-    return;
-  }
-  document.getElementById('fixes').innerHTML=F.map(f=>`
-    <div class="fixrow">
-      <div class="fixtop"><span class="fixkind ${f.kindClass}">${f.kindLabel}</span><span class="fixtarget">${f.target}</span></div>
-      ${f.before?`<div class="fixbefore">Current: <s>${esc(f.before)}</s></div>`:''}
-      ${f.code?`<div class="fixcode">${esc(f.code)}</div>`:`<div class="fixcode">${esc(f.after)}</div>`}
-    </div>`).join('');
+  if(OFFLINE){ document.getElementById('fix-tag').textContent='generated with the audit';
+    document.getElementById('fixes').innerHTML=`<div class="fixrow"><div class="fixtop"><span class="fixtarget">Demo mode — fixes generate live.</span></div></div>`; return; }
+  const F=PK.fixes||[];
+  const sug=F.filter(f=>f.status==='suggested').length;
+  document.getElementById('fix-tag').textContent = F.length ? `${F.length} fixes · ${sug} to write` : 'run the audit to stage fixes';
+  if(!F.length){ document.getElementById('fixes').innerHTML=`<div class="fixrow"><div class="fixtop"><span class="fixtarget">No fixes staged yet. Run the audit and the deficiencies appear here, ready to write.</span></div></div>`; return; }
+  const head = sug ? `<div class="fixbar"><span>${sug} fix${sug>1?'es':''} ready to write</span><button class="fixall" onclick="approveAllFixes()">Approve &amp; write all →</button></div>` : '';
+  document.getElementById('fixes').innerHTML = head + F.map(f=>{
+    const body = f.status==='suggested'
+      ? `<div class="fixbefore">Current: ${f.before?`<s>${esc(f.before)}</s>`:'<em>none</em>'}</div>
+         <div class="fixact"><button class="fixgen" onclick="approveFix('${f.id}')">Approve &amp; write →</button></div>`
+      : f.status==='generating'
+      ? `<div class="fixbefore">Writing the fix…</div>`
+      : `${f.before?`<div class="fixbefore">Current: <s>${esc(f.before)}</s></div>`:''}
+         <textarea class="fixedit" id="fx-${f.id}" rows="${Math.min(14,Math.max(3,Math.ceil((f.after||'').length/64)))}">${esc(f.after)}</textarea>
+         <div class="fixact">
+           <button class="fixsave" onclick="saveFix('${f.id}')">Save edit</button>
+           <button class="fixregen" onclick="regenFix('${f.id}')">Rewrite</button>
+           <button class="fixpush" onclick="markPushed('${f.id}')">${f.status==='pushed'?'✓ Pushed':'Mark pushed'}</button>
+         </div>`;
+    return `<div class="fixrow">
+      <div class="fixtop"><span class="fixkind k-${f.kind}">${f.label}</span>
+        <span class="fixtarget">${esc(f.target)}</span>
+        <span class="fixstat s-${f.status}">${FIX_STATUS[f.status]||f.status}</span></div>
+      ${body}</div>`;
+  }).join('');
+}
+async function invokeGenFixes(ids){
+  ids.forEach(id=>{ const f=(PK.fixes||[]).find(x=>x.id===id); if(f) f.status='generating'; });
+  renderFixes();
+  try{
+    const { data, error } = await sb.functions.invoke('generate-fixes', { body:{ fix_ids: ids } });
+    if(error){ const d=await error.context?.json?.().catch(()=>null); throw new Error(d?.detail||d?.error||error.message); }
+  }catch(e){ showToast('Fix writing failed: '+e.message); }
+  // reload fixes for this audit
+  if(PK.audit?.id){ const { data:ff } = await sb.from('fixes').select('*').eq('audit_id', PK.audit.id);
+    PK.fixes=(ff||[]).map(mapFix); }
+  renderFixes();
+}
+function approveFix(id){ invokeGenFixes([id]); }
+function approveAllFixes(){ const ids=(PK.fixes||[]).filter(f=>f.status==='suggested').map(f=>f.id); if(ids.length) invokeGenFixes(ids); }
+function regenFix(id){ invokeGenFixes([id]); }
+async function saveFix(id){
+  const el=document.getElementById('fx-'+id); if(!el) return;
+  const after=el.value;
+  const upd={ after_text:after, status:'edited', updated_at:new Date().toISOString() };
+  const meId=me?.id; if(meId) upd.edited_by=meId;
+  const { error } = await sb.from('fixes').update(upd).eq('id',id);
+  if(error){ showToast('Save failed: '+error.message); return; }
+  const f=(PK.fixes||[]).find(x=>x.id===id); if(f){ f.after=after; f.status='edited'; }
+  showToast('Saved'); renderFixes();
+}
+async function markPushed(id){
+  const { error } = await sb.from('fixes').update({ status:'pushed', updated_at:new Date().toISOString() }).eq('id',id);
+  if(error){ showToast('Update failed: '+error.message); return; }
+  const f=(PK.fixes||[]).find(x=>x.id===id); if(f) f.status='pushed';
+  renderFixes();
 }
 function renderDeliverables(){
   const rows=DELIVS[activeTier]||[], done=rows.filter(r=>r[3]).length;
@@ -1802,11 +1979,11 @@ async function generatePackage(){
     setTimeout(()=>{ c.pkg_status='ready'; renderPackage(); showToast('Package ready to deploy', false, true); }, 1600);
     return;
   }
-  // LIVE — persist intake, then run the audit engine (Ahrefs) via the Edge Function
+  // LIVE — persist intake, then run the audit engine via the Edge Function
   await sb.from('clients').update({ url:c.url, market:c.market, tier:c.tier }).eq('id', c.id);
   const btn=document.querySelector('#v-package .run'); if(btn){ btn.disabled=true; btn.textContent='Running audit…'; }
   c.pkg_status='generating'; renderPackage();
-  showToast('Running live audit — Ahrefs pulls, competitors, gaps, findings…');
+  showToast('Running live audit — data pulls, competitors, gaps, findings…');
   try{
     const { data, error } = await sb.functions.invoke('run-audit', { body:{ client_id:c.id } });
     if(error || (data && data.error)){
