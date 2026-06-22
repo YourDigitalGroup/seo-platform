@@ -538,6 +538,47 @@ footer .fbadges{display:flex;gap:18px}
 .ds-field input{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-size:13px;color:var(--ink);background:#fff}
 .ds-save{background:var(--navy);color:#fff;border:none;border-radius:var(--r-sm);padding:9px 18px;font-size:12px;font-weight:700;cursor:pointer}
 .ds-save:hover{opacity:.9}
+
+/* ── Trade-area, opportunities, report-bar (v4) ─────────────────────────── */
+.tradearea{ margin: 10px 0 14px; }
+.ta-wrap{ display: grid; grid-template-columns: 1.2fr 1fr 1.6fr; gap: 14px;
+  background: #fff; border: 1px solid #e3e7ee; border-radius: 8px; padding: 12px 14px; }
+.ta-col{ min-width: 0; }
+.ta-lab{ font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #6b7686; font-weight: 600; margin-bottom: 4px; }
+.ta-val{ font-size: 14px; font-weight: 700; color: #1b2330; line-height: 1.2; }
+.ta-sub{ font-size: 11px; color: #6b7686; margin-top: 3px; }
+.ta-chips{ display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.ta-chip{ background: #e8f1fb; color: #4B9BD7; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 10px; white-space: nowrap; }
+@media (max-width: 900px){ .ta-wrap{ grid-template-columns: 1fr; } }
+
+.opportunities{ margin: 14px 0 6px; }
+.opp-wrap{ background: #fff; border: 1px solid #e3e7ee; border-radius: 8px; padding: 14px 16px; }
+.opp-head{ display: flex; gap: 24px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid #f0f2f6; margin-bottom: 10px; }
+.opp-stat{ display: flex; flex-direction: column; min-width: 200px; }
+.opp-lab{ font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #6b7686; font-weight: 600; margin-bottom: 4px; }
+.opp-val{ font-size: 14px; font-weight: 700; color: #1b2330; }
+.opp-val small{ font-weight: 500; color: #6b7686; font-size: 12px; }
+.opp-sub{ font-size: 12px; font-weight: 600; color: #2a3548; margin: 14px 0 6px; }
+.opp-tbl{ width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.opp-tbl th{ text-align: left; padding: 6px 8px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #6b7686; font-weight: 600; border-bottom: 1px solid #e3e7ee; background: #f7f9fc; }
+.opp-tbl td{ padding: 6px 8px; border-bottom: 1px solid #f0f2f6; vertical-align: top; color: #1b2330; }
+.opp-tbl td.num, .opp-tbl th.num{ text-align: right; font-variant-numeric: tabular-nums; }
+.opp-pill{ display: inline-block; padding: 2px 7px; border-radius: 9px; font-size: 10px; font-weight: 700; }
+.opp-pill.warn{ background: #fdf0d8; color: #8a5a00; }
+.opp-pill.neutral{ background: #eef0f4; color: #4a5468; }
+
+.reportbar{ margin: 14px 0 6px; }
+.rep-wrap{ display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: linear-gradient(180deg, #f4f8fc 0%, #fff 100%); border: 1px solid #d6e3ef; border-radius: 8px; padding: 12px 16px; }
+.rep-info{ min-width: 0; }
+.rep-lab{ font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #4B9BD7; font-weight: 700; margin-bottom: 3px; }
+.rep-sum{ font-size: 13px; color: #1b2330; }
+.rep-acts{ display: flex; gap: 8px; flex-shrink: 0; }
+.rep-btn{ background: #4B9BD7; color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s; }
+.rep-btn:hover:not(:disabled){ background: #3a85bd; }
+.rep-btn:disabled{ background: #c5d2dd; cursor: not-allowed; }
+.rep-btn.alt{ background: #fff; color: #4B9BD7; border: 1px solid #4B9BD7; }
+.rep-btn.alt:hover{ background: #f4f8fc; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -696,8 +737,11 @@ footer .fbadges{display:flex;gap:18px}
     <div class="datasrc" id="datasrc"></div>
 
     <div class="section-h"><h2>1 · Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
+    <div class="tradearea" id="tradearea"></div>
     <div class="scorecard" id="scorecard"></div>
     <div class="insights" id="insights"></div>
+    <div class="opportunities" id="opportunities"></div>
+    <div class="reportbar" id="reportbar"></div>
     <div class="cards" id="cards"></div>
     <div class="panel">
       <div class="navycard">
@@ -1129,7 +1173,23 @@ async function loadLiveAudit(){
   const top=(fr.data||[]).slice().sort((a,b)=>ORD.indexOf(a.severity)-ORD.indexOf(b.severity))[0];
   PK.diag={ h: top? top.title : 'Audit complete', p: aud.diagnosis||'',
             focus: top&&top.recommended_fix? 'Recommended: '+top.recommended_fix : '' };
-  PK.topics=[]; PK.gaps.filter(g=>g.sel).forEach(addTopicFromGap);
+  // Live content plan: load the auto-recommended topics + their latest drafts.
+  const { data: pkgRow } = await sb.from('packages').select('id, report_html, report_built_at').eq('audit_id', aud.id).maybeSingle();
+  PK.package_id = pkgRow?.id || null;
+  PK.report_html = pkgRow?.report_html || '';
+  PK.report_meta = pkgRow?.report_built_at ? { built_at: pkgRow.report_built_at } : null;
+  PK.topics=[];
+  if(PK.package_id){
+    const M2K={'sonnet-4-6':'sonnet','opus-4-8':'opus','haiku-4-5':'haiku'};
+    const [tr, drf] = await Promise.all([
+      sb.from('content_topics').select('*').eq('package_id', PK.package_id),
+      sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', PK.package_id),
+    ]);
+    const byTopic={}; (drf.data||[]).forEach(d=>{ const c=byTopic[d.topic_id]; if(!c||(d.revision||1)>(c.revision||1)) byTopic[d.topic_id]=d; });
+    PK.topics=(tr.data||[]).map(t=>{ const d=byTopic[t.id];
+      return { _id:t.id, title:t.title, keyword:t.target_keyword||'', kind:t.kind||'blog', model:M2K[t.model]||'sonnet',
+        status: d?(t.status==='approved'?'approved':'drafted'):(t.status||'queued'), source:t.source||'', body:d?d.body:'', revision:d?d.revision:1 }; });
+  }
 }
 let _topicSeq=0;
 
@@ -1499,7 +1559,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=cap(c.tier)+' tier';
 
-  renderAccessPanel(); renderDataSources(); renderScorecard(); renderInsights(); renderMetrics(); renderBars();
+  renderAccessPanel(); renderDataSources(); renderTradeArea(); renderScorecard(); renderInsights(); renderOpportunities(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
 }
@@ -1684,6 +1744,99 @@ function renderInsights(){
   }
   el.innerHTML=crawlCard+aiCard;
 }
+// Trade-area line — primary city + secondary towns. Renders the geographic scope
+// the audit was run against so it's visible at a glance.
+function renderTradeArea(){
+  const el=document.getElementById('tradearea'); if(!el) return;
+  if(OFFLINE || !PK.audit){ el.innerHTML=''; return; }
+  const raw=PK.raw||{}; const ta=raw.tradeArea||{}; const biz=raw.business||{};
+  if(!ta.primary && !(ta.secondary||[]).length && !biz.type){ el.innerHTML=''; return; }
+  const secondary=(ta.secondary||[]).map(t=>`<span class="ta-chip">${esc(t)}</span>`).join('');
+  el.innerHTML=`<div class="ta-wrap">
+    <div class="ta-col"><div class="ta-lab">Business</div><div class="ta-val">${esc(biz.type||'—')}</div>
+      ${biz.services&&biz.services.length?`<div class="ta-sub">${biz.services.map(esc).join(' · ')}</div>`:''}</div>
+    <div class="ta-col"><div class="ta-lab">Primary trade area</div><div class="ta-val">${esc(ta.primary||'—')}</div></div>
+    <div class="ta-col ta-flex"><div class="ta-lab">Secondary trade area</div>
+      <div class="ta-chips">${secondary||'<span class="ta-sub">None detected</span>'}</div></div>
+  </div>`;
+}
+// Opportunity + per-keyword table — surfaces the high-value local terms with
+// rank + volume (the data point you specifically called out as missing). Pulled
+// from PK.raw.opportunities and the keywords table.
+async function renderOpportunities(){
+  const el=document.getElementById('opportunities'); if(!el) return;
+  if(OFFLINE || !PK.audit){ el.innerHTML=''; return; }
+  const raw=PK.raw||{}; const opps=raw.opportunities||[]; const auth=raw.authority||{}; const tr=raw.traffic||{};
+  // Pull this audit's full keyword list once for the rank/volume/traffic table.
+  let kws=[];
+  try{ const { data } = await sb.from('keywords').select('keyword,position,volume,traffic,is_opportunity').eq('audit_id', PK.audit.id).order('traffic',{ascending:false}).limit(20); kws=data||[]; }catch(e){}
+  const authLine = (auth.client!=null||auth.medianCompetitor!=null)
+    ? `<div class="opp-stat"><span class="opp-lab">Authority gap</span><span class="opp-val">DR ${auth.client??'—'} <small>vs local median DR ${auth.medianCompetitor??'—'}</small></span></div>` : '';
+  const trafLine = (tr.total!=null && (tr.branded!=null||tr.nonBranded!=null))
+    ? `<div class="opp-stat"><span class="opp-lab">Traffic composition</span><span class="opp-val">${num0(tr.nonBranded)} non-branded <small>· ${num0(tr.branded)} branded</small></span></div>` : '';
+  const oppTable = opps.length ? `
+    <div class="opp-sub">Trade-area opportunity — high-value local terms to win</div>
+    <table class="opp-tbl"><thead><tr><th>Search term</th><th>Monthly searches</th><th>Position</th><th>Source</th></tr></thead><tbody>
+      ${opps.slice(0,10).map(o=>`<tr>
+        <td>${esc(o.keyword)}</td>
+        <td class="num">${num0(o.volume)}</td>
+        <td class="num">${o.position?'#'+o.position:'<span class="opp-pill warn">Not ranking</span>'}</td>
+        <td><span class="opp-pill ${o.source==='not_ranking'?'neutral':'warn'}">${o.source==='not_ranking'?'New target':'Needs lift'}</span></td>
+      </tr>`).join('')}
+    </tbody></table>` : '';
+  const kwTable = kws.length ? `
+    <div class="opp-sub">Current keyword footprint — every term they rank for, by traffic</div>
+    <table class="opp-tbl"><thead><tr><th>Search term</th><th>Position</th><th>Volume</th><th>Traffic</th><th></th></tr></thead><tbody>
+      ${kws.map(k=>`<tr>
+        <td>${esc(k.keyword)}</td>
+        <td class="num">${k.position?'#'+k.position:'—'}</td>
+        <td class="num">${num0(k.volume)}</td>
+        <td class="num">${num0(k.traffic)}</td>
+        <td>${k.is_opportunity?'<span class="opp-pill warn">Quick win</span>':''}</td>
+      </tr>`).join('')}
+    </tbody></table>` : '';
+  el.innerHTML = `<div class="opp-wrap">
+    <div class="opp-head">${authLine}${trafLine}</div>
+    ${oppTable}
+    ${kwTable}
+  </div>`;
+}
+// Report bar — open / print the client progress report. Pulled from PK.report_html
+// (built automatically after the audit) or fetched on demand if missing.
+function renderReportBar(){
+  const el=document.getElementById('reportbar'); if(!el) return;
+  if(OFFLINE || !PK.audit){ el.innerHTML=''; return; }
+  const has = !!(PK.report_html && PK.report_html.length>500);
+  const meta = PK.report_meta || {};
+  const baseline = meta.baseline ? new Date(meta.baseline).toLocaleDateString() : null;
+  const summary = has
+    ? `Client progress report ready · ${baseline?`baseline ${esc(baseline)} · `:'baseline cycle · '}${esc(num0((meta.deltas||{}).improvements))} improvements · ${esc(num0((meta.deltas||{}).newlyRanking))} new rankings`
+    : 'Client progress report not built yet';
+  el.innerHTML = `<div class="rep-wrap">
+    <div class="rep-info"><div class="rep-lab">Client deliverable</div><div class="rep-sum">${summary}</div></div>
+    <div class="rep-acts">
+      <button class="rep-btn" onclick="openReport()" ${has?'':'disabled'}>Open report</button>
+      <button class="rep-btn" onclick="printReport()" ${has?'':'disabled'}>Print to PDF</button>
+      <button class="rep-btn alt" onclick="rebuildReport()">Rebuild</button>
+    </div></div>`;
+}
+function openReport(){
+  if(!PK.report_html) return;
+  const w = window.open('', '_blank'); if(!w){ showToast('Pop-ups blocked',true); return; }
+  w.document.open(); w.document.write(PK.report_html); w.document.close();
+}
+function printReport(){
+  if(!PK.report_html) return;
+  const w = window.open('', '_blank'); if(!w){ showToast('Pop-ups blocked',true); return; }
+  w.document.open(); w.document.write(PK.report_html); w.document.close();
+  // Wait for content to lay out, then trigger the browser print dialog. User picks "Save as PDF".
+  setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 500);
+}
+async function rebuildReport(){
+  if(!PK.package_id){ showToast('No package to report on',true); return; }
+  showToast('Rebuilding client report…');
+  await liveBuildReport(PK.package_id); renderReportBar();
+}
 async function renderDataSources(){
   const el=document.getElementById('datasrc'); if(!el)return;
   if(OFFLINE||!activeClient){ el.innerHTML=''; return; }
@@ -1853,16 +2006,76 @@ function addTopic(){
   PK.topics.push({id:'t'+(_topicSeq++), title:v, keyword:'(manual)', kind:'blog', model:modelForKind('blog'), status:'queued', source:'manual'});
   renderQueue(); showToast('Topic added to queue');
 }
+async function reloadDrafts(){
+  if(OFFLINE || !PK.package_id) return;
+  const { data:drf } = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', PK.package_id);
+  const byTopic={}; (drf||[]).forEach(d=>{ const c=byTopic[d.topic_id]; if(!c||(d.revision||1)>(c.revision||1)) byTopic[d.topic_id]=d; });
+  PK.topics.forEach(t=>{ const d=byTopic[t._id]; if(d){ t.body=d.body; t.revision=d.revision; if(t.status!=='approved') t.status='drafted'; } });
+}
 function generateDrafts(){
-  const n=PK.topics.length;
-  if(!n){ showToast('Queue is empty',true); return; }
-  PK.topics.forEach(t=>t.status='drafting'); renderQueue();
-  // //SB: for each topic, invoke('generate-content',{topic, model:MODELS[t.model].api, keyword:t.keyword,
-  // //SB:   context:{audit keywords, selected gaps, boilerplate brand voice}}) → content_drafts row.
-  const byModel=PK.topics.reduce((a,t)=>{a[t.model]=(a[t.model]||0)+1;return a;},{});
-  const msg=Object.keys(MODELS).filter(k=>byModel[k]).map(k=>`${byModel[k]} on ${MODELS[k].label}`).join(', ');
-  showToast(`Drafting ${n} piece${n===1?'':'s'} — ${msg}…`);
-  setTimeout(()=>{ PK.topics.forEach(t=>{ t.status='drafted'; if(!t.body) t.body=genBody(t); t.revision=t.revision||1; }); renderQueue(); showToast(`${n} draft${n===1?'':'s'} ready for review`, false, true); }, 1700);
+  if(OFFLINE){
+    const n=PK.topics.length; if(!n){ showToast('Queue is empty',true); return; }
+    PK.topics.forEach(t=>t.status='drafting'); renderQueue();
+    const byModel=PK.topics.reduce((a,t)=>{a[t.model]=(a[t.model]||0)+1;return a;},{});
+    const msg=Object.keys(MODELS).filter(k=>byModel[k]).map(k=>`${byModel[k]} on ${MODELS[k].label}`).join(', ');
+    showToast(`Drafting ${n} piece${n===1?'':'s'} — ${msg}…`);
+    setTimeout(()=>{ PK.topics.forEach(t=>{ t.status='drafted'; if(!t.body) t.body=genBody(t); t.revision=t.revision||1; }); renderQueue(); showToast(`${n} draft${n===1?'':'s'} ready for review`, false, true); }, 1700);
+    return;
+  }
+  return liveGenerateDrafts();
+}
+async function liveGenerateDrafts(){
+  const pending=PK.topics.filter(t=>t._id && t.status!=='drafted' && t.status!=='approved');
+  if(!pending.length){ showToast('Nothing to draft',true); return; }
+  pending.forEach(t=>t.status='drafting'); renderQueue();
+  showToast(`Writing ${pending.length} piece${pending.length===1?'':'s'} of content…`);
+  await Promise.all(pending.map(async t=>{
+    try{ const { data, error } = await sb.functions.invoke('generate-content', { body:{ topic_id:t._id } });
+      t.status=(error||(data&&data.error))?'queued':'drafted'; }
+    catch(e){ t.status='queued'; }
+    renderQueue();
+  }));
+  await reloadDrafts(); renderQueue();
+  const done=PK.topics.filter(t=>t.status==='drafted'||t.status==='approved').length;
+  showToast(`${done} draft${done===1?'':'s'} ready for review`, false, true);
+}
+// Auto-write every staged technical fix (Pro behavior). Calls generate-fixes
+// in parallel batches so a typical 15-fix package finishes quickly. Failures
+// don't roll back content drafting — they just leave the failed row 'suggested'.
+async function liveGenerateFixes(fixIds){
+  if(!fixIds || !fixIds.length) return;
+  showToast(`Writing ${fixIds.length} technical fix${fixIds.length===1?'':'es'}…`);
+  // Batch of 5 in flight at once: respects the API rate budget without serializing.
+  const BATCH = 5; let writtenOk = 0;
+  for(let i=0; i<fixIds.length; i+=BATCH){
+    const batch = fixIds.slice(i, i+BATCH);
+    const results = await Promise.allSettled(batch.map(id =>
+      sb.functions.invoke('generate-fixes', { body:{ fix_id:id } })
+    ));
+    results.forEach(r => { if(r.status==='fulfilled' && !(r.value && r.value.error) && !(r.value && r.value.data && r.value.data.error)) writtenOk++; });
+  }
+  // Refresh the fixes list from the DB so the UI shows the new artifacts.
+  if(typeof loadLiveFixes === 'function') await loadLiveFixes();
+  if(typeof renderFixes === 'function') renderFixes();
+  showToast(`${writtenOk}/${fixIds.length} technical fixes ready`, writtenOk < fixIds.length, writtenOk === fixIds.length);
+}
+// Build the client-facing progress report. Stores the HTML on the package row
+// (column added by the migration in this delivery) so the UI can open or print
+// it without re-generating. If the column doesn't exist yet, we still surface
+// the HTML in memory so the team can preview/print this cycle.
+async function liveBuildReport(packageId){
+  if(!packageId) return;
+  try{
+    const { data, error } = await sb.functions.invoke('generate-report', { body:{ package_id: packageId } });
+    if(error || (data && data.error)){
+      console.warn('generate-report failed', error, data);
+      showToast('Report generation skipped — see console',true); return;
+    }
+    PK.report_html = data.html || ''; PK.report_meta = { baseline: data.baseline, current: data.current, deltas: data.deltas };
+    // Persist on the package row when the column exists (idempotent on missing column).
+    try{ await sb.from('packages').update({ report_html: PK.report_html, report_built_at: new Date().toISOString() }).eq('id', packageId); } catch(e){ /* column may not exist yet */ }
+    showToast('Client progress report ready', false, true);
+  }catch(e){ console.warn('report build error', e); }
 }
 // ── Remediation engine (live) ────────────────────────────────────────────────
 const FIX_LABEL={ title_tag:'Title tag', meta_description:'Meta description', h1:'H1 heading',
@@ -1995,7 +2208,17 @@ async function generatePackage(){
       const gc=groupClients.find(x=>x.id===c.id); if(gc){ gc.pkg_status='ready'; gc.last_audit=c.last_audit; }
       await loadLiveAudit(); renderPackage();
       const n=data.counts||{};
-      showToast(`Audit complete — ${n.competitors||0} competitors · ${n.gaps||0} gaps · ${n.findings||0} findings`, false, true);
+      const fixIds = Array.isArray(data.fix_ids) ? data.fix_ids : [];
+      showToast(`Audit complete — ${n.competitors||0} competitors · ${n.opportunities||0} opportunities · ${n.findings||0} findings · ${fixIds.length} fixes · ${n.content_topics||0} content pieces`, false, true);
+      // AUTO-WRITE EVERYTHING (Pro behavior): kick off content drafts and fix
+      // artifacts in parallel so the package opens fully drafted. Then build the
+      // client progress report. Each step is non-blocking on the others' results.
+      const tasks = [];
+      if((n.content_topics||0) > 0) tasks.push(liveGenerateDrafts());
+      if(fixIds.length > 0) tasks.push(liveGenerateFixes(fixIds));
+      if(tasks.length) await Promise.all(tasks);
+      await liveBuildReport(data.package_id || (PK && PK.package_id));
+      await loadLiveAudit(); renderPackage();
     }
   }catch(e){ console.error(e); showToast('Audit error — see console', true); c.pkg_status='none'; renderPackage(); }
   finally{ const b=document.querySelector('#v-package .run'); if(b){ b.disabled=false; b.textContent='Generate package →'; } }
