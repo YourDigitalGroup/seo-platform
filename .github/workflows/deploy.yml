@@ -23,3 +23,7 @@ jobs:
             **/node_modules/**
             README.md
             .gitignore
+            supabase/**
+            docs/**
+            **/*.ts
+            **/*.md
