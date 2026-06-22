@@ -266,6 +266,8 @@ header.show{display:block}
 .apc-desc{font-size:11px;color:var(--muted);line-height:1.45}
 .apc-btn{position:absolute;top:10px;right:12px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid;background:none;cursor:pointer;transition:.12s}
 .apc.on .apc-btn{color:var(--grow-d);border-color:var(--grow-d)} .apc.off .apc-btn{color:var(--blue);border-color:var(--blue)}
+.apc-pull{display:block;width:100%;box-sizing:border-box;margin-top:10px;font-size:11px;font-weight:700;padding:7px 10px;border-radius:8px;border:none;background:#1A3C5E;color:#fff;cursor:pointer;transition:background .12s}
+.apc-pull:hover{background:#142f4a}
 
 .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
 .card{background:var(--mist);border-radius:var(--r-sm);padding:15px 16px}
@@ -1661,7 +1663,7 @@ function renderAccessPanel(){
   document.getElementById('access-panel').innerHTML=PLATFORMS.map(p=>{
     const on=!!c[p.key];
     const pull = (p.key==='gsc' && !OFFLINE)
-      ? `<button class="apc-btn" style="margin-top:6px;background:#1A3C5E;color:#fff" onclick="pullGSC()">Pull Search Console data →</button>` : '';
+      ? `<button class="apc-pull" onclick="pullGSC()">Pull Search Console data →</button>` : '';
     return `<div class="apc ${on?'on':'off'} ${p.key}"><div class="apc-status">${on?'✓ Connected':'✗ Not connected'}</div>
       <div class="apc-name">${p.name}</div><div class="apc-desc">${on?p.on_desc:p.off_desc}</div>
       <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button>${pull}</div>`;
