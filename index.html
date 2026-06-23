@@ -611,6 +611,16 @@ footer .fbadges{display:flex;gap:18px}
 .cs-item.no{color:#6b7280}
 .cs-item i{color:#9aa3ad;font-style:normal}
 @media(max-width:680px){.cs-list{grid-template-columns:1fr}}
+/* SERP snippet preview */
+.serp-wrap{margin:10px 0 2px}
+.serp-lab{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px}
+.serp{border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#fff;max-width:600px}
+.serp-path{font-size:12px;color:#202124;margin-bottom:2px}
+.serp-t{color:#1a0dab;font-size:18px;line-height:1.3;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.serp-d{color:#4d5156;font-size:13px;line-height:1.45}
+.serp-meters{display:flex;gap:14px;margin-top:8px;flex-wrap:wrap}
+.serp-m{font-size:11px;font-weight:600}
+.serp-m.ok{color:#16A34A} .serp-m.over{color:#DC2626} .serp-m.low{color:#D97706}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -629,7 +639,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.3.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.4.0</div>
   </div>
 </div>
 
@@ -671,7 +681,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.3.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.4.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -725,7 +735,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.3.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.4.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -814,7 +824,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V1.3.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V1.4.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2277,10 +2287,27 @@ function mapFix(r){
   return { id:r.id, kind:r.kind, label:FIX_LABEL[r.kind]||r.kind, target:(r.target_page||'').replace(/^https?:\/\/[^/]+/,'')||'/',
     before:r.before_text||'', after:r.after_text||'', schema:r.schema_jsonld||null, status:r.status||'suggested' };
 }
+// ── SERP snippet preview (Rank-Math-style): Google result mock + pixel-width meters ──
+let _pageSEO={};
+function serpKey(p){ return 'p_'+String(p||'/').replace(/[^a-z0-9]/gi,'_'); }
+function pxWidth(text,font){ const c=pxWidth._c||(pxWidth._c=document.createElement('canvas')); const x=c.getContext('2d'); x.font=font; return Math.round(x.measureText(String(text||'')).width); }
+function serpBox(path,title,meta){
+  title=String(title||'').trim()||'Untitled page'; meta=String(meta||'').trim();
+  const tpx=pxWidth(title,'18px Arial'), mpx=pxWidth(meta,'13px Arial');
+  const meter=(lab,px,max,min)=>{ const cls=px>max?'over':(min&&px<min?'low':'ok'); const note=px>max?'too long — Google truncates':(min&&px<min?'could be longer':'good length'); return `<span class="serp-m ${cls}">${lab}: ${px}px · ${note}</span>`; };
+  const crumb=String(path||'/').replace(/^https?:\/\/[^/]+/,'').replace(/^\/|\/+$/g,'').replace(/\//g,' › ');
+  return `<div class="serp"><div class="serp-path">yoursite.com${crumb?' › '+esc(crumb):''}</div>`+
+    `<div class="serp-t">${esc(title)}</div>`+
+    `<div class="serp-d">${esc(meta||'No meta description — Google will generate one from the page.')}</div>`+
+    `<div class="serp-meters">${meter('Title',tpx,600,285)}${meter('Desc',mpx,920,430)}</div></div>`;
+}
+function serpType(el,field,pid,key){ const d=_pageSEO[key]||{}; const t=field==='t'?el.value:d.title; const m=field==='m'?el.value:d.meta; const box=document.getElementById(pid); if(box) box.innerHTML=serpBox(d.path,t,m); }
 function renderFixes(){
   if(OFFLINE){ document.getElementById('fix-tag').textContent='generated with the audit';
     document.getElementById('fixes').innerHTML=`<div class="fixrow"><div class="fixtop"><span class="fixtarget">Demo mode — fixes generate live.</span></div></div>`; return; }
   const F=PK.fixes||[];
+  _pageSEO={};
+  F.forEach(f=>{ if(f.kind==='title_tag'||f.kind==='meta_description'){ const k=serpKey(f.target); (_pageSEO[k]=_pageSEO[k]||{path:f.target}); if(f.kind==='title_tag') _pageSEO[k].title=f.after||f.before; else _pageSEO[k].meta=f.after||f.before; } });
   const sug=F.filter(f=>f.status==='suggested').length;
   document.getElementById('fix-tag').textContent = F.length ? `${F.length} fixes · ${sug} to write` : 'run the audit to stage fixes';
   if(!F.length){ document.getElementById('fixes').innerHTML=`<div class="fixrow"><div class="fixtop"><span class="fixtarget">No fixes staged yet. Run the audit and the deficiencies appear here, ready to write.</span></div></div>`; return; }
@@ -2292,17 +2319,18 @@ function renderFixes(){
       : f.status==='generating'
       ? `<div class="fixbefore">Writing the fix…</div>`
       : `${f.before?`<div class="fixbefore">Current: <s>${esc(f.before)}</s></div>`:''}
-         <textarea class="fixedit" id="fx-${f.id}" rows="${Math.min(14,Math.max(3,Math.ceil((f.after||'').length/64)))}">${esc(f.after)}</textarea>
+         <textarea class="fixedit" id="fx-${f.id}" rows="${Math.min(14,Math.max(3,Math.ceil((f.after||'').length/64)))}" ${(f.kind==='title_tag'||f.kind==='meta_description')?`oninput="serpType(this,'${f.kind==='title_tag'?'t':'m'}','serp-${f.id}','${serpKey(f.target)}')"`:''}>${esc(f.after)}</textarea>
          <div class="fixact">
            <button class="fixsave" onclick="saveFix('${f.id}')">Save edit</button>
            <button class="fixregen" onclick="regenFix('${f.id}')">Rewrite</button>
            <button class="fixpush" onclick="markPushed('${f.id}')">${f.status==='pushed'?'✓ Pushed':'Mark pushed'}</button>
          </div>`;
+    const preview=(f.kind==='title_tag'||f.kind==='meta_description')?`<div class="serp-wrap"><div class="serp-lab">🔎 Google preview</div><div id="serp-${f.id}">${serpBox(f.target,(_pageSEO[serpKey(f.target)]||{}).title,(_pageSEO[serpKey(f.target)]||{}).meta)}</div></div>`:'';
     return `<div class="fixrow">
       <div class="fixtop"><span class="fixkind k-${f.kind}">${f.label}</span>
         <span class="fixtarget">${esc(f.target)}</span>
         <span class="fixstat s-${f.status}">${FIX_STATUS[f.status]||f.status}</span></div>
-      ${body}</div>`;
+      ${body}${preview}</div>`;
   }).join('');
 }
 async function invokeGenFixes(ids){
