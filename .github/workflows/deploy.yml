@@ -25,5 +25,7 @@ jobs:
             .gitignore
             supabase/**
             docs/**
+            wp-plugin/**
             **/*.ts
             **/*.md
+            **/*.php
