@@ -615,7 +615,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · build 2026-06-22.2</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · build 2026-06-22.3</div>
   </div>
 </div>
 
@@ -657,7 +657,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · build 2026-06-22.2</span>
+        <span>44i, Inc. · Internal Ops Console · build 2026-06-22.3</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -711,7 +711,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · build 2026-06-22.2</span>
+        <span>44i, Inc. · Internal Ops Console · build 2026-06-22.3</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -800,7 +800,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · build 2026-06-22.2 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · build 2026-06-22.3 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2154,11 +2154,16 @@ async function liveGenerateDrafts(){
   showToast(`Writing ${pending.length} piece${pending.length===1?'':'s'} of content…`);
   await Promise.all(pending.map(async t=>{
     try{ const { data, error } = await sb.functions.invoke('generate-content', { body:{ topic_id:t._id } });
-      t.status=(error||(data&&data.error))?'queued':'drafted'; }
+      if(error||(data&&data.error)){ t.status='queued'; }
+      else { t.status='drafted';
+        // flip the campaign deliverable this topic fulfills to "ready"
+        try{ await sb.from('deliverables').update({ state:'ready', draft_id:(data&&data.draft_id)||null }).eq('topic_id', t._id); }catch(_){}
+      } }
     catch(e){ t.status='queued'; }
     renderQueue();
   }));
   await reloadDrafts(); renderQueue();
+  try{ await loadCampaign(); renderRoadmap(); }catch(_){}
   const done=PK.topics.filter(t=>t.status==='drafted'||t.status==='approved').length;
   showToast(`${done} draft${done===1?'':'s'} ready for review`, false, true);
 }

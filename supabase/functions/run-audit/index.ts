@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
     const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
     const { data: client, error: cErr } = await supa.from("clients")
-      .select("id, url, market, tier, ahrefs_site_audit_project_id, brand_radar_report_id")
+      .select("id, url, market, tier, engagement_start_date, ahrefs_site_audit_project_id, brand_radar_report_id")
       .eq("id", client_id).single();
     if (cErr || !client) return json({ error: "client not found", detail: cErr?.message }, 404);
     const target = String(client.url || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
@@ -618,32 +618,78 @@ Deno.serve(async (req) => {
     // the client doesn't own, a dedicated landing page for each major secondary
     // town × top service, the strongest competitor gaps, and an FAQ for AEO.
     let topicCount = 0;
+    let cycleMonth = 0;
+    let campaignDriven = false;
     if (package_id) {
-      const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
-      const topicRows: any[] = [];
+      const titleCase = (s: string) => String(s || "").replace(/\b\w/g, (c) => c.toUpperCase());
       const seenT = new Set<string>();
-      const TOPIC_CAP = 8;
-      const pushTopic = (keyword: string, kind: string, model: string, source: string, town: string | null = null) => {
-        const key = keyword.toLowerCase(); if (!keyword || seenT.has(key) || topicRows.length >= TOPIC_CAP) return; seenT.add(key);
-        topicRows.push({ package_id, title: titleCase(keyword), target_keyword: keyword, kind, model, status: "queued", source, location: town });
+      const MODEL: Record<string, string> = { gbp_post: "haiku-4-5", blog: "sonnet-4-6", pillar: "opus-4-8", landing: "sonnet-4-6", service: "sonnet-4-6", faq: "haiku-4-5" };
+      // prioritized keyword pools drawn from the live audit
+      const oppKwPool = opportunities.map((o: any) => o.keyword).filter(Boolean);
+      const coreUnowned = coreKeywords.filter((k: any) => !k.owned && (k.volume || 0) > 0).map((k: any) => k.keyword);
+      const gapPool = gaps.map((g: any) => g.keyword).filter(Boolean);
+      const townPages: string[] = [];
+      services.slice(0, 3).forEach((svc: any) => secondaryTowns.slice(0, 3).forEach((t: any) => townPages.push(`${svc} ${t}`)));
+      const localServices = services.slice(0, 4).map((svc: any) => primaryCity ? `${svc} ${primaryCity}` : svc);
+      const nextFrom = (...pools: string[][]): string | null => {
+        for (const pool of pools) for (const kw of pool) { const k = (kw || "").toLowerCase(); if (kw && !seenT.has(k)) { seenT.add(k); return kw; } }
+        return null;
       };
-      // (1) Top opportunity terms — the high-value local terms with proven demand.
-      opportunities.slice(0, 2).forEach((o: any) => pushTopic(o.keyword, "service", "sonnet-4-6", "opportunity", primaryCity || null));
-      // (2) Core money keywords the client doesn't already rank for (primary city).
-      coreKeywords.filter((k: any) => !k.owned && (k.volume || 0) > 0).slice(0, 3).forEach((k: any) => {
-        const inf = k.intents?.informational && !k.intents?.transactional && !k.intents?.commercial;
-        pushTopic(k.keyword, inf ? "blog" : "service", "sonnet-4-6", "core_keyword", primaryCity || null);
-      });
-      // (3) Secondary-town landing pages — top 2 services × top 2 secondary towns.
-      services.slice(0, 2).forEach((svc) => secondaryTowns.slice(0, 2).forEach((town) => pushTopic(`${svc} ${town}`, "landing", "sonnet-4-6", "secondary_town", town)));
-      // (4) Strongest competitor gap.
-      gaps.slice(0, 1).forEach((g: any) => pushTopic(g.keyword, "blog", "sonnet-4-6", "content_gap", primaryCity || null));
-      // (5) FAQ for AEO if the site has none.
-      if (!hasFAQ) pushTopic(coreKeywords[0]?.keyword || ownKw[0]?.keyword || serpSeed || (businessType || "services"), "faq", "haiku-4-5", "aeo", primaryCity || null);
-      if (topicRows.length) { const { error: tErr } = await supa.from("content_topics").insert(topicRows); if (tErr) errors.push(`content_topics: ${tErr.message}`); else topicCount = topicRows.length; }
+      const pickFor = (kind: string): string | null => {
+        if (kind === "gbp_post") return nextFrom(localServices, oppKwPool, coreUnowned);
+        if (kind === "blog") return nextFrom(gapPool, coreUnowned, oppKwPool);
+        if (kind === "pillar") return nextFrom(oppKwPool, gapPool, coreUnowned);
+        if (kind === "landing") return nextFrom(townPages, coreUnowned);
+        return nextFrom(coreUnowned, oppKwPool, gapPool);
+      };
+      // current engagement cycle (1-6) from the client's start date
+      if (client.engagement_start_date) {
+        const s = new Date(String(client.engagement_start_date) + "T00:00:00Z"); const now = new Date();
+        cycleMonth = Math.min(6, Math.max(1, (now.getUTCFullYear() - s.getUTCFullYear()) * 12 + (now.getUTCMonth() - s.getUTCMonth()) + 1));
+      }
+      // the scheduled, auto content deliverables for this cycle (if a campaign is seeded)
+      let due: any[] = [];
+      if (cycleMonth) {
+        const { data: dRows } = await supa.from("deliverables")
+          .select("id, kind").eq("client_id", client.id).eq("engine", "content")
+          .eq("state", "planned").eq("auto", true).eq("month_offset", cycleMonth);
+        due = dRows || [];
+      }
+      if (due.length) {
+        // CAMPAIGN-DRIVEN: one topic per scheduled content deliverable, pulled from live audit data
+        campaignDriven = true;
+        for (const d of due) {
+          const kind = d.kind || "blog";
+          const kw = pickFor(kind);
+          if (!kw) continue;
+          const town = kind === "landing" ? (secondaryTowns.find((t: any) => kw.includes(t)) || null) : (primaryCity || null);
+          const { data: t, error: tErr } = await supa.from("content_topics").insert({
+            package_id, title: titleCase(kw), target_keyword: kw, kind, model: MODEL[kind] || "sonnet-4-6",
+            status: "queued", source: "campaign", location: town }).select("id").single();
+          if (tErr) { errors.push(`content_topics: ${tErr.message}`); continue; }
+          if (t?.id) { await supa.from("deliverables").update({ state: "generating", topic_id: t.id }).eq("id", d.id); topicCount++; }
+        }
+      } else {
+        // FALLBACK: generic recommendations when no campaign is seeded for this cycle
+        const topicRows: any[] = [];
+        const TOPIC_CAP = 8;
+        const pushTopic = (keyword: string, kind: string, model: string, source: string, town: string | null = null) => {
+          const key = (keyword || "").toLowerCase(); if (!keyword || seenT.has(key) || topicRows.length >= TOPIC_CAP) return; seenT.add(key);
+          topicRows.push({ package_id, title: titleCase(keyword), target_keyword: keyword, kind, model, status: "queued", source, location: town });
+        };
+        opportunities.slice(0, 2).forEach((o: any) => pushTopic(o.keyword, "service", "sonnet-4-6", "opportunity", primaryCity || null));
+        coreKeywords.filter((k: any) => !k.owned && (k.volume || 0) > 0).slice(0, 3).forEach((k: any) => {
+          const inf = k.intents?.informational && !k.intents?.transactional && !k.intents?.commercial;
+          pushTopic(k.keyword, inf ? "blog" : "service", "sonnet-4-6", "core_keyword", primaryCity || null);
+        });
+        services.slice(0, 2).forEach((svc: any) => secondaryTowns.slice(0, 2).forEach((town: any) => pushTopic(`${svc} ${town}`, "landing", "sonnet-4-6", "secondary_town", town)));
+        gaps.slice(0, 1).forEach((g: any) => pushTopic(g.keyword, "blog", "sonnet-4-6", "content_gap", primaryCity || null));
+        if (!hasFAQ) pushTopic(coreKeywords[0]?.keyword || ownKw[0]?.keyword || serpSeed || (businessType || "services"), "faq", "haiku-4-5", "aeo", primaryCity || null);
+        if (topicRows.length) { const { error: tErr } = await supa.from("content_topics").insert(topicRows); if (tErr) errors.push(`content_topics: ${tErr.message}`); else topicCount = topicRows.length; }
+      }
     }
 
-    return json({ ok: true, audit_id, package_id, grades,
+    return json({ ok: true, audit_id, package_id, cycle: cycleMonth, campaign_driven: campaignDriven, grades,
       business: { type: businessType, services },
       trade_area: { primary: primaryCity, secondary: secondaryTowns },
       crawl: { used: crawlUsed, pages: crawlUsed ? pages.length : okPages.length, health: healthScore },
