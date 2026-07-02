@@ -95,9 +95,10 @@ Deno.serve(async (req) => {
     if (!AHREFS_KEY) return json({ error: "AHREFS_API_KEY is not set" }, 500);
     const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
+    // select * so contract columns (service_catalog.sql) are picked up when present
+    // without breaking against a database that hasn't run that migration yet
     const { data: client, error: cErr } = await supa.from("clients")
-      .select("id, url, market, tier, engagement_start_date, ahrefs_site_audit_project_id, brand_radar_report_id")
-      .eq("id", client_id).single();
+      .select("*").eq("id", client_id).single();
     if (cErr || !client) return json({ error: "client not found", detail: cErr?.message }, 404);
     const target = String(client.url || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
     if (!target) return json({ error: "client has no URL" }, 400);
@@ -642,10 +643,14 @@ Deno.serve(async (req) => {
         if (kind === "landing") return nextFrom(townPages, coreUnowned);
         return nextFrom(coreUnowned, oppKwPool, gapPool);
       };
-      // current engagement cycle (1-6) from the client's start date
+      // current engagement cycle from the client's start date, clamped to the
+      // contract length (contract_length_months / contract_is_evergreen on clients;
+      // evergreen contracts are unclamped)
       if (client.engagement_start_date) {
         const s = new Date(String(client.engagement_start_date) + "T00:00:00Z"); const now = new Date();
-        cycleMonth = Math.min(6, Math.max(1, (now.getUTCFullYear() - s.getUTCFullYear()) * 12 + (now.getUTCMonth() - s.getUTCMonth()) + 1));
+        const raw = (now.getUTCFullYear() - s.getUTCFullYear()) * 12 + (now.getUTCMonth() - s.getUTCMonth()) + 1;
+        const len = client.contract_is_evergreen ? 0 : (client.contract_length_months || 6);
+        cycleMonth = Math.max(1, len ? Math.min(len, raw) : raw);
       }
       // the scheduled, auto content deliverables for this cycle (if a campaign is seeded)
       let due: any[] = [];

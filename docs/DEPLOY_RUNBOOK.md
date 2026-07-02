@@ -18,6 +18,20 @@ This adds: `fixes.audit_id/status/context/revision/updated_at` (+ relaxes
 `fixes.package_id` to nullable), `content_topics.location`, and
 `packages.report_html/report_built_at/report_meta`.
 
+## 1b. Service catalog + contract model  (Supabase → SQL Editor)
+
+Paste the full contents of `supabase/migrations/service_catalog.sql` and Run
+(idempotent; re-running syncs the seeded catalog). This creates
+`service_templates` (the plan/service catalog with typed cadence, seeded from
+the "New SEO Package Offerings" pricing sheet), adds
+`clients.contract_length_months / contract_is_evergreen / contract_end_date`,
+and adds `deliverables.cadence_type / service_template_id`.
+
+The front-end reads `service_templates` for the deliverables checklist and
+campaign seeding; until this migration runs it falls back to a built-in mirror
+of the same catalog (and inserts skip the new columns), so nothing breaks —
+but run it before adding clients so contracts and cadence land in the DB.
+
 ## 2. Deploy the four Edge Functions  (Supabase → Edge Functions)
 
 For each, deploy the code from this repo (Deploy a new function → Via Editor, or

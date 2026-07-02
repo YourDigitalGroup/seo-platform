@@ -1,6 +1,8 @@
 -- ════════════════════════════════════════════════════════════════════════════
 --  campaign_engine.sql
---  Backbone for the auto-generated 6-month campaign. Additive + idempotent +
+--  Backbone for the auto-generated campaign roadmap (contract length is
+--  per-client — clients.contract_length_months / contract_is_evergreen,
+--  added by service_catalog.sql). Additive + idempotent +
 --  view-safe (no enum or column-type changes — only adds columns, relaxes one
 --  NOT NULL, and ensures a staff RLS policy).
 -- ════════════════════════════════════════════════════════════════════════════
