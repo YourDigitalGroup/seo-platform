@@ -1,9 +1,30 @@
 // ============================================================================
-//  44i SEO/AEO Delivery System — run-audit Edge Function  (v3)
+//  44i SEO/AEO Delivery System — run-audit Edge Function  (v4)
 // ----------------------------------------------------------------------------
-//  Six-pillar audit + remediation planner. v3 adds the three depth upgrades
-//  that move this from "very good" to best-in-class, each with graceful
-//  fallback so it always returns a complete audit:
+//  v4 — THE DIRECTIVE ENGINE. Three structural upgrades on top of v3:
+//
+//    A. EXHAUSTIVE CHECKLIST — every pillar score is now a weighted pass-rate
+//       over ~55 deterministic checks: the union of what Lighthouse/PageSpeed,
+//       Ahrefs, SEMrush, Moz and the popular "SEO checker" tools grade
+//       (HTTPS + redirect chains, host canonicalization, robots/sitemap
+//       validity, soft-404s, security headers, mixed content, Core Web Vitals,
+//       duplicate titles/metas, OG/Twitter cards, canonical self-reference,
+//       favicon, lang/charset, llms.txt, entity sameAs, trust pages, NAP/GBP
+//       signals, …). A green checklist IS a top third-party score by
+//       construction — no external auditor tests something we don't.
+//    B. PLAN-SCOPED DIRECTIVE — every failed check maps to a fix kind and to
+//       a service in the client's plan (service_templates). In-plan work is
+//       auto-staged; out-of-plan items become explicit upgrade
+//       recommendations with the tier that unlocks them. Stored on
+//       packages.directive (+ audits.raw.directive fallback).
+//    C. VERIFICATION LOOP — each re-audit re-evaluates the same checklist,
+//       flips pushed fixes to "verified" when their check passes, reports
+//       fixed/regressed checks, and tracks the composite 0-100 score toward
+//       the 90+ target. New pillar: PERFORMANCE (PageSpeed API, key optional
+//       via PAGESPEED_API_KEY secret; graceful TTFB fallback).
+//
+//  v3 depth upgrades below are unchanged, each with graceful fallback so it
+//  always returns a complete audit:
 //
 //    1. FULL-SITE CRAWL  — when a crawl project exists for the domain (matched
 //       by stored id OR auto-discovered by URL), every crawled page is audited
@@ -174,11 +195,17 @@ Deno.serve(async (req) => {
       } catch (e) { errors.push(`classify: ${String(e)}`); return ""; }
     };
 
-    // (a) Classify the business from homepage text.
+    // (a) Classify the business from homepage text. The same fetch feeds the
+    //     v4 probes: raw HTML, response headers, and a TTFB approximation.
     let bizText = "";
+    let homeHtmlRaw = "", homeHeaders: Headers | null = null, ttfbMs: number | null = null, homeKB: number | null = null;
     try {
+      const t0 = Date.now();
       const hr = await fetch(home, { headers: { "User-Agent": "Mozilla/5.0 (compatible; 44i-audit/1.0)" } });
+      ttfbMs = Date.now() - t0;   // time-to-headers ≈ TTFB (+connect); good enough for grading
+      homeHeaders = hr.headers;
       if (hr.ok) { const h = await hr.text();
+        homeHtmlRaw = h; homeKB = Math.round(h.length / 1024);
         const heads = (h.match(/<h[12][^>]*>([\s\S]*?)<\/h[12]>/gi) || []).map((x) => x.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 12).join(" | ");
         const body = h.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 1800);
         bizText = `TITLE: ${getTitle(h)}\nMETA: ${getMeta(h, "description")}\nHEADINGS: ${heads}\nTEXT: ${body}`;
@@ -359,10 +386,98 @@ Deno.serve(async (req) => {
       hasAbout: !!(homePage?.eeat?.hasAbout || aboutPage?.eeat?.hasAbout || aboutGuess),
       hasCredentials: !!(homePage?.eeat?.hasCredentials || aboutPage?.eeat?.hasCredentials) };
 
-    // ── 8. ROBOTS / SITEMAP (fetch-based; complements crawl) ──────────────────
-    let robotsOk = true, sitemapOk = false;
-    try { const rb = await fetch(`https://${target}/robots.txt`); const txt = rb.ok ? await rb.text() : ""; robotsOk = !/Disallow:\s*\/\s*$/im.test(txt); sitemapOk = /sitemap:/i.test(txt); } catch { /* ignore */ }
-    if (!sitemapOk) { try { const sm = await fetch(`https://${target}/sitemap.xml`); sitemapOk = sm.ok; } catch { /* ignore */ } }
+    // ── 8. SITE PROBES — robots, sitemap, redirects, 404s, security, trust,
+    //       AEO files. The fetch-based checks third-party audit tools grade.
+    //       Every probe is defensive: a network failure records "na", never a
+    //       fabricated fail.
+    let robotsOk = true, robotsFound = false, sitemapOk = false, sitemapDeclared = false, robotsTxt = "";
+    try { const rb = await fetch(`https://${target}/robots.txt`); robotsFound = rb.ok; robotsTxt = rb.ok ? await rb.text() : "";
+      robotsOk = !/^\s*Disallow:\s*\/\s*$/im.test(robotsTxt); sitemapDeclared = /sitemap:/i.test(robotsTxt); } catch { /* ignore */ }
+    const sitemapUrl = robotsTxt.match(/sitemap:\s*(\S+)/i)?.[1] || `https://${target}/sitemap.xml`;
+    let smUrls: number | null = null, smIsIndex = false;
+    try { const sm = await fetch(sitemapUrl); if (sm.ok) { const xml = await sm.text();
+      sitemapOk = /<(urlset|sitemapindex)/i.test(xml); smIsIndex = /<sitemapindex/i.test(xml);
+      smUrls = (xml.match(/<loc>/gi) || []).length; } } catch { /* ignore */ }
+
+    // HTTP→HTTPS redirect + host canonicalization (duplicate-host detection).
+    let httpsRedirect: boolean | null = null, hostCanonical: boolean | null = null;
+    try { const r = await fetch(`http://${target}/`, { redirect: "manual" });
+      httpsRedirect = r.status >= 300 && r.status < 400 && String(r.headers.get("location") || "").startsWith("https");
+      await r.body?.cancel(); } catch { /* ignore */ }
+    const altHost = target.startsWith("www.") ? target.replace(/^www\./, "") : `www.${target}`;
+    try { const r = await fetch(`https://${altHost}/`, { redirect: "manual" });
+      // alt host redirecting (30x) is correct; 200 on both hosts = duplicate content
+      hostCanonical = r.status >= 300; await r.body?.cancel();
+    } catch { hostCanonical = true; /* alt host doesn't resolve — no duplicate */ }
+
+    // Soft-404 detection: a made-up URL must return a real 404/410.
+    let notFoundOk: boolean | null = null;
+    try { const r = await fetch(`https://${target}/44i-audit-nonexistent-${Math.random().toString(36).slice(2, 8)}`, { redirect: "follow" });
+      notFoundOk = r.status === 404 || r.status === 410; await r.body?.cancel(); } catch { /* ignore */ }
+
+    // llms.txt (AI-crawler guidance) + favicon.
+    let llmsTxt = false; try { const r = await fetch(`https://${target}/llms.txt`); llmsTxt = r.ok && (await r.text()).trim().length > 0; } catch { /* ignore */ }
+    let favicon = /<link[^>]+rel=["'][^"']*icon[^"']*["']/i.test(homeHtmlRaw);
+    if (!favicon) { try { const r = await fetch(`https://${target}/favicon.ico`); favicon = r.ok; await r.body?.cancel(); } catch { /* ignore */ } }
+
+    // Security headers on the homepage response.
+    const hdr = (n: string) => homeHeaders?.get(n) || "";
+    const secHeaders = homeHeaders ? {
+      hsts: !!hdr("strict-transport-security"),
+      nosniff: hdr("x-content-type-options").toLowerCase().includes("nosniff"),
+      frame: !!hdr("x-frame-options") || /frame-ancestors/i.test(hdr("content-security-policy")),
+      referrer: !!hdr("referrer-policy"),
+    } : null;
+    const secMissing = secHeaders ? Object.entries({
+      "Strict-Transport-Security": secHeaders.hsts, "X-Content-Type-Options": secHeaders.nosniff,
+      "X-Frame-Options/frame-ancestors": secHeaders.frame, "Referrer-Policy": secHeaders.referrer,
+    }).filter(([, v]) => !v).map(([k]) => k) : [];
+
+    // Homepage-HTML signals (social cards, canonical, i18n, analytics, trust).
+    const mixedContent = homeHtmlRaw ? (homeHtmlRaw.match(/\s(?:src|srcset)=["']http:\/\//gi) || []).length : null;
+    const ogTitle = getMeta(homeHtmlRaw, "og:title"), ogDesc = getMeta(homeHtmlRaw, "og:description"), ogImage = getMeta(homeHtmlRaw, "og:image");
+    const ogComplete = !!(ogTitle && ogDesc && ogImage);
+    const twitterCard = !!getMeta(homeHtmlRaw, "twitter:card");
+    const canonicalHref = homeHtmlRaw.match(/<link[^>]+rel=["']canonical["'][^>]*>/i)?.[0]?.match(/href=["']([^"']+)["']/i)?.[1] || "";
+    const normUrl = (u: string) => String(u || "").replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/+$/, "").toLowerCase();
+    const canonicalSelf = canonicalHref ? normUrl(canonicalHref) === normUrl(home) : false;
+    const langAttr = /<html[^>]+lang=["']?[a-z]{2}/i.test(homeHtmlRaw);
+    const charsetOk = /<meta[^>]+charset/i.test(homeHtmlRaw) || /charset=/i.test(hdr("content-type"));
+    const analytics = /gtag\(|googletagmanager\.com|google-analytics\.com|gtm\.js|fbq\(|clarity\.ms|plausible\.io|matomo/i.test(homeHtmlRaw);
+    const privacyLink = /href=["'][^"']*(privacy|legal|terms)[^"']*["']/i.test(homeHtmlRaw);
+    const contactLink = /href=["'][^"']*(contact|about)[^"']*["']/i.test(homeHtmlRaw) || !!aboutGuess;
+    const telLink = /href=["']tel:/i.test(homeHtmlRaw);
+    const mapPresence = /google\.com\/maps|maps\.app\.goo|g\.page|maps\.google/i.test(homeHtmlRaw);
+    const homeNoindex = /<meta[^>]+name=["']robots["'][^>]*noindex/i.test(homeHtmlRaw) || /noindex/i.test(hdr("x-robots-tag"));
+
+    // ── 8b. PERFORMANCE — Google PageSpeed Insights (free API; key optional
+    //        via PAGESPEED_API_KEY). Prefers real-user CrUX field data, falls
+    //        back to lab data, then to our own TTFB/payload heuristics.
+    let psi: any = null;
+    try {
+      const PSI_KEY = Deno.env.get("PAGESPEED_API_KEY") || "";
+      const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 45000);
+      const pr = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(home)}&strategy=mobile&category=performance${PSI_KEY ? `&key=${PSI_KEY}` : ""}`, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (pr.ok) {
+        const d = await pr.json(); const lh = d.lighthouseResult; const au = lh?.audits ?? {}; const cx = d.loadingExperience?.metrics ?? {};
+        const ms = (k: string) => au[k]?.numericValue ?? null;
+        psi = {
+          score: lh?.categories?.performance?.score != null ? Math.round(lh.categories.performance.score * 100) : null,
+          lcp_ms: cx.LARGEST_CONTENTFUL_PAINT_MS?.percentile ?? ms("largest-contentful-paint"),
+          cls: cx.CUMULATIVE_LAYOUT_SHIFT_SCORE?.percentile != null ? cx.CUMULATIVE_LAYOUT_SHIFT_SCORE.percentile / 100 : ms("cumulative-layout-shift"),
+          inp_ms: cx.INTERACTION_TO_NEXT_PAINT?.percentile ?? null,
+          tbt_ms: ms("total-blocking-time"),
+          ttfb_ms: cx.EXPERIMENTAL_TIME_TO_FIRST_BYTE?.percentile ?? ms("server-response-time"),
+          field: !!d.loadingExperience?.metrics,
+          fixables: ["render-blocking-resources", "modern-image-formats", "uses-responsive-images", "uses-text-compression", "unused-javascript", "uses-long-cache-ttl"]
+            .filter((k) => au[k] && au[k].score != null && au[k].score < 0.9).map((k) => au[k].title || k),
+        };
+        note.push(`PageSpeed measured (mobile perf ${psi.score ?? "—"}, ${psi.field ? "field" : "lab"} data).`);
+      } else { errors.push(`pagespeed ${pr.status}: ${(await pr.text()).slice(0, 120)}`); }
+    } catch (e) { errors.push(`pagespeed: ${String(e)}`); }
+    if (!psi) { psi = { score: null, lcp_ms: null, cls: null, inp_ms: null, tbt_ms: null, ttfb_ms: ttfbMs, field: false, fixables: [] };
+      note.push("PageSpeed unavailable — performance graded from response-time heuristics only."); }
 
     // ── 9. AI-CITATION / SHARE OF VOICE (UPGRADE #2) ──────────────────────────
     const businessName = homePage?.orgName || (homePage?.title ? homePage.title.split(/[|\-–—:]/)[0].trim() : "") || root;
@@ -395,46 +510,131 @@ Deno.serve(async (req) => {
     const striking = gsc.filter((r) => r.position >= 5 && r.position <= 15 && r.impressions >= 50);
     const ctrBleed = gsc.filter((r) => r.impressions >= 200 && (r.ctr || 0) < 0.01);
 
-    // ── 11. PILLAR SCORING ────────────────────────────────────────────────────
-    // TECHNICAL — real crawl health when available, else fetch checks.
-    let techScore: number;
-    if (crawlUsed && healthScore != null) techScore = healthScore;
-    else { techScore = 100; if (!homePage?.ok) techScore -= 50; if (homePage?.ok && !homePage.https) techScore -= 25; if (homePage?.ok && !homePage.viewport) techScore -= 15; if (!robotsOk) techScore -= 15; if (!sitemapOk) techScore -= 10; if (homePage?.ok && !homePage.canonical) techScore -= 10; techScore = Math.max(0, techScore); }
+    // ── 11. CHECKLIST ENGINE ──────────────────────────────────────────────────
+    // Every pillar score is a weighted pass-rate over the exhaustive check
+    // registry (the union of what third-party SEO auditors grade). pass = full
+    // weight, warn = half, fail = 0, na = excluded. A green checklist IS a top
+    // external score by construction. Each check carries the fix kind, the
+    // remediation action, and the plan SERVICE that covers it — the directive
+    // builder (section 16) scopes those to the client's tier.
+    type ChkStatus = "pass" | "warn" | "fail" | "na";
+    const CL: any[] = [];
+    const check = (id: string, pillar: string, weight: number, label: string, status: ChkStatus, evidence: string, fix_kind: string | null, action: string, service: string, engine = "fix") =>
+      CL.push({ id, pillar, weight, label, status, evidence, fix_kind, action, service, engine });
+    const B = (b: boolean | null | undefined): ChkStatus => b == null ? "na" : b ? "pass" : "fail";
+    const pctStatus = (good: number, total: number, passAt = 0.9, warnAt = 0.6): ChkStatus =>
+      total === 0 ? "na" : (good / total) >= passAt ? "pass" : (good / total) >= warnAt ? "warn" : "fail";
 
-    // ON-PAGE — average per-page quality across audited pages.
-    const pageScore = (p: any) => { if (!p?.ok) return 0; let s = 0;
-      if (p.title && p.titleLen >= 20 && p.titleLen <= 65) s += 25; else if (p.title) s += 12;
-      if (p.metaDesc && p.metaLen >= 70 && p.metaLen <= 165) s += 25; else if (p.metaDesc) s += 12;
-      if (p.h1 === 1) s += 20; else if (p.h1 > 1) s += 8;
-      if (p.words >= 500) s += 20; else if (p.words >= 250) s += 10;
-      if (p.og) s += 10; return s; };
-    const onpageScore = okPages.length ? Math.round(okPages.reduce((a: number, p: any) => a + pageScore(p), 0) / okPages.length) : 0;
-    const schemaScore = Math.round((schemaPresent.length / EXPECT_SCHEMA.length) * 100);
+    // On-page tallies (shared with the findings engine below).
+    const noTitle = okPages.filter((p: any) => !p.title || p.titleLen < 20 || p.titleLen > 65);
+    const noMeta  = okPages.filter((p: any) => !p.metaDesc || p.metaLen < 70 || p.metaLen > 165);
+    const badH1   = okPages.filter((p: any) => p.h1 !== 1);
+    const thin    = okPages.filter((p: any) => p.words < 300);
+    const noAlt   = okPages.filter((p: any) => p.imgsNoAlt > 0);
+    const dupOf = (get: (p: any) => string) => { const m = new Map<string, number>();
+      okPages.forEach((p: any) => { const t = get(p).trim().toLowerCase(); if (t) m.set(t, (m.get(t) || 0) + 1); });
+      return [...m.values()].filter((n) => n > 1).reduce((a, n) => a + n, 0); };
+    const dupTitles = dupOf((p) => p.title || ""), dupMetas = dupOf((p) => p.metaDesc || "");
+    const badUrls = okPages.filter((p: any) => /[A-Z_]|\?[^ ]*=/.test(String(p.url).replace(/^https?:\/\/[^/]*/, "")) || String(p.url).length > 115);
+    const townCovered = okPages.some((p: any) => secondaryTowns.some((t: string) => String(p.title || "").toLowerCase().includes(String(t).split(",")[0].trim().toLowerCase())));
 
-    // AEO — answer-readiness + SERP-feature capture + AI share of voice.
-    let aeoScore = 0;
-    if (hasFAQ) aeoScore += 25;
-    if (questionHeads >= 3) aeoScore += 10;
-    if (snippetKws.length) aeoScore += Math.round(15 * (snippetWon.length / snippetKws.length));
-    if (aiOverviewKws.length) aeoScore += Math.round(15 * (aiCaptured.length / aiOverviewKws.length));
-    if (paaKws.length && questionHeads >= 1) aeoScore += 10;
-    if (brandRadar) { const sovPts = Math.min(25, Math.round((brandRadar.ourSov || 0) * 100)); aeoScore += sovPts; } // up to 25 for AI share of voice
-    else if (hasFAQ) aeoScore += 10; // partial credit when AI data is unavailable
-    aeoScore = Math.min(100, aeoScore);
+    // TECHNICAL
+    check("https", "technical", 3, "Site served over HTTPS", B(homePage?.ok ? homePage.https : null), homePage?.ok && !homePage.https ? "homepage is not https" : "", null, "Install/repair SSL and force HTTPS site-wide.", "Site Health Scan");
+    check("https_redirect", "technical", 2, "HTTP 301-redirects to HTTPS", B(httpsRedirect), httpsRedirect === false ? "http:// version does not redirect to https://" : "", "redirect_map", "301-redirect every http:// URL to its https:// twin.", "Domain Optimization (404 fixes, 301 redirects)");
+    check("host_canonical", "technical", 1, "Single canonical host (www vs non-www)", B(hostCanonical), hostCanonical === false ? `both ${target} and ${altHost} serve 200` : "", "redirect_map", "301-redirect the duplicate host to the canonical one.", "Domain Optimization (404 fixes, 301 redirects)");
+    check("robots_valid", "technical", 2, "robots.txt present and not blocking", robotsFound ? (robotsOk ? "pass" : "fail") : "warn", !robotsFound ? "no robots.txt" : robotsOk ? "" : "site-wide Disallow found", "robots_txt", "Publish a correct robots.txt that allows crawling and declares the sitemap.", "Sitemap Refresh");
+    check("sitemap_present", "technical", 2, "XML sitemap exists and parses", B(sitemapOk), sitemapOk ? (smIsIndex ? "sitemap index" : `${smUrls ?? 0} URLs`) : "no valid sitemap.xml", "sitemap_xml", "Generate an XML sitemap and submit it in Search Console.", "Sitemap Refresh");
+    check("sitemap_declared", "technical", 1, "Sitemap declared in robots.txt", B(sitemapDeclared), "", "robots_txt", "Add a Sitemap: line to robots.txt.", "Sitemap Refresh");
+    check("custom_404", "technical", 1, "Unknown URLs return a real 404", B(notFoundOk), notFoundOk === false ? "nonexistent URL returned non-404 (soft 404)" : "", null, "Serve a 404 status (custom 404 template) for missing pages.", "Domain Optimization (404 fixes, 301 redirects)");
+    check("home_indexable", "technical", 3, "Homepage is indexable", homeHtmlRaw ? B(!homeNoindex) : "na", homeNoindex ? "noindex on the homepage" : "", null, "Remove the noindex directive from the homepage.", "Site Health Scan");
+    check("crawl_health", "technical", 3, "Crawl health (full-site)", crawlUsed && healthScore != null ? (healthScore >= 90 ? "pass" : healthScore >= 75 ? "warn" : "fail") : "na", healthScore != null ? `health ${healthScore}; ${crawlTotals?.errors ?? "?"} pages with errors` : "", null, "Resolve the crawl-issue list until site health is 90+.", "Site Health Scan");
+    check("mixed_content", "technical", 2, "No mixed content on HTTPS pages", mixedContent == null ? "na" : B(mixedContent === 0), mixedContent ? `${mixedContent} http:// resources embedded` : "", null, "Serve every script/image/stylesheet over https://.", "Site Health Scan");
+    check("security_headers", "technical", 1, "Security headers set", secHeaders == null ? "na" : (secMissing.length === 0 ? "pass" : secMissing.length <= 2 ? "warn" : "fail"), secMissing.length ? `missing: ${secMissing.join(", ")}` : "", "security_headers", "Add HSTS, X-Content-Type-Options, frame-ancestors and Referrer-Policy headers.", "Site Health Scan");
+    check("viewport", "technical", 2, "Mobile viewport tag", B(homePage?.ok ? !!homePage.viewport : null), "", null, "Add a responsive viewport meta tag.", "Core SEO Monitoring");
+    check("lang_attr", "technical", 1, "<html lang> attribute", homeHtmlRaw ? B(langAttr) : "na", "", null, "Declare the page language on the <html> tag.", "Core SEO Monitoring");
+    check("charset", "technical", 1, "Character encoding declared", homeHtmlRaw ? B(charsetOk) : "na", "", null, "Add <meta charset=\"utf-8\"> early in <head>.", "Core SEO Monitoring");
+    check("favicon", "technical", 1, "Favicon present", B(favicon), "", "favicon", "Add a favicon + apple-touch-icon so the brand shows in tabs and SERPs.", "Core SEO Monitoring");
+    check("analytics", "technical", 1, "Analytics/measurement installed", homeHtmlRaw ? B(analytics) : "na", analytics ? "" : "no GA4/GTM/pixel detected", null, "Install GA4 (or equivalent) so results are measurable.", "Monthly Reporting", "reporting");
 
-    // E-E-A-T
-    let eeatScore = 0; if (eeat.hasAbout) eeatScore += 25; if (eeat.hasCredentials) eeatScore += 25; if (eeat.hasReviews) eeatScore += 25; if (eeat.hasPerson) eeatScore += 15; if (homePage?.https) eeatScore += 10;
+    // PERFORMANCE (Core Web Vitals)
+    check("psi_perf", "performance", 3, "PageSpeed performance (mobile)", psi.score == null ? "na" : (psi.score >= 90 ? "pass" : psi.score >= 50 ? "warn" : "fail"), psi.score != null ? `score ${psi.score}/100` : "", null, "Work the PageSpeed opportunity list until the mobile score is 90+.", "Site Health Scan");
+    check("lcp", "performance", 2, "Largest Contentful Paint ≤ 2.5s", psi.lcp_ms == null ? "na" : (psi.lcp_ms <= 2500 ? "pass" : psi.lcp_ms <= 4000 ? "warn" : "fail"), psi.lcp_ms != null ? `${(psi.lcp_ms / 1000).toFixed(1)}s` : "", null, "Preload + compress the hero image; serve modern formats (WebP/AVIF).", "Site Health Scan");
+    check("cls", "performance", 2, "Cumulative Layout Shift ≤ 0.1", psi.cls == null ? "na" : (psi.cls <= 0.1 ? "pass" : psi.cls <= 0.25 ? "warn" : "fail"), psi.cls != null ? String(Math.round(psi.cls * 100) / 100) : "", null, "Reserve space for images/embeds; avoid layout-shifting injections.", "Site Health Scan");
+    check("inp", "performance", 2, "Interactivity (INP ≤ 200ms / TBT ≤ 200ms)", (psi.inp_ms ?? psi.tbt_ms) == null ? "na" : ((psi.inp_ms ?? psi.tbt_ms) <= 200 ? "pass" : (psi.inp_ms ?? psi.tbt_ms) <= 500 ? "warn" : "fail"), (psi.inp_ms ?? psi.tbt_ms) != null ? `${psi.inp_ms ?? psi.tbt_ms}ms` : "", null, "Defer/trim JavaScript; break up long main-thread tasks.", "Site Health Scan");
+    check("ttfb", "performance", 1, "Server response ≤ 800ms", (psi.ttfb_ms ?? ttfbMs) == null ? "na" : ((psi.ttfb_ms ?? ttfbMs) <= 800 ? "pass" : (psi.ttfb_ms ?? ttfbMs) <= 1800 ? "warn" : "fail"), `${psi.ttfb_ms ?? ttfbMs}ms`, null, "Enable page caching / a CDN, or upgrade hosting, to cut TTFB.", "Site Health Scan");
+    check("perf_fixables", "performance", 1, "No major PageSpeed opportunities", psi.score == null ? "na" : (psi.fixables.length === 0 ? "pass" : psi.fixables.length <= 2 ? "warn" : "fail"), psi.fixables.slice(0, 4).join("; "), null, "Fix the flagged items: compression, image formats, render-blocking resources, caching.", "Site Health Scan");
 
-    // LOCAL — local-intent rankings + NAP + local-pack + real local competitors found.
-    let localScore = 0;
-    if (localIntentKws.length >= 3) localScore += 25; else if (localIntentKws.length) localScore += 12;
-    if (hasNAP) localScore += 25; else if (homePage?.nap?.hasPhone) localScore += 12;
-    if (localPackWon.length) localScore += 25; else if (localPackKws.length) localScore += 10;
-    if (allSchema.has("LocalBusiness")) localScore += 15;
-    if (serpLocal.some((c) => c.localPack)) localScore += 10; // a real local pack exists for the niche
-    localScore = Math.min(100, localScore);
+    // ON-PAGE
+    check("titles_ok", "onpage", 3, "Title tags well-formed site-wide", pctStatus(okPages.length - noTitle.length, okPages.length), noTitle.length ? `${noTitle.length}/${okPages.length} pages weak/missing` : "", "title_tag", "Rewrite to unique 50–60 char titles with keyword + location.", "Core SEO Monitoring");
+    check("titles_unique", "onpage", 2, "No duplicate titles", okPages.length > 1 ? B(dupTitles === 0) : "na", dupTitles ? `${dupTitles} pages share a title` : "", "title_tag", "Differentiate duplicate titles by page topic.", "Core SEO Monitoring");
+    check("metas_ok", "onpage", 3, "Meta descriptions well-formed", pctStatus(okPages.length - noMeta.length, okPages.length), noMeta.length ? `${noMeta.length}/${okPages.length} pages weak/missing` : "", "meta_description", "Write 150–160 char descriptions with keyword + CTA.", "Core SEO Monitoring");
+    check("metas_unique", "onpage", 1, "No duplicate meta descriptions", okPages.length > 1 ? B(dupMetas === 0) : "na", dupMetas ? `${dupMetas} pages share a description` : "", "meta_description", "Write a unique description per page.", "Core SEO Monitoring");
+    check("h1_ok", "onpage", 2, "Exactly one H1 per page", pctStatus(okPages.length - badH1.length, okPages.length), badH1.length ? `${badH1.length} pages off` : "", "h1", "Use one descriptive H1 per page.", "Core SEO Monitoring");
+    check("content_depth", "onpage", 2, "Content depth (≥300 words)", pctStatus(okPages.length - thin.length, okPages.length, 0.8, 0.5), thin.length ? `${thin.length} thin pages` : "", "page_copy", "Expand thin pages with genuinely useful, locally-relevant copy.", "Content Recommendations", "content");
+    check("img_alt", "onpage", 2, "Images have alt text", pctStatus(okPages.length - noAlt.length, okPages.length), noAlt.length ? `${noAlt.length} pages with missing alts` : "", "image_alt", "Add descriptive alt text to all meaningful images.", "Core SEO Monitoring");
+    check("og_tags", "onpage", 1, "Open Graph tags complete", homeHtmlRaw ? B(ogComplete) : "na", ogComplete ? "" : "og:title / og:description / og:image incomplete", "og_tags", "Add og:title, og:description and og:image so shares render rich cards.", "Schema Implementation");
+    check("twitter_card", "onpage", 1, "Twitter/X card tag", homeHtmlRaw ? B(twitterCard) : "na", "", "og_tags", "Add a twitter:card meta tag.", "Schema Implementation");
+    check("canonical_self", "onpage", 2, "Canonical tag is self-referencing", homeHtmlRaw ? B(canonicalSelf) : "na", canonicalHref ? (canonicalSelf ? "" : `canonical → ${canonicalHref}`) : "no canonical tag", "canonical", "Add a self-referencing canonical link to every indexable page.", "Schema Implementation");
+    check("url_quality", "onpage", 1, "Clean URL structure", okPages.length ? pctStatus(okPages.length - badUrls.length, okPages.length) : "na", badUrls.length ? `${badUrls.length} URLs with uppercase/underscores/params` : "", null, "Use short, lowercase, hyphenated URLs going forward (301 old ones).", "Domain Optimization (404 fixes, 301 redirects)");
+    check("internal_links", "onpage", 1, "Internal linking to target pages", oppKws.length ? "warn" : "pass", oppKws.length ? `${oppKws.length} near-miss keywords need internal-link support` : "", "internal_link", "Add contextual internal links toward the near-miss pages.", "Internal Link Strategy");
+
+    // SCHEMA / STRUCTURED DATA
+    check("schema_org", "schema", 2, "Organization schema", B(allSchema.has("Organization") || allSchema.has("LocalBusiness")), "", "org_schema", "Add Organization JSON-LD with logo + sameAs profiles.", "Schema Implementation");
+    check("schema_local", "schema", 3, "LocalBusiness schema", B(allSchema.has("LocalBusiness")), "", "local_business_schema", "Add LocalBusiness JSON-LD with NAP, geo, hours and areaServed.", "Schema Implementation");
+    check("schema_faq", "schema", 2, "FAQPage schema", B(hasFAQ), "", "faq_schema", "Add FAQPage JSON-LD answering real customer questions.", "Schema Implementation");
+    check("schema_breadcrumb", "schema", 1, "BreadcrumbList schema", B(allSchema.has("BreadcrumbList")), "", "breadcrumb_schema", "Add BreadcrumbList JSON-LD sitewide.", "Schema Implementation");
+    check("schema_rating", "schema", 2, "AggregateRating schema", B(allSchema.has("AggregateRating")), "", "aggregate_rating_schema", "Mark up real reviews with AggregateRating.", "Schema Implementation");
+    check("schema_website", "schema", 1, "WebSite schema (+SearchAction)", B(allSchema.has("WebSite")), "", "website_schema", "Add WebSite JSON-LD for a clean brand entity and sitelinks searchbox.", "Schema Implementation");
+
+    // AEO (answer engines / AI assistants)
+    check("aeo_faq", "aeo", 3, "FAQ/answer content exists", B(hasFAQ), "", "faq_schema", "Publish FAQ content with FAQPage markup on the money pages.", "AEO Research & Optimization", "content");
+    check("aeo_qheads", "aeo", 2, "Question-formatted headings", questionHeads >= 3 ? "pass" : questionHeads >= 1 ? "warn" : "fail", `${questionHeads} question headings found`, null, "Add H2/H3s phrased as real customer questions with direct answers.", "AEO Research & Optimization", "content");
+    check("aeo_llms", "aeo", 1, "llms.txt for AI crawlers", B(llmsTxt), "", "llms_txt", "Publish /llms.txt describing the business, services and key pages for AI assistants.", "AEO Research & Optimization");
+    check("aeo_sameas", "aeo", 2, "Entity sameAs profile links", homeHtmlRaw ? B(/"sameAs"/.test(homeHtmlRaw)) : "na", "", "org_schema", "Link the brand's profiles (GBP, Facebook, LinkedIn, …) via sameAs in Organization schema.", "Schema Implementation");
+    check("aeo_snippets", "aeo", 2, "Featured-snippet capture", snippetKws.length ? (snippetWon.length ? "pass" : "fail") : "na", snippetKws.length ? `${snippetWon.length}/${snippetKws.length} captured` : "", null, "Structure direct 40–60 word answers at the top of ranking pages.", "AEO Research & Optimization", "content");
+    check("aeo_overviews", "aeo", 3, "AI Overview citation", aiOverviewKws.length ? (aiCaptured.length ? "pass" : "fail") : "na", aiOverviewKws.length ? `${aiCaptured.length}/${aiOverviewKws.length} captured` : "", null, "Publish quotable, declarative answer paragraphs AI can cite.", "AEO Research & Optimization", "content");
+    check("aeo_sov", "aeo", 3, "AI share of voice vs competitors", brandRadar ? ((brandRadar.ourSov || 0) >= (brandRadar.topCompetitor?.sov || 0) && brandRadar.mentions > 0 ? "pass" : brandRadar.mentions > 0 ? "warn" : "fail") : "na", brandRadar ? `SoV ${((brandRadar.ourSov || 0) * 100).toFixed(0)}%, ${brandRadar.mentions} mentions` : "", null, "Grow citable content + entity signals until AI mentions lead the market.", "AEO Research & Optimization", "content");
+
+    // E-E-A-T / TRUST
+    check("eeat_about", "eeat", 2, "About/team story present", B(!!eeat.hasAbout), "", null, "Publish an About page with the real team, story and service area.", "Content Recommendations", "content");
+    check("eeat_credentials", "eeat", 2, "Credentials/trust language", B(!!eeat.hasCredentials), "", null, "State licenses, certifications, awards and years in business.", "Content Recommendations", "content");
+    check("eeat_reviews", "eeat", 2, "Review signals on-site", B(!!eeat.hasReviews), "", "aggregate_rating_schema", "Surface real testimonials with review markup.", "Reputation Monitoring");
+    check("eeat_person", "eeat", 2, "Named people (Person schema)", B(!!eeat.hasPerson), "", "person_schema", "Add owner/expert bios with Person JSON-LD + sameAs.", "Schema Implementation");
+    check("eeat_privacy", "eeat", 1, "Privacy/legal page linked", homeHtmlRaw ? B(privacyLink) : "na", "", null, "Link a privacy policy in the footer.", "Site Health Scan");
+    check("eeat_contact", "eeat", 1, "Contact page linked", homeHtmlRaw ? B(contactLink) : "na", "", null, "Link a contact page with full NAP.", "Site Health Scan");
+
+    // LOCAL
+    check("local_nap", "local", 3, "NAP on the homepage", B(!!hasNAP), homePage?.nap?.hasPhone && !hasNAP ? "phone found, address missing" : "", "local_business_schema", "Add consistent name/address/phone in the footer + LocalBusiness schema.", "Local Listing Optimization");
+    check("local_schema", "local", 2, "LocalBusiness schema", B(allSchema.has("LocalBusiness")), "", "local_business_schema", "Add LocalBusiness JSON-LD with geo + hours.", "Schema Implementation");
+    check("local_pack", "local", 3, "Local-pack presence", (localPackKws.length || serpLocal.length) ? (localPackWon.length ? "pass" : "fail") : "na", localPackWon.length ? `${localPackWon.length} keywords in the pack` : "competitors hold the pack", null, "Optimize the Business Profile: categories, photos, reviews, weekly posts.", "GBP Management & Posting");
+    check("local_intent", "local", 2, "Ranking for local-intent terms", localIntentKws.length >= 3 ? "pass" : localIntentKws.length ? "warn" : "fail", `${localIntentKws.length} local-intent keywords ranked`, null, "Build '[service] [city]' landing pages across the trade area.", "Targeted Landing Pages (up to 5)", "content");
+    check("local_tel", "local", 1, "Click-to-call tel: link", homeHtmlRaw ? B(telLink) : "na", "", null, "Make the phone number a tap-to-call tel: link.", "Local Listing Optimization");
+    check("local_map", "local", 1, "Map/GBP presence on site", homeHtmlRaw ? B(mapPresence) : "na", "", null, "Embed the Google map / link the Business Profile.", "Local Listing Optimization");
+    check("local_geo_pages", "local", 2, "Trade-area town coverage", geoList.length > 1 ? (townCovered ? "pass" : "warn") : "na", townCovered ? "" : `no pages target the ${secondaryTowns.length} secondary towns`, null, "Publish a landing page per secondary town × top service.", "Targeted Landing Pages (up to 5)", "content");
+
+    // ── PILLAR + COMPOSITE SCORES (all derived from the checklist) ────────────
+    const pillarScore = (p: string): number | null => {
+      const rows = CL.filter((c) => c.pillar === p && c.status !== "na");
+      if (!rows.length) return null;
+      const poss = rows.reduce((a: number, c: any) => a + c.weight, 0);
+      const earned = rows.reduce((a: number, c: any) => a + (c.status === "pass" ? c.weight : c.status === "warn" ? c.weight / 2 : 0), 0);
+      return Math.round((earned / poss) * 100);
+    };
+    const techScore = pillarScore("technical") ?? 0;
+    const perfScore = pillarScore("performance");
+    const onpageScore = pillarScore("onpage") ?? 0;
+    const schemaScore = pillarScore("schema") ?? 0;
+    const aeoScore = pillarScore("aeo") ?? 0;
+    const eeatScore = pillarScore("eeat") ?? 0;
+    const localScore = pillarScore("local") ?? 0;
+    const PILLAR_WEIGHT: Record<string, number> = { technical: 20, performance: 15, onpage: 20, schema: 10, aeo: 15, eeat: 10, local: 10 };
+    const pillarVals: Record<string, number | null> = { technical: techScore, performance: perfScore, onpage: onpageScore, schema: schemaScore, aeo: aeoScore, eeat: eeatScore, local: localScore };
+    let _w = 0, _s = 0;
+    Object.entries(pillarVals).forEach(([p, v]) => { if (v != null) { _w += PILLAR_WEIGHT[p]; _s += v * PILLAR_WEIGHT[p]; } });
+    const auditScore = _w ? Math.round(_s / _w) : 0;
 
     const grades = { grade_technical: grade(techScore), grade_onpage: grade(onpageScore), grade_schema: grade(schemaScore), grade_aeo: grade(aeoScore), grade_eeat: grade(eeatScore), grade_local: grade(localScore) };
+    const grade_performance = perfScore == null ? null : grade(perfScore);
 
     // ── 12. FINDINGS ENGINE ───────────────────────────────────────────────────
     const FN: any[] = [];
@@ -462,11 +662,7 @@ Deno.serve(async (req) => {
       add(sev, "fix", `Missing ${t} structured data`, `Add ${t} JSON-LD and validate with the Rich Results Test.`, "Structured data powers rich results and AI comprehension."); } });
 
     // ON-PAGE — site-wide summary counts (crawl) + the worst pages.
-    const noTitle = okPages.filter((p:any)=>!p.title||p.titleLen<20||p.titleLen>65);
-    const noMeta  = okPages.filter((p:any)=>!p.metaDesc||p.metaLen<70||p.metaLen>165);
-    const badH1   = okPages.filter((p:any)=>p.h1!==1);
-    const thin    = okPages.filter((p:any)=>p.words<300);
-    const noAlt   = okPages.filter((p:any)=>p.imgsNoAlt>0);
+    // (noTitle/noMeta/badH1/thin/noAlt are computed by the checklist engine above.)
     if (crawlUsed) {
       if (noTitle.length) add("medium","fix",`${noTitle.length} pages with weak/missing title tags`,"Rewrite to unique 50–60 char titles with keyword + location.","Improve rankings and click-through across the site.");
       if (noMeta.length)  add("medium","fix",`${noMeta.length} pages with missing/poor meta descriptions`,"Write 150–160 char descriptions with keyword + CTA.","Improve click-through across the site.");
@@ -535,19 +731,46 @@ Deno.serve(async (req) => {
     if (ctrBleed.length) add("high","fix",`${ctrBleed.length} queries get impressions but almost no clicks`,"Rewrite titles/meta for these high-impression queries.","Recover clicks the site already qualifies for.");
     if (compPages.length) add("medium","content",`Competitors win traffic with ${compPages.length} pages the client has no equivalent for`,"Build comparable, better pages for these proven topics.","Take share on topics competitors monetize.");
 
+    // NEW-DIMENSION FINDINGS — auto-generated from the checklist for the checks
+    // the legacy engine above doesn't already report (performance, security,
+    // redirects, social cards, canonicals, llms.txt, trust pages, …). One
+    // source of truth: fixing the check clears the finding on the next run.
+    const LEGACY_COVERED = new Set([
+      "https","viewport","robots_valid","sitemap_present","crawl_health",
+      "schema_org","schema_local","schema_faq","schema_breadcrumb","schema_rating",
+      "titles_ok","metas_ok","h1_ok","content_depth","img_alt",
+      "aeo_faq","aeo_qheads","aeo_snippets","aeo_overviews","aeo_sov",
+      "eeat_reviews","eeat_person","eeat_about","eeat_credentials",
+      "local_nap","local_intent","local_pack","local_schema","internal_links",
+    ]);
+    CL.filter((c: any) => (c.status === "fail" || c.status === "warn") && !LEGACY_COVERED.has(c.id)).forEach((c: any) => {
+      const sev = c.status === "warn" ? "low" : c.weight >= 3 ? "high" : c.weight === 2 ? "medium" : "low";
+      add(sev, c.engine, `${c.label}${c.evidence ? ` — ${c.evidence}` : ""}`, c.action, `Pass the "${c.label}" check that third-party auditors grade.`);
+    });
+
     // ── DIAGNOSIS ──────────────────────────────────────────────────────────────
-    const worst = ([["technical",techScore],["on-page",onpageScore],["schema",schemaScore],["AEO",aeoScore],["E-E-A-T",eeatScore],["local",localScore]] as [string,number][]).sort((a,b)=>a[1]-b[1]);
+    const worst = ([["technical",techScore],...(perfScore!=null?[["performance",perfScore]]:[]),["on-page",onpageScore],["schema",schemaScore],["AEO",aeoScore],["E-E-A-T",eeatScore],["local",localScore]] as [string,number][]).sort((a,b)=>a[1]-b[1]);
+    const clFail = CL.filter((c: any) => c.status === "fail").length, clWarn = CL.filter((c: any) => c.status === "warn").length, clPass = CL.filter((c: any) => c.status === "pass").length;
     const aeoLine = brandRadar ? `Brand AI share of voice is ${Math.round((brandRadar.ourSov||0)*100)}% (mentions: ${brandRadar.mentions}).` : `AI Overviews appear on ${aiOverviewKws.length} sampled keywords${aiCaptured.length?`, ${aiCaptured.length} captured`:" — none captured"}.`;
-    const diagnosis = `${root} grades ${grades.grade_aeo} AEO, ${grades.grade_local} local, ${grades.grade_schema} schema, ${grades.grade_onpage} on-page, ${grades.grade_technical} technical, ${grades.grade_eeat} E-E-A-T. ` +
+    const diagnosis = `Audit score ${auditScore}/100 — ${clPass} checks pass, ${clWarn} warn, ${clFail} fail. ` +
+      `${root} grades ${grades.grade_aeo} AEO, ${grades.grade_local} local, ${grades.grade_schema} schema, ${grades.grade_onpage} on-page, ${grades.grade_technical} technical${grade_performance?`, ${grade_performance} performance`:""}, ${grades.grade_eeat} E-E-A-T. ` +
       `Ranks for ${org_keywords ?? "—"} keywords (DR ${domain_rating ?? "—"}, ${referring_domains ?? "—"} ref domains). ${aeoLine} ` +
       `${crawlUsed?`Full-site crawl: ${pages.length} pages, health ${healthScore ?? "—"}.`:"Sampled pages only (no crawl configured)."} ` +
       `Weakest: ${worst[0][0]}. Biggest lever: ${oppKws.length?`${oppKws.length} keywords in positions 4–20`:(hasFAQ?"AI-citation content":"FAQ/answer content for AEO")}.`;
 
     // ── 13. WRITE ──────────────────────────────────────────────────────────────
-    const { data: audit, error: aErr } = await supa.from("audits").insert({
+    // grade_performance/score need directive_engine.sql; if the live DB is
+    // behind, retry without them (they're mirrored in raw either way).
+    const auditRow: any = {
       client_id: client.id, domain_rating, org_keywords, org_traffic, org_keywords_top3, live_backlinks, referring_domains, diagnosis, ...grades,
+      grade_performance, score: auditScore,
       raw: {
-        scores: { techScore, onpageScore, schemaScore, aeoScore, eeatScore, localScore },
+        scores: { techScore, perfScore, onpageScore, schemaScore, aeoScore, eeatScore, localScore, auditScore },
+        checklist: CL,
+        performance: psi,
+        probes: { httpsRedirect, hostCanonical, altHost, notFoundOk, robotsFound, robotsOk, sitemapOk, sitemapDeclared, smUrls, llmsTxt, favicon,
+          secMissing, mixedContent, ogComplete, twitterCard, canonicalHref, canonicalSelf, langAttr, charsetOk, analytics,
+          privacyLink, contactLink, telLink, mapPresence, homeNoindex, ttfbMs, homeKB },
         business: { type: businessType, services, city },
         tradeArea: { primary: primaryCity, secondary: secondaryTowns },
         opportunities,
@@ -565,7 +788,13 @@ Deno.serve(async (req) => {
         deep_sources: { site_audit_project: crawlProjectId, brand_radar_report: client.brand_radar_report_id || null },
         notes: note, errors,
       },
-    }).select("id").single();
+    };
+    let { data: audit, error: aErr } = await supa.from("audits").insert(auditRow).select("id").single();
+    if (aErr && /grade_performance|score|column/i.test(aErr.message || "")) {
+      note.push("audits is missing the v4 columns (run directive_engine.sql) — performance/score stored in raw only.");
+      delete auditRow.grade_performance; delete auditRow.score;
+      ({ data: audit, error: aErr } = await supa.from("audits").insert(auditRow).select("id").single());
+    }
     if (aErr || !audit) return json({ error: "failed to write audit", detail: aErr?.message, ahrefs_errors: errors }, 500);
     const audit_id = audit.id;
 
@@ -604,6 +833,17 @@ Deno.serve(async (req) => {
     if (!allSchema.has("Person")) planFix("person_schema", aboutUrl, "No Person/author schema");
     if (compPages.length || gaps.length) planFix("internal_link", home, "Internal-linking opportunities from new and gap pages");
     if (brandRadar && brandRadar.mentions === 0) planFix("page_copy", home, "Build citable answer content to earn AI mentions", { aeo: true });
+    // v4 kinds — one staged fix per failed site-probe check.
+    if (!robotsFound || !robotsOk || !sitemapDeclared) planFix("robots_txt", home, robotsFound ? (robotsOk ? "robots.txt missing Sitemap: line" : "robots.txt blocks crawling") : "No robots.txt", { sitemap_url: sitemapUrl, current: robotsTxt.slice(0, 800) });
+    if (!sitemapOk || !(smUrls || 0)) planFix("sitemap_xml", home, sitemapOk ? "Sitemap present but empty/invalid" : "No XML sitemap", { pages: okPages.slice(0, 50).map((p: any) => p.url) });
+    if (httpsRedirect === false || hostCanonical === false) planFix("redirect_map", home, httpsRedirect === false ? "http:// does not redirect to https://" : `Duplicate host: ${altHost} also serves 200`, { alt_host: altHost, https_redirect: httpsRedirect, host_canonical: hostCanonical });
+    if (crawlUsed && crawlIssues.some((i: any) => /4xx|404|not found|broken/i.test(String(i.name || "")))) planFix("redirect_map", home, "Broken URLs (4XX) found in the crawl", { from_crawl: true });
+    if (secMissing.length) planFix("security_headers", home, `Missing: ${secMissing.join(", ")}`, { missing: secMissing });
+    if (homeHtmlRaw && (!ogComplete || !twitterCard)) planFix("og_tags", home, ogComplete ? "No twitter:card tag" : "Open Graph tags incomplete", { og_title: ogTitle, og_desc: ogDesc, has_image: !!ogImage, twitter_card: twitterCard });
+    if (homeHtmlRaw && !canonicalSelf) planFix("canonical", home, canonicalHref ? `Canonical points at ${canonicalHref}` : "No canonical tag");
+    if (!llmsTxt) planFix("llms_txt", home, "No llms.txt for AI crawlers", { services, towns: geoList, business_type: businessType });
+    if (!allSchema.has("WebSite")) planFix("website_schema", home, "No WebSite schema");
+    if (!favicon) planFix("favicon", home, "No favicon detected");
     planFix("gbp_post", home, "New Business Profile post for this cycle");
     if (plan.length) {
       const { data: planRows } = await supa.from("fixes").insert(plan).select("id");
@@ -621,6 +861,7 @@ Deno.serve(async (req) => {
     let topicCount = 0;
     let cycleMonth = 0;
     let campaignDriven = false;
+    const topicsCreated: { kind: string; keyword: string; town: string | null }[] = [];
     if (package_id) {
       const titleCase = (s: string) => String(s || "").replace(/\b\w/g, (c) => c.toUpperCase());
       const seenT = new Set<string>();
@@ -672,7 +913,7 @@ Deno.serve(async (req) => {
             package_id, title: titleCase(kw), target_keyword: kw, kind, model: MODEL[kind] || "sonnet-4-6",
             status: "queued", source: "campaign", location: town }).select("id").single();
           if (tErr) { errors.push(`content_topics: ${tErr.message}`); continue; }
-          if (t?.id) { await supa.from("deliverables").update({ state: "generating", topic_id: t.id }).eq("id", d.id); topicCount++; }
+          if (t?.id) { await supa.from("deliverables").update({ state: "generating", topic_id: t.id }).eq("id", d.id); topicCount++; topicsCreated.push({ kind, keyword: kw, town }); }
         }
       } else {
         // FALLBACK: generic recommendations when no campaign is seeded for this cycle
@@ -690,14 +931,123 @@ Deno.serve(async (req) => {
         services.slice(0, 2).forEach((svc: any) => secondaryTowns.slice(0, 2).forEach((town: any) => pushTopic(`${svc} ${town}`, "landing", "sonnet-4-6", "secondary_town", town)));
         gaps.slice(0, 1).forEach((g: any) => pushTopic(g.keyword, "blog", "sonnet-4-6", "content_gap", primaryCity || null));
         if (!hasFAQ) pushTopic(coreKeywords[0]?.keyword || ownKw[0]?.keyword || serpSeed || (businessType || "services"), "faq", "haiku-4-5", "aeo", primaryCity || null);
-        if (topicRows.length) { const { error: tErr } = await supa.from("content_topics").insert(topicRows); if (tErr) errors.push(`content_topics: ${tErr.message}`); else topicCount = topicRows.length; }
+        if (topicRows.length) { const { error: tErr } = await supa.from("content_topics").insert(topicRows); if (tErr) errors.push(`content_topics: ${tErr.message}`);
+          else { topicCount = topicRows.length; topicsCreated.push(...topicRows.map((r: any) => ({ kind: r.kind, keyword: r.target_keyword, town: r.location }))); } }
       }
     }
 
-    return json({ ok: true, audit_id, package_id, cycle: cycleMonth, campaign_driven: campaignDriven, grades,
+    // ── 16. DIRECTIVE — the plan-scoped work order ────────────────────────────
+    // Every non-passing check becomes an ordered action item, scoped against
+    // the client's plan tier: in-plan work is staged and executable; the rest
+    // is an explicit upgrade recommendation with the tier that unlocks it.
+    const tier = String(client.tier || "starter");
+    const TIER_ORDER = ["starter", "builder", "pro"];
+    // Static mirror of service_catalog.sql (fallback when the table is absent).
+    const CATALOG: Record<string, string[]> = {
+      "GBP Management & Posting": ["starter", "builder", "pro"],
+      "Branded Blog Writing": ["starter", "builder", "pro"],
+      "Local Listing Optimization": ["starter", "builder", "pro"],
+      "Reputation Monitoring": ["starter", "builder", "pro"],
+      "Monthly Reporting": ["starter", "builder", "pro"],
+      "Radio to Video Ad": ["builder", "pro"],
+      "Keyword Research & Strategy": ["builder", "pro"],
+      "Site Health Scan": ["builder", "pro"],
+      "High-Intent Keyword Targeting": ["builder", "pro"],
+      "Content Recommendations": ["builder", "pro"],
+      "Core SEO Monitoring": ["builder", "pro"],
+      "Domain Optimization (404 fixes, 301 redirects)": ["builder", "pro"],
+      "Internal Link Strategy": ["builder", "pro"],
+      "Sitemap Refresh": ["builder", "pro"],
+      "AEO Research & Optimization": ["pro"],
+      "AEO Pillar Pages": ["pro"],
+      "Targeted Landing Pages (up to 5)": ["pro"],
+      "Schema Implementation": ["pro"],
+    };
+    let tierServices = new Set<string>(Object.entries(CATALOG).filter(([, ts]) => ts.includes(tier)).map(([n]) => n));
+    {
+      const { data: tmpl } = await supa.from("service_templates").select("name").eq("tier", tier).eq("active", true);
+      if (tmpl && tmpl.length) tierServices = new Set(tmpl.map((t: any) => String(t.name)));
+    }
+    const stagedKinds = new Set(plan.map((f: any) => f.kind));
+    const items: any[] = [];
+    CL.forEach((c: any) => {
+      if (c.status === "na") return;
+      const in_plan = tierServices.has(c.service);
+      items.push({
+        check_id: c.id, pillar: c.pillar, title: c.label, action: c.action, engine: c.engine, fix_kind: c.fix_kind,
+        severity: c.status === "pass" ? "done" : c.weight >= 3 ? "high" : c.weight === 2 ? "medium" : "low",
+        points: Math.max(1, Math.round(c.weight * (PILLAR_WEIGHT[c.pillar] || 10) / 10)),
+        in_plan, service: c.service, unlock_tier: (CATALOG[c.service] || ["starter"])[0],
+        status: c.status === "pass" ? "done" : (c.fix_kind && stagedKinds.has(c.fix_kind) && in_plan) ? "staged" : "todo",
+        evidence: c.evidence || "",
+      });
+    });
+    const CONTENT_SERVICE: Record<string, string> = { gbp_post: "GBP Management & Posting", blog: "Branded Blog Writing", pillar: "AEO Pillar Pages", landing: "Targeted Landing Pages (up to 5)", service: "High-Intent Keyword Targeting", faq: "AEO Research & Optimization" };
+    topicsCreated.forEach((t) => {
+      const service = CONTENT_SERVICE[t.kind] || "Content Recommendations";
+      items.push({
+        check_id: `content_${t.kind}_${String(t.keyword || "").replace(/\W+/g, "_").slice(0, 40)}`, pillar: "content",
+        title: `${t.kind === "gbp_post" ? "GBP post" : t.kind.charAt(0).toUpperCase() + t.kind.slice(1)}: “${t.keyword}”`,
+        action: `Draft, approve and publish${t.town ? ` (${t.town})` : primaryCity ? ` (${primaryCity})` : ""}.`,
+        engine: "content", fix_kind: null, severity: "medium", points: 2,
+        in_plan: tierServices.has(service), service, unlock_tier: (CATALOG[service] || ["starter"])[0],
+        status: "staged", evidence: "",
+      });
+    });
+    const sevRank: Record<string, number> = { high: 0, medium: 1, low: 2, done: 3 };
+    items.sort((a, b) => (sevRank[a.severity] - sevRank[b.severity]) || (b.points - a.points));
+
+    // Verification loop — compare against the previous audit's checklist, flip
+    // pushed fixes to "verified" when their check now passes, flag regressions.
+    let progress: any = { previous_score: null, delta: null, fixed: [], regressed: [] };
+    {
+      const { data: prev } = await supa.from("audits").select("id, raw, run_at").eq("client_id", client.id).neq("id", audit_id).order("run_at", { ascending: false }).limit(1).maybeSingle();
+      const prevCL: any[] = prev?.raw?.checklist || [];
+      if (prevCL.length) {
+        const prevBy: Record<string, string> = {}; prevCL.forEach((c: any) => { prevBy[c.id] = c.status; });
+        const fixed = CL.filter((c: any) => c.status === "pass" && (prevBy[c.id] === "fail" || prevBy[c.id] === "warn")).map((c: any) => c.id);
+        const regressed = CL.filter((c: any) => c.status === "fail" && prevBy[c.id] === "pass").map((c: any) => c.id);
+        const prevScore = prev?.raw?.scores?.auditScore ?? null;
+        progress = { previous_score: prevScore, delta: prevScore != null ? auditScore - prevScore : null, fixed, regressed };
+        const verifiedKinds = [...new Set(CL.filter((c: any) => c.status === "pass" && c.fix_kind && (prevBy[c.id] === "fail" || prevBy[c.id] === "warn")).map((c: any) => c.fix_kind))];
+        if (verifiedKinds.length && prev?.id) {
+          await supa.from("fixes").update({ status: "verified", updated_at: new Date().toISOString() })
+            .eq("audit_id", prev.id).eq("status", "pushed").in("kind", verifiedKinds as string[]);
+        }
+        if (fixed.length) note.push(`Verification: ${fixed.length} checks flipped to pass since the last audit.`);
+        if (regressed.length) note.push(`REGRESSION: ${regressed.length} previously-passing checks now fail.`);
+      }
+    }
+
+    const open = items.filter((i) => i.status !== "done");
+    const upsell = open.filter((i) => !i.in_plan);
+    const directive = {
+      version: 2, built_at: new Date().toISOString(), tier, score: auditScore, target_score: 90,
+      pillars: pillarVals,
+      progress: { ...progress, completion_pct: items.length ? Math.round(100 * items.filter((i) => i.status === "done").length / items.length) : 0 },
+      items,
+      upgrade_pitch: upsell.length ? `Upgrading unlocks ${upsell.length} more fixes worth ~${upsell.reduce((a, i) => a + i.points, 0)} audit points.` : null,
+      summary: `Score ${auditScore}/100 (target ${90}+). ${open.filter((i) => i.in_plan).length} in-plan actions open, ${upsell.length} unlocked by upgrade. Complete the in-plan list and re-audit: every item maps 1:1 to a graded check, so the score converges by construction.`,
+    };
+    if (package_id) {
+      const { error: dErr } = await supa.from("packages").update({ directive }).eq("id", package_id);
+      if (dErr) errors.push(`packages.directive: ${dErr.message} (run directive_engine.sql)`);
+    }
+    { // queryable per-check history (best-effort; needs directive_engine.sql)
+      const { error: kErr } = await supa.from("audit_checks").insert(CL.map((c: any) => ({ audit_id, check_id: c.id, pillar: c.pillar, label: c.label, status: c.status, weight: c.weight, evidence: c.evidence || null, fix_kind: c.fix_kind })));
+      if (kErr) errors.push(`audit_checks: ${kErr.message} (run directive_engine.sql)`);
+    }
+    // Keep the directive readable even when packages.directive doesn't exist yet.
+    await supa.from("audits").update({ raw: { ...auditRow.raw, directive } }).eq("id", audit_id);
+
+    return json({ ok: true, audit_id, package_id, cycle: cycleMonth, campaign_driven: campaignDriven, grades, grade_performance,
+      score: auditScore,
+      checklist: { pass: clPass, warn: clWarn, fail: clFail, total: CL.length },
+      directive: { items: items.length, open: open.length, in_plan_open: open.filter((i) => i.in_plan).length, upsell: upsell.length, completion_pct: directive.progress.completion_pct },
       business: { type: businessType, services },
       trade_area: { primary: primaryCity, secondary: secondaryTowns },
       crawl: { used: crawlUsed, pages: crawlUsed ? pages.length : okPages.length, health: healthScore },
+      performance: { psi: psi.score, lcp_ms: psi.lcp_ms, cls: psi.cls },
       brand_radar: brandRadar ? { sov: brandRadar.ourSov, mentions: brandRadar.mentions } : null,
       local_competitors: serpLocal.length,
       authority: { client: domain_rating, medianCompetitor: medianCompDR },

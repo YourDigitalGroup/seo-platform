@@ -15,10 +15,17 @@
 //    faq_schema                                   → AI Q&A + FAQPage JSON-LD
 //    local_business_schema / org_schema /
 //    person_schema / breadcrumb_schema /
-//    aggregate_rating_schema                      → JSON-LD scaffold (template,
+//    aggregate_rating_schema / website_schema     → JSON-LD scaffold (template,
 //                                                   filled from context; no AI)
 //    internal_link                                → AI internal-link plan
 //    gbp_post                                     → AI Business-Profile post
+//    robots_txt / sitemap_xml / canonical /
+//    security_headers / redirect_map / favicon    → deterministic deployable
+//                                                   artifacts (v4 directive
+//                                                   engine; no AI)
+//    llms_txt / og_tags                           → AI-written artifacts for
+//                                                   AI-crawler guidance and
+//                                                   social/rich cards
 //
 //  Deploy: Edge Functions → Deploy new function → name it exactly: generate-fixes
 //  Secret (already set): the AI writer key.  Input: { "fix_ids": ["..."] }  or  { "fix_id": "..." }
@@ -37,7 +44,8 @@ const json = (b: unknown, s = 200) =>
 // Which model writes which kind (kept internal; never surfaced to the team).
 const MODEL_FOR: Record<string, string> = {
   page_copy: "claude-opus-4-8", faq_schema: "claude-sonnet-4-6",
-  internal_link: "claude-sonnet-4-6", _default: "claude-haiku-4-5",
+  internal_link: "claude-sonnet-4-6", llms_txt: "claude-sonnet-4-6",
+  _default: "claude-haiku-4-5",
 };
 const MODEL_ENUM: Record<string, string> = {
   "claude-opus-4-8": "opus-4-8", "claude-sonnet-4-6": "sonnet-4-6", "claude-haiku-4-5": "haiku-4-5",
@@ -45,7 +53,11 @@ const MODEL_ENUM: Record<string, string> = {
 
 // Kinds whose output is a JSON-LD scaffold we can build deterministically.
 const SCHEMA_KINDS = new Set([
-  "local_business_schema","org_schema","person_schema","breadcrumb_schema","aggregate_rating_schema",
+  "local_business_schema","org_schema","person_schema","breadcrumb_schema","aggregate_rating_schema","website_schema",
+]);
+// v4 kinds whose deployable artifact is a deterministic file/snippet (no AI).
+const FILE_KINDS = new Set([
+  "robots_txt","sitemap_xml","canonical","security_headers","redirect_map","favicon",
 ]);
 
 Deno.serve(async (req) => {
@@ -106,6 +118,10 @@ Deno.serve(async (req) => {
           schema_jsonld = buildSchema(kind, { name, city, page, kw });
           after_text = "<script type=\"application/ld+json\">\n" +
             JSON.stringify(schema_jsonld, null, 2) + "\n</script>";
+
+        } else if (FILE_KINDS.has(kind)) {
+          // ── Deterministic deployable files/snippets (v4; no AI) ───────────────
+          after_text = buildFileArtifact(kind, { name, city, page, ctx });
 
         } else if (kind === "image_alt") {
           // Fetch the page, read <img> tags missing alt, write alt text for each.
@@ -177,6 +193,12 @@ function promptFor(kind: string, a: { name: string; city: string; kw: string; pa
     case "gbp_post":
       return { max: 350, system: "You write Google Business Profile posts: 1 short paragraph (under 1500 chars), engaging, with a clear CTA. No hashtags. Output only the post.",
         user: `Business: ${a.name}${loc}. Theme/keyword: "${a.kw}". Write one Business Profile post for this month.${tail}` };
+    case "llms_txt":
+      return { max: 900, system: "You write llms.txt files — the markdown file AI assistants read to understand a website. Format: '# <Business Name>' heading, one-paragraph plain-language summary, then '## Services' and '## Key Pages' sections with markdown links. Factual, declarative, no marketing fluff. Output only the file content.",
+        user: `Business: ${a.name}${loc}. Site: ${a.page}. Primary keyword/services: "${a.kw}". Write the llms.txt for this local business.${tail}` };
+    case "og_tags":
+      return { max: 500, system: "You write social meta tags. Output ONLY a ready-to-paste HTML block: og:title, og:description, og:image (use the placeholder [IMAGE_URL] if unknown), og:url, og:type, twitter:card (summary_large_image), twitter:title, twitter:description.",
+        user: `Business: ${a.name}${loc}. Page: ${a.page}. Keyword: "${a.kw}". Current title/description: "${a.before}". Write the complete Open Graph + Twitter card block.${tail}` };
     default:
       return { max: 400, system: "You are an expert SEO/AEO copywriter. Produce the requested fix as clean, deployable text.",
         user: `Kind: ${kind}. Business: ${a.name}${loc}. Keyword: "${a.kw}". Current: "${a.before}".${tail}` };
@@ -206,8 +228,71 @@ function buildSchema(kind: string, a: { name: string; city: string; page: string
     case "aggregate_rating_schema":
       return { "@context": "https://schema.org", "@type": "LocalBusiness", name: a.name, url: origin,
         aggregateRating: { "@type": "AggregateRating", ratingValue: "[AVG e.g. 4.9]", reviewCount: "[COUNT]", bestRating: "5" } };
+    case "website_schema":
+      return { "@context": "https://schema.org", "@type": "WebSite", name: a.name, url: origin,
+        potentialAction: { "@type": "SearchAction", target: { "@type": "EntryPoint", urlTemplate: `${origin}/?s={search_term_string}` }, "query-input": "required name=search_term_string" } };
     default:
       return { "@context": "https://schema.org", "@type": "Thing", name: a.name };
+  }
+}
+
+// ── Deterministic deployable files/snippets (v4 directive engine) ─────────────
+function buildFileArtifact(kind: string, a: { name: string; city: string; page: string; ctx: any }): string {
+  const origin = (() => { try { return new URL(a.page).origin; } catch { return a.page; } })();
+  const host = origin.replace(/^https?:\/\//, "");
+  switch (kind) {
+    case "robots_txt":
+      return [
+        "# robots.txt — deploy at the site root",
+        "User-agent: *",
+        "Allow: /",
+        "",
+        `Sitemap: ${a.ctx.sitemap_url || `${origin}/sitemap.xml`}`,
+        "",
+      ].join("\n");
+    case "sitemap_xml": {
+      const urls: string[] = (a.ctx.pages || [a.page]).slice(0, 50);
+      const today = new Date().toISOString().slice(0, 10);
+      return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+        urls.map((u) => `  <url><loc>${u}</loc><lastmod>${today}</lastmod></url>`).join("\n") +
+        `\n</urlset>\n\nDeploy at ${origin}/sitemap.xml (or enable the CMS/SEO-plugin sitemap), then submit in Search Console. On WordPress prefer the plugin-generated sitemap — this file is the fallback.`;
+    }
+    case "canonical":
+      return `<link rel="canonical" href="${a.page}" />\n\nAdd to <head>. Every indexable page needs its own self-referencing canonical (page builders/SEO plugins can template this as the page's own URL).`;
+    case "security_headers": {
+      const missing: string[] = a.ctx.missing || ["Strict-Transport-Security", "X-Content-Type-Options", "X-Frame-Options/frame-ancestors", "Referrer-Policy"];
+      const rules: Record<string, [string, string]> = {
+        "Strict-Transport-Security": [`Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"`, `add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;`],
+        "X-Content-Type-Options": [`Header always set X-Content-Type-Options "nosniff"`, `add_header X-Content-Type-Options "nosniff" always;`],
+        "X-Frame-Options/frame-ancestors": [`Header always set X-Frame-Options "SAMEORIGIN"`, `add_header X-Frame-Options "SAMEORIGIN" always;`],
+        "Referrer-Policy": [`Header always set Referrer-Policy "strict-origin-when-cross-origin"`, `add_header Referrer-Policy "strict-origin-when-cross-origin" always;`],
+      };
+      const rows = missing.filter((m) => rules[m]);
+      return `# Apache (.htaccess) — add inside <IfModule mod_headers.c>\n${rows.map((m) => rules[m][0]).join("\n")}\n\n# nginx (server block)\n${rows.map((m) => rules[m][1]).join("\n")}\n\nDeploy via hosting config or a security plugin, then re-audit to verify.`;
+    }
+    case "redirect_map": {
+      const alt = a.ctx.alt_host || (host.startsWith("www.") ? host.replace(/^www\./, "") : `www.${host}`);
+      const parts: string[] = [];
+      if (a.ctx.https_redirect === false) parts.push(
+        `# Force HTTPS (Apache .htaccess)\nRewriteEngine On\nRewriteCond %{HTTPS} off\nRewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]`);
+      if (a.ctx.host_canonical === false) parts.push(
+        `# Canonical host: 301 ${alt} → ${host}\nRewriteCond %{HTTP_HOST} ^${alt.replace(/\./g, "\\.")}$ [NC]\nRewriteRule ^(.*)$ ${origin}/$1 [L,R=301]`);
+      if (a.ctx.from_crawl) parts.push(
+        `# Broken URLs (4XX) from the crawl: export the 4XX list from the site-audit\n# project and add one rule per URL, pointing at the closest live page:\n# Redirect 301 /old-page/ ${origin}/replacement-page/`);
+      if (!parts.length) parts.push(`# 301 redirect map — no automatic rules derived; map each broken URL to its closest live equivalent:\n# Redirect 301 /old-url/ ${origin}/new-url/`);
+      return parts.join("\n\n");
+    }
+    case "favicon":
+      return [
+        `Add these to <head> (files at the site root):`,
+        `<link rel="icon" href="${origin}/favicon.ico" sizes="32x32">`,
+        `<link rel="icon" href="${origin}/icon.svg" type="image/svg+xml">`,
+        `<link rel="apple-touch-icon" href="${origin}/apple-touch-icon.png">`,
+        ``,
+        `Export the ${a.name} logo mark as a 512×512 PNG; generate sizes with a favicon generator. Google shows the favicon next to the brand in mobile SERPs.`,
+      ].join("\n");
+    default:
+      return "";
   }
 }
 
