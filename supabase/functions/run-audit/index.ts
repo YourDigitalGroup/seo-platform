@@ -853,6 +853,22 @@ Deno.serve(async (req) => {
       (planRows || []).forEach((r: any) => fixIds.push(r.id));
     }
 
+    // AUTO-WRITE EVERY FIX SERVER-SIDE. The audit decides what needs fixing;
+    // the AI writes it — with no dependency on the browser staying open (the
+    // old console-driven auto-write silently skipped when the tab was stale).
+    let fixesDispatched = false;
+    if (fixIds.length) {
+      const dispatch = fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-fixes`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ fix_ids: fixIds }),
+      }).then(async (r) => { if (!r.ok) console.error("generate-fixes dispatch", r.status, (await r.text()).slice(0, 200)); })
+        .catch((e) => console.error("generate-fixes dispatch", e));
+      const er = (globalThis as any).EdgeRuntime;
+      if (er?.waitUntil) { er.waitUntil(dispatch); fixesDispatched = true; note.push(`${fixIds.length} fixes handed to the AI writer (background).`); }
+      else { fixesDispatched = true; note.push(`${fixIds.length} fixes dispatched to the AI writer.`); }
+    }
+
     // Package row. The upsert needs unique(client_id, cycle_month) — see
     // packages_unique_key.sql. If that key is missing, DON'T fail silently
     // (that's what used to kill content generation): fall back to updating the
@@ -1082,7 +1098,7 @@ Deno.serve(async (req) => {
       local_competitors: serpLocal.length,
       authority: { client: domain_rating, medianCompetitor: medianCompDR },
       counts: { competitors: competitors.length, competitor_pages: compPages.length, keywords: ownKw.length, core_keywords: coreKeywords.length, opportunities: opportunities.length, gaps: gaps.length, findings: FN.length, fixes: plan.length, content_topics: topicCount },
-      fix_ids: fixIds,
+      fix_ids: fixIds, fixes_dispatched: fixesDispatched,
       notes: note, ahrefs_errors: errors });
   } catch (e) {
     console.error("run-audit fatal", e);

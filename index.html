@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.8.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.8.1</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.8.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.8.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.8.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.8.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -881,7 +881,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V1.8.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V1.8.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2595,6 +2595,17 @@ async function invokeGenFixes(ids){
     PK.fixes=(ff||[]).map(mapFix); }
   renderFixes();
 }
+// Poll while the server-side AI writer fills the staged fixes (no browser
+// dependency — this just keeps the UI live while it happens).
+async function waitForFixes(maxTries=15){
+  for(let i=0;i<maxTries;i++){
+    await new Promise(r=>setTimeout(r,6000));
+    if(!PK.audit||!PK.audit.id) return;
+    const { data:ff } = await sb.from('fixes').select('*').eq('audit_id', PK.audit.id);
+    PK.fixes=(ff||[]).map(mapFix); renderFixes();
+    if(PK.fixes.length && !PK.fixes.some(f=>f.status==='suggested')) return;
+  }
+}
 function approveFix(id){ invokeGenFixes([id]); }
 function approveAllFixes(){ const ids=(PK.fixes||[]).filter(f=>f.status==='suggested').map(f=>f.id); if(ids.length) invokeGenFixes(ids); }
 function regenFix(id){ invokeGenFixes([id]); }
@@ -2728,7 +2739,10 @@ async function generatePackage(){
       // client progress report. Each step is non-blocking on the others' results.
       const tasks = [];
       if((n.content_topics||0) > 0) tasks.push(liveGenerateDrafts());
-      if(fixIds.length > 0) tasks.push(liveGenerateFixes(fixIds));
+      // v1.8.1+: run-audit dispatches fix-writing server-side; we just watch
+      // for the results. Older deployed run-audit → console writes them itself.
+      if(fixIds.length > 0 && !data.fixes_dispatched) tasks.push(liveGenerateFixes(fixIds));
+      else if(data.fixes_dispatched) tasks.push(waitForFixes());
       if(tasks.length) await Promise.all(tasks);
       await liveBuildReport(data.package_id || (PK && PK.package_id));
       await loadLiveAudit(); renderPackage();
