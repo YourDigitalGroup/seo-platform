@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: 44i Digital
  * License: GPL-2.0+
  */
@@ -11,7 +11,13 @@ if (!defined('ABSPATH')) exit;
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.1.0');
+define('SEOP_VERSION', '1.2.0');
+// v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
+// alts site-wide using the Anthropic API; never overwrites existing values).
+define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
+define('SEOP_OPT_AI_CRON',   'seoplatform_ai_cron');
+define('SEOP_OPT_AI_REPORT', 'seoplatform_ai_last_report');
+define('SEOP_AI_MODEL', 'claude-haiku-4-5');
 // Site-wide artifacts from a deploy package live in options:
 define('SEOP_OPT_ROBOTS',    'seoplatform_robots_txt');
 define('SEOP_OPT_LLMS',      'seoplatform_llms_txt');
@@ -51,7 +57,16 @@ add_action('rest_api_init', function () {
     register_rest_route(SEOP_NS, '/schema',   ['methods' => 'POST', 'permission_callback' => $auth, 'callback' => 'seop_schema']);
     // v1.1: the whole deploy package in one call (same JSON as the file upload).
     register_rest_route(SEOP_NS, '/package',  ['methods' => 'POST', 'permission_callback' => $auth, 'callback' => 'seop_package_rest']);
+    // v1.2: trigger the AI auto-fix remotely (platform-initiated runs).
+    register_rest_route(SEOP_NS, '/ai-autofix', ['methods' => 'POST', 'permission_callback' => $auth, 'callback' => function () {
+        $r = seop_ai_autofix();
+        return is_wp_error($r) ? $r : $r;
+    }]);
 });
+
+/* Weekly self-healing: cron re-runs the auto-fix so NEW pages get metas too. */
+add_action('seop_ai_autofix_event', 'seop_ai_autofix');
+register_deactivation_hook(__FILE__, function () { wp_clear_scheduled_hook('seop_ai_autofix_event'); });
 
 function seop_status() {
     return [
@@ -348,6 +363,102 @@ function seop_package_rest($request) {
     return seop_apply_package($request->get_json_params());
 }
 
+/* ── v1.2: built-in AI auto-fix ───────────────────────────────────────────────
+ * Uses the Anthropic API (key stored in options, entered by the agency) to
+ * fill in MISSING SEO titles, meta descriptions, and image alt text across
+ * the whole site. It never overwrites a value that already exists, batches
+ * work to keep each run cheap and fast, and records a report. Runs from the
+ * settings button, the weekly cron, or the /ai-autofix REST endpoint. */
+function seop_claude($system, $user, $max = 600) {
+    $key = get_option(SEOP_OPT_AI_KEY);
+    if (!$key) return new WP_Error('seop_ai', 'no Anthropic API key configured');
+    $r = wp_remote_post('https://api.anthropic.com/v1/messages', [
+        'timeout' => 60,
+        'headers' => ['x-api-key' => $key, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'],
+        'body' => wp_json_encode(['model' => SEOP_AI_MODEL, 'max_tokens' => $max, 'system' => $system,
+            'messages' => [['role' => 'user', 'content' => $user]]]),
+    ]);
+    if (is_wp_error($r)) return $r;
+    if (wp_remote_retrieve_response_code($r) !== 200) {
+        return new WP_Error('seop_ai', 'Anthropic ' . wp_remote_retrieve_response_code($r) . ': ' . substr((string) wp_remote_retrieve_body($r), 0, 160));
+    }
+    $body = json_decode(wp_remote_retrieve_body($r), true);
+    $text = '';
+    foreach ((array) ($body['content'] ?? []) as $b) if (($b['type'] ?? '') === 'text') $text .= $b['text'];
+    return trim($text);
+}
+function seop_existing_meta($post_id) {
+    $plugin = seop_seo_plugin();
+    $t = get_post_meta($post_id, '_seoplatform_seo_title', true);
+    if (!$t && $plugin === 'yoast')    $t = get_post_meta($post_id, '_yoast_wpseo_title', true);
+    if (!$t && $plugin === 'rankmath') $t = get_post_meta($post_id, 'rank_math_title', true);
+    $d = get_post_meta($post_id, '_seoplatform_seo_desc', true);
+    if (!$d && $plugin === 'yoast')    $d = get_post_meta($post_id, '_yoast_wpseo_metadesc', true);
+    if (!$d && $plugin === 'rankmath') $d = get_post_meta($post_id, 'rank_math_description', true);
+    return [$t, $d];
+}
+function seop_ai_autofix($meta_cap = 10, $alt_cap = 8) {
+    if (!get_option(SEOP_OPT_AI_KEY)) return new WP_Error('seop_ai', 'Add an Anthropic API key on the SEO Platform settings page first.');
+    $report = ['ok' => true, 'ran_at' => current_time('mysql'), 'metas' => [], 'alts' => [], 'skipped' => []];
+    $site = get_bloginfo('name');
+    $posts = get_posts(['post_type' => ['post', 'page'], 'post_status' => 'publish', 'numberposts' => 200, 'orderby' => 'modified', 'order' => 'DESC']);
+
+    // 1) Missing SEO titles / meta descriptions (fill only what's absent).
+    $done = 0;
+    foreach ($posts as $p) {
+        if ($done >= $meta_cap) break;
+        list($t, $d) = seop_existing_meta($p->ID);
+        if ($t && $d) continue;
+        $excerpt = mb_substr(wp_strip_all_tags($p->post_content), 0, 1200);
+        $out = seop_claude(
+            'You write SEO meta for web pages. Return ONLY compact JSON, no markdown: {"title":"50-60 char SEO title","description":"150-160 char meta description with a call to action"}.',
+            "Site: {$site}. Page title: {$p->post_title}. Page content:\n{$excerpt}", 300
+        );
+        if (is_wp_error($out)) { $report['skipped'][] = $p->post_title . ' — ' . $out->get_error_message(); continue; }
+        $j = json_decode(trim(preg_replace('/```json|```/', '', $out)), true);
+        if (!is_array($j)) { $report['skipped'][] = $p->post_title . ' — unparseable AI reply'; continue; }
+        seop_write_meta($p->ID, $t ? null : ($j['title'] ?? null), $d ? null : ($j['description'] ?? null), null);
+        $report['metas'][] = $p->post_title;
+        $done++;
+    }
+
+    // 2) Images missing alt text (adds the alt attribute only; content otherwise untouched).
+    $done = 0;
+    foreach ($posts as $p) {
+        if ($done >= $alt_cap) break;
+        if (get_post_meta($p->ID, '_seoplatform_alts_done', true)) continue;
+        if (!preg_match_all('/<img\b(?![^>]*\balt\s*=\s*["\'][^"\']*\S)[^>]*>/i', $p->post_content, $mm) || !$mm[0]) {
+            update_post_meta($p->ID, '_seoplatform_alts_done', 1); continue;
+        }
+        $tags = array_slice($mm[0], 0, 12);
+        $srcs = [];
+        foreach ($tags as $tag) { preg_match('/\bsrc\s*=\s*["\']([^"\']+)["\']/i', $tag, $m); $srcs[] = basename($m[1] ?? 'image'); }
+        $lines = [];
+        foreach ($srcs as $i => $s) $lines[] = ($i + 1) . '. ' . $s;
+        $out = seop_claude(
+            'You write concise, descriptive image alt text, max 12 words each. No quotes, no "image of". Return a numbered list only, one item per input line, same order.',
+            "Site: {$site}. Page: {$p->post_title}. Images (filenames):\n" . implode("\n", $lines), 400
+        );
+        if (is_wp_error($out)) { $report['skipped'][] = 'alts: ' . $p->post_title . ' — ' . $out->get_error_message(); continue; }
+        $alts = [];
+        foreach (preg_split('/\r?\n/', $out) as $line) if (preg_match('/^\s*(\d+)[.)]\s*(.+)$/', $line, $m)) $alts[(int) $m[1] - 1] = sanitize_text_field($m[2]);
+        $i = 0;
+        $content = preg_replace_callback('/<img\b(?![^>]*\balt\s*=\s*["\'][^"\']*\S)([^>]*)>/i', function ($m) use (&$i, $alts) {
+            $alt = $alts[$i] ?? ''; $i++;
+            return $alt !== '' ? '<img alt="' . esc_attr($alt) . '"' . $m[1] . '>' : $m[0];
+        }, $p->post_content);
+        if ($content !== null && $content !== $p->post_content) {
+            wp_update_post(['ID' => $p->ID, 'post_content' => $content]);
+            $report['alts'][] = $p->post_title . ' (' . count($alts) . ' images)';
+        }
+        update_post_meta($p->ID, '_seoplatform_alts_done', 1);
+        $done++;
+    }
+
+    update_option(SEOP_OPT_AI_REPORT, $report);
+    return $report;
+}
+
 /* Settings screen: REST base + API key + the package file importer. */
 add_action('admin_menu', function () {
     add_options_page('SEO Platform Connector', 'SEO Platform', 'manage_options', 'seo-platform', 'seop_settings_page');
@@ -367,6 +478,19 @@ function seop_settings_page() {
         } else {
             $report = new WP_Error('seop_file', 'upload failed or file too large (8 MB max)');
         }
+    }
+    // v1.2: AI auto-fix settings + run-now
+    $aiReport = null;
+    if (isset($_POST['seop_ai_save']) && check_admin_referer('seop_ai')) {
+        if (!empty($_POST['seop_ai_key'])) update_option(SEOP_OPT_AI_KEY, sanitize_text_field($_POST['seop_ai_key']));
+        $cron = !empty($_POST['seop_ai_cron']);
+        update_option(SEOP_OPT_AI_CRON, $cron ? 1 : 0);
+        wp_clear_scheduled_hook('seop_ai_autofix_event');
+        if ($cron) wp_schedule_event(time() + HOUR_IN_SECONDS, 'weekly', 'seop_ai_autofix_event');
+        echo '<div class="notice notice-success"><p>AI settings saved.</p></div>';
+    }
+    if (isset($_POST['seop_ai_run']) && check_admin_referer('seop_ai_go')) {
+        $aiReport = seop_ai_autofix();
     }
     $key  = get_option(SEOP_KEY_OPT);
     $base = rest_url(SEOP_NS);
@@ -397,6 +521,31 @@ function seop_settings_page() {
                 foreach ($report['manual'] as $line) echo '<li>' . esc_html($line) . '</li>';
                 echo '</ul>';
             }
+        }
+    }
+
+    echo '<h2>AI auto-fix</h2>';
+    echo '<p>With an Anthropic API key saved, the connector fills in <strong>missing</strong> SEO titles, meta descriptions, and image alt text across the site — on demand, on a weekly schedule, or triggered by the platform. It never overwrites values that already exist. Use a dedicated key with a spend limit; anyone with admin access to this site can read stored keys.</p>';
+    $hasAiKey = (bool) get_option(SEOP_OPT_AI_KEY);
+    echo '<form method="post">' . wp_nonce_field('seop_ai', '_wpnonce', true, false);
+    echo '<table class="form-table">';
+    echo '<tr><th>Anthropic API key</th><td><input type="password" name="seop_ai_key" placeholder="' . ($hasAiKey ? '•••••••• (saved — enter to replace)' : 'sk-ant-…') . '" style="width:340px"> <em>' . ($hasAiKey ? 'configured' : 'not set') . '</em></td></tr>';
+    echo '<tr><th>Weekly auto-fix</th><td><label><input type="checkbox" name="seop_ai_cron" value="1"' . (get_option(SEOP_OPT_AI_CRON) ? ' checked' : '') . '> Run automatically every week (keeps new pages covered)</label></td></tr>';
+    echo '</table><p><button class="button" name="seop_ai_save" value="1">Save AI settings</button></p></form>';
+    if ($hasAiKey) {
+        echo '<form method="post">' . wp_nonce_field('seop_ai_go', '_wpnonce', true, false);
+        echo '<p><button class="button button-primary" name="seop_ai_run" value="1">Run AI auto-fix now</button> <em>Fills up to 10 pages of missing metas + 8 pages of missing alts per run.</em></p></form>';
+    }
+    $lastAi = $aiReport && !is_wp_error($aiReport) ? $aiReport : get_option(SEOP_OPT_AI_REPORT);
+    if ($aiReport && is_wp_error($aiReport)) {
+        echo '<div class="notice notice-error"><p>' . esc_html($aiReport->get_error_message()) . '</p></div>';
+    }
+    if (is_array($lastAi) && !empty($lastAi['ran_at'])) {
+        echo '<p><strong>Last AI run:</strong> ' . esc_html($lastAi['ran_at']) . ' — ' . count($lastAi['metas'] ?? []) . ' pages got metas, ' . count($lastAi['alts'] ?? []) . ' pages got alts' . (!empty($lastAi['skipped']) ? ', ' . count($lastAi['skipped']) . ' skipped' : '') . '.</p>';
+        if (!empty($lastAi['skipped'])) {
+            echo '<ul style="list-style:disc;margin-left:20px">';
+            foreach ($lastAi['skipped'] as $line) echo '<li>' . esc_html($line) . '</li>';
+            echo '</ul>';
         }
     }
 
