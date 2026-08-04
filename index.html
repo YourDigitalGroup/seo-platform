@@ -313,6 +313,11 @@ header.show{display:block}
 .eng p{font-size:12px;color:var(--muted);line-height:1.5;min-height:48px}
 .eng .st{margin-top:12px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;display:inline-block}
 .st.ready{background:var(--mint);color:#3C5A1E} .st.setup{background:#FBE3D4;color:#9A4A12}
+.eng.click{cursor:pointer;transition:box-shadow .15s,transform .15s}
+.eng.click:hover{box-shadow:0 4px 14px rgba(27,35,48,.14);transform:translateY(-1px)}
+.eng-go{position:absolute;right:14px;bottom:16px;font-size:11px;font-weight:700;color:var(--blue)}
+.flash{animation:secflash 1.6s ease}
+@keyframes secflash{0%{background:#fdf6d8}100%{background:transparent}}
 
 /* fixes list */
 .fixes{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
@@ -683,7 +688,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.5.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.6.0</div>
   </div>
 </div>
 
@@ -725,7 +730,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.5.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.6.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -779,7 +784,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.5.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.6.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -873,7 +878,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V1.5.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V1.6.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1200,12 +1205,7 @@ const AUDIT={
      after:'Link each new lesson/service landing page to the homepage hub and to 2 sibling pages with exact-match anchors. Adds 24 internal links across the cluster.'},
   ],
 };
-const ENGINES=[
-  {n:'Engine 1',t:'Audit',p:'Live search & authority pulls, graded into findings and a styled report.',st:'ready'},
-  {n:'Engine 2',t:'Content',p:'The AI writer drafts everything — long-form for pillars, standard for blogs/posts/pages, quick for snippets.',st:'ready'},
-  {n:'Engine 3',t:'Technical Fix',p:'Paste-ready schema, title/meta rewrites, internal-link plans.',st:'ready'},
-  {n:'Engine 4',t:'Reporting',p:'Monthly cadence report mapped to the plan deliverable checklist.',st:'ready'},
-];
+// (Engine cards render live per-client stats — see renderEngines().)
 
 // ── content engine model routing (Engine 2) ──
 // the AI writer. //SB: the generate-content Edge Function selects the
@@ -2623,7 +2623,48 @@ function renderDeliverables(){
   });
   document.getElementById('deliv').innerHTML=h;
 }
-function renderEngines(){ document.getElementById('engines').innerHTML=ENGINES.map(e=>`<div class="eng"><div class="en">${e.n}</div><h4>${e.t}</h4><p>${e.p}</p><span class="st ${e.st}">${e.st==='ready'?'Ready':'Setup required'}</span></div>`).join(''); }
+// The four engine cards are live and clickable: each shows the engine's real
+// state for the OPEN CLIENT and jumps to (and highlights) its section.
+function renderEngines(){
+  const el=document.getElementById('engines'); if(!el) return;
+  const S=(PK.raw&&PK.raw.scores)||{};
+  const cl=PK.checklist||[];
+  const pass=cl.filter(c=>c.status==='pass').length, fail=cl.filter(c=>c.status==='fail').length;
+  const findings=(PK.severity||[]).reduce((a,s)=>a+(s.v||0),0);
+  const topics=PK.topics||[];
+  const drafted=topics.filter(t=>t.status==='drafted').length, approved=topics.filter(t=>t.status==='approved').length,
+        queued=topics.length-drafted-approved;
+  const fixes=PK.fixes||[];
+  const fReady=fixes.filter(f=>f.status==='ready'||f.status==='edited').length,
+        fPushed=fixes.filter(f=>f.status==='pushed').length,
+        fVerified=fixes.filter(f=>f.status==='verified').length,
+        fSuggested=fixes.filter(f=>f.status==='suggested').length;
+  const hasAudit=!!PK.audit;
+  const score=S.auditScore??(PK.audit&&PK.audit.score)??null;
+  const runDate=hasAudit&&PK.audit.run_at?new Date(PK.audit.run_at).toLocaleDateString():'';
+  const CARDS=[
+    { n:'Engine 1', t:'Audit', target:'scorecard',
+      p: hasAudit?`Score ${score??'—'}/100 · ${pass} checks pass, ${fail} fail · ${findings} findings for this client.`:'No audit for this client yet — run Generate package.',
+      st: hasAudit?'ready':'setup', lab: hasAudit?('Run '+runDate):'Not run' },
+    { n:'Engine 2', t:'Content', target:'queue',
+      p: topics.length?`${topics.length} piece${topics.length===1?'':'s'} this cycle · ${Math.max(0,queued)} queued · ${drafted} drafted · ${approved} approved. Click to review and approve.`:(hasAudit?'No topics queued this cycle — re-run Generate package (needs the package row).':'Queues automatically with the audit.'),
+      st: topics.length?'ready':'setup', lab: topics.length?`${drafted+approved}/${topics.length} written`:'Waiting' },
+    { n:'Engine 3', t:'Technical Fix', target:'fixes',
+      p: fixes.length?`${fixes.length} staged · ${fSuggested} suggested · ${fReady} ready · ${fPushed} pushed · ${fVerified} verified.`:(hasAudit?'No fixes staged for this client.':'Stages automatically with the audit.'),
+      st: fixes.length?'ready':'setup', lab: fixes.length?`${fPushed+fVerified} live`:'Waiting' },
+    { n:'Engine 4', t:'Reporting', target:'reportbar',
+      p: PK.report_html?`Client progress report built${PK.report_meta&&PK.report_meta.built_at?' '+new Date(PK.report_meta.built_at).toLocaleDateString():''} — open or print from the report bar.`:'Builds automatically after the audit + drafting finish.',
+      st: PK.report_html?'ready':'setup', lab: PK.report_html?'Built':'Not built' },
+  ];
+  el.innerHTML=CARDS.map(e=>`<div class="eng click" onclick="jumpToEngine('${e.target}')" title="View ${e.t} for this client">
+    <div class="en">${e.n}</div><h4>${e.t}</h4><p>${e.p}</p>
+    <span class="st ${e.st}">${e.lab}</span><span class="eng-go">View →</span></div>`).join('');
+}
+function jumpToEngine(id){
+  const el=document.getElementById(id); if(!el) return;
+  el.scrollIntoView({behavior:'smooth', block:'start'});
+  el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'), 1600);
+}
 
 // ── white-labeled report (the client-facing artifact) ──
 function renderReportWL(){

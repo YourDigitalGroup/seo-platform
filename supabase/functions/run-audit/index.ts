@@ -850,9 +850,26 @@ Deno.serve(async (req) => {
       (planRows || []).forEach((r: any) => fixIds.push(r.id));
     }
 
-    const { data: pkg, error: pErr } = await supa.from("packages").upsert({ client_id: client.id, audit_id, status: "ready", findings_count: FN.length, competitors_count: competitors.length }, { onConflict: "client_id,cycle_month" }).select("id").single();
-    if (pErr) errors.push(`packages upsert: ${pErr.message}`);
+    // Package row. The upsert needs unique(client_id, cycle_month) — see
+    // packages_unique_key.sql. If that key is missing, DON'T fail silently
+    // (that's what used to kill content generation): fall back to updating the
+    // client's latest package, or plain-inserting a fresh one.
+    const pkgRow = { client_id: client.id, audit_id, status: "ready", findings_count: FN.length, competitors_count: competitors.length };
+    let { data: pkg, error: pErr } = await supa.from("packages").upsert(pkgRow, { onConflict: "client_id,cycle_month" }).select("id").single();
+    if (pErr) {
+      errors.push(`packages upsert: ${pErr.message} — run packages_unique_key.sql; using fallback`);
+      const { data: existing } = await supa.from("packages").select("id").eq("client_id", client.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (existing?.id) {
+        const { error: uErr } = await supa.from("packages").update(pkgRow).eq("id", existing.id);
+        if (!uErr) pkg = existing; else errors.push(`packages update: ${uErr.message}`);
+      }
+      if (!pkg) {
+        const { data: ins, error: iErr } = await supa.from("packages").insert(pkgRow).select("id").single();
+        if (!iErr) pkg = ins; else errors.push(`packages insert: ${iErr.message}`);
+      }
+    }
     const package_id = pkg?.id ?? null;
+    if (!package_id) note.push("NO PACKAGE ROW — content topics cannot queue. Fix the packages table errors above.");
 
     // ── 15. RECOMMENDED CONTENT (auto-created topics → drafted automatically) ──
     // Geo-bound to the trade area: a service/landing page per core money keyword
