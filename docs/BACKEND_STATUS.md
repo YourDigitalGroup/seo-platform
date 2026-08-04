@@ -4,6 +4,36 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-07-20 — v4 "Directive Engine" (V1.5.0)
+
+The audit is now an exhaustive, weighted checklist + plan-scoped directive:
+
+- `run-audit` v4: ~55 deterministic checks covering the union of what
+  Lighthouse/PageSpeed, Ahrefs, SEMrush, Moz and the popular SEO checkers grade
+  (HTTPS + redirect chain, host canonicalization, robots/sitemap validation,
+  soft-404s, security headers, mixed content, Core Web Vitals via the free
+  PageSpeed API, duplicate titles/metas, OG/Twitter cards, canonical
+  self-reference, favicon, lang/charset, analytics, llms.txt, entity sameAs,
+  trust pages, NAP/GBP/tel/map signals, trade-area town coverage). All pillar
+  scores derive from the checklist; a new **performance** pillar and a
+  composite 0-100 **audit score** are added. Every non-passing check maps to a
+  fix kind + the plan service that covers it → compiled into a **directive**
+  (in-plan items staged, out-of-plan items shown as upgrade recommendations
+  with the unlocking tier). Re-audits diff the checklist, flip pushed fixes to
+  `verified` when their check passes, and report fixed/regressed checks.
+- New fix kinds in `generate-fixes`: `robots_txt`, `sitemap_xml`, `canonical`,
+  `security_headers`, `redirect_map`, `favicon` (deterministic),
+  `website_schema` (JSON-LD scaffold), `llms_txt`, `og_tags` (AI-written).
+- New migration **`directive_engine.sql`**: `audits.grade_performance`,
+  `audits.score`, `packages.directive`, `audit_checks` table. The functions
+  degrade gracefully pre-migration (everything mirrored into `audits.raw`).
+- New optional secret: `PAGESPEED_API_KEY` (PageSpeed works unkeyed at low
+  volume; the key removes rate limits). Deploy: redeploy `run-audit`,
+  `generate-fixes`, `publish-wp`; run `directive_engine.sql`.
+- `index.html` V1.5.0: audit-score + performance tiles, **Plan Directive**
+  panel (tier-scoped work order with progress toward 90+), collapsible
+  per-pillar checklist, labels for the new fix kinds and `verified` status.
+
 ## Repo layout
 
 ```

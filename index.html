@@ -313,6 +313,11 @@ header.show{display:block}
 .eng p{font-size:12px;color:var(--muted);line-height:1.5;min-height:48px}
 .eng .st{margin-top:12px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;display:inline-block}
 .st.ready{background:var(--mint);color:#3C5A1E} .st.setup{background:#FBE3D4;color:#9A4A12}
+.eng.click{cursor:pointer;transition:box-shadow .15s,transform .15s}
+.eng.click:hover{box-shadow:0 4px 14px rgba(27,35,48,.14);transform:translateY(-1px)}
+.eng-go{position:absolute;right:14px;bottom:16px;font-size:11px;font-weight:700;color:var(--blue)}
+.flash{animation:secflash 1.6s ease}
+@keyframes secflash{0%{background:#fdf6d8}100%{background:transparent}}
 
 /* fixes list */
 .fixes{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
@@ -512,7 +517,7 @@ footer .fbadges{display:flex;gap:18px}
 @media(max-width:680px){ .qrow.qedit{grid-template-columns:1.5fr 110px 78px 30px} .qrow.qedit>*:nth-child(3),.qrow.qedit>*:nth-child(4){display:none} }
 
 /* ── Pillar scorecard, AI/crawl insights, data-source ids ── */
-.scorecard{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+.scorecard{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:10px;margin-bottom:14px}
 .sctile{border:1px solid var(--line);border-radius:var(--r);padding:12px 10px;text-align:center;background:#fff}
 .scgrade{font-size:30px;font-weight:800;line-height:1}
 .sclab{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:6px 0 8px}
@@ -583,6 +588,42 @@ footer .fbadges{display:flex;gap:18px}
 .rep-btn:disabled{ background: #c5d2dd; cursor: not-allowed; }
 .rep-btn.alt{ background: #fff; color: #4B9BD7; border: 1px solid #4B9BD7; }
 .rep-btn.alt:hover{ background: #f4f8fc; }
+
+/* ── v5 directive engine: audit score, plan-scoped directive, checklist ── */
+.directive{margin:0 0 14px}
+.dir-wrap{background:#fff;border:1px solid #d6e3ef;border-radius:8px;overflow:hidden}
+.dir-head{display:flex;gap:18px;align-items:center;padding:14px 16px;background:linear-gradient(180deg,#f4f8fc,#fff);border-bottom:1px solid #eef2f7;flex-wrap:wrap}
+.dir-score{font-size:34px;font-weight:800;line-height:1;white-space:nowrap}
+.dir-score small{font-size:12px;color:var(--muted);font-weight:600}
+.dir-progress{flex:1;min-width:220px}
+.dir-pbar{height:8px;background:var(--mist);border-radius:999px;overflow:hidden;margin-top:2px}
+.dir-pbar i{display:block;height:100%;border-radius:999px;background:#1E6B33}
+.dir-sum{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
+.dir-delta{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.dir-delta.up{background:#E8F5E9;color:#1E6B33}.dir-delta.down{background:#FBE9E7;color:#C0392B}
+.dir-items{max-height:430px;overflow-y:auto}
+.dir-row{display:flex;gap:10px;align-items:flex-start;padding:9px 16px;border-bottom:1px solid #f0f2f6;font-size:12.5px}
+.dir-row:last-child{border-bottom:none}
+.dir-row.done{opacity:.55}
+.dir-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.dir-main{flex:1;min-width:0}
+.dir-title{font-weight:700;color:var(--ink)}
+.dir-title .ev{color:var(--muted);font-weight:500}
+.dir-act{color:var(--muted);margin-top:1px;line-height:1.35}
+.dir-tags{display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:38%}
+.dir-tag{font-size:10px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:9px;background:#eef0f4;color:#4a5468;white-space:nowrap}
+.dir-tag.st-staged{background:#e8f1fb;color:#2a6ea8}.dir-tag.st-done{background:#E8F5E9;color:#1E6B33}.dir-tag.st-todo{background:#fdf0d8;color:#8a5a00}
+.dir-tag.upsell{background:#f3e8fb;color:#7d3ab8}
+.dir-upsell{padding:10px 16px;background:#faf7fe;border-top:1px solid #eee4f8;font-size:12px;color:#5b3f7d}
+.checklist{margin:0 0 18px}
+.checklist details{background:#fff;border:1px solid var(--line);border-radius:8px}
+.checklist summary{cursor:pointer;padding:11px 16px;font-size:12.5px;font-weight:700;color:var(--ink)}
+.cl-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;padding:2px 16px 14px}
+.cl-pill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:4px 0 6px}
+.cl-item{display:flex;gap:8px;align-items:baseline;font-size:12px;padding:3px 0;color:var(--ink)}
+.cl-item .ev{color:var(--muted);font-size:11px}
+.cl-ic{font-weight:800;width:14px;flex-shrink:0;text-align:center}
+.cl-ic.pass{color:#1E6B33}.cl-ic.warn{color:#8A6D12}.cl-ic.fail{color:#C0392B}.cl-ic.na{color:#9AA}
 /* campaign roadmap */
 .roadmap{margin:4px 0 8px}
 .rm-empty{padding:18px;border:1px dashed var(--line);border-radius:var(--r-sm);color:var(--muted);font-size:13px}
@@ -647,7 +688,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.4.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.6.0</div>
   </div>
 </div>
 
@@ -689,7 +730,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.4.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.6.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -743,7 +784,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.4.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.6.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -790,6 +831,11 @@ footer .fbadges{display:flex;gap:18px}
     <div class="tradearea" id="tradearea"></div>
     <div class="scorecard" id="scorecard"></div>
     <div class="insights" id="insights"></div>
+
+    <div class="section-h"><h2>Plan Directive</h2><div class="ln"></div><span class="tag" id="dir-tag">plan-scoped work order</span></div>
+    <div class="directive" id="directive"></div>
+    <div class="checklist" id="checklist"></div>
+
     <div class="opportunities" id="opportunities"></div>
     <div class="reportbar" id="reportbar"></div>
     <div class="cards" id="cards"></div>
@@ -832,7 +878,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V1.4.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V1.6.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1159,12 +1205,7 @@ const AUDIT={
      after:'Link each new lesson/service landing page to the homepage hub and to 2 sibling pages with exact-match anchors. Adds 24 internal links across the cluster.'},
   ],
 };
-const ENGINES=[
-  {n:'Engine 1',t:'Audit',p:'Live search & authority pulls, graded into findings and a styled report.',st:'ready'},
-  {n:'Engine 2',t:'Content',p:'The AI writer drafts everything — long-form for pillars, standard for blogs/posts/pages, quick for snippets.',st:'ready'},
-  {n:'Engine 3',t:'Technical Fix',p:'Paste-ready schema, title/meta rewrites, internal-link plans.',st:'ready'},
-  {n:'Engine 4',t:'Reporting',p:'Monthly cadence report mapped to the plan deliverable checklist.',st:'ready'},
-];
+// (Engine cards render live per-client stats — see renderEngines().)
 
 // ── content engine model routing (Engine 2) ──
 // the AI writer. //SB: the generate-content Edge Function selects the
@@ -1405,8 +1446,11 @@ async function loadLiveAudit(){
     .eq('client_id', activeClient.id).order('run_at',{ascending:false}).limit(1).maybeSingle();
   if(!aud) return;  // no audit yet → placeholder state
   PK.audit=aud;
-  PK.grades={technical:aud.grade_technical, onpage:aud.grade_onpage, schema:aud.grade_schema, aeo:aud.grade_aeo, eeat:aud.grade_eeat, local:aud.grade_local};
+  PK.grades={technical:aud.grade_technical, onpage:aud.grade_onpage, schema:aud.grade_schema, aeo:aud.grade_aeo, eeat:aud.grade_eeat, local:aud.grade_local, performance:aud.grade_performance||null};
   PK.raw=aud.raw||{};
+  // v5 directive engine payloads (written by run-audit into raw; schema-safe)
+  PK.directive=PK.raw.directive||null;
+  PK.checklist=PK.raw.checklist||null;
   const num=v=> v==null?'—':Number(v).toLocaleString();
   PK.metrics=[
     {k:'Domain Rating',    v:aud.domain_rating??'—', s:'/100', d:'', dc:''},
@@ -1839,7 +1883,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=planLabel(c.tier)+' plan';
 
-  renderAccessPanel(); renderDataSources(); renderTradeArea(); renderScorecard(); renderInsights(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
+  renderAccessPanel(); renderDataSources(); renderTradeArea(); renderScorecard(); renderInsights(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
 }
@@ -2028,19 +2072,87 @@ function togglePlatform(k){
 const GRADE_C={A:'#1E6B33',B:'#4B9BD7',C:'#8A6D12',D:'#C0651E',F:'#C0392B'};
 const gradeColor=g=>GRADE_C[g]||'#9AA';
 const num0=v=>v==null?'—':Number(v).toLocaleString();
+const gradeOf=n=>n==null?null:(n>=90?'A':n>=78?'B':n>=65?'C':n>=50?'D':'F');
 function renderScorecard(){
   const el=document.getElementById('scorecard'); if(!el)return;
   if(OFFLINE||!PK.grades){ el.innerHTML=''; return; }
   const S=(PK.raw&&PK.raw.scores)||{};
-  const tiles=[['Technical',PK.grades.technical,S.techScore],['On-page',PK.grades.onpage,S.onpageScore],
+  const overall=S.auditScore??PK.audit?.score??null;
+  const perfG=PK.grades.performance||gradeOf(S.perfScore);
+  const tiles=[['Technical',PK.grades.technical,S.techScore]];
+  if(perfG!=null||S.perfScore!=null) tiles.push(['Performance',perfG,S.perfScore]);
+  tiles.push(['On-page',PK.grades.onpage,S.onpageScore],
     ['Schema',PK.grades.schema,S.schemaScore],['AEO',PK.grades.aeo,S.aeoScore],
-    ['E-E-A-T',PK.grades.eeat,S.eeatScore],['Local',PK.grades.local,S.localScore]];
-  el.innerHTML=tiles.map(([lab,g,sc])=>`
+    ['E-E-A-T',PK.grades.eeat,S.eeatScore],['Local',PK.grades.local,S.localScore]);
+  const overallTile=overall==null?'':`
+    <div class="sctile">
+      <div class="scgrade" style="color:${gradeColor(gradeOf(overall))}">${overall}</div>
+      <div class="sclab">Audit score</div>
+      <div class="scbar"><i style="width:${Math.max(0,Math.min(100,overall))}%;background:${gradeColor(gradeOf(overall))}"></i></div>
+    </div>`;
+  el.innerHTML=overallTile+tiles.map(([lab,g,sc])=>`
     <div class="sctile">
       <div class="scgrade" style="color:${gradeColor(g)}">${g||'—'}</div>
       <div class="sclab">${lab}</div>
       <div class="scbar"><i style="width:${Math.max(0,Math.min(100,sc||0))}%;background:${gradeColor(g)}"></i></div>
     </div>`).join('');
+}
+// ── Plan Directive: the tier-scoped work order the audit compiled ─────────────
+function renderDirective(){
+  const el=document.getElementById('directive'); if(!el)return;
+  const tag=document.getElementById('dir-tag');
+  if(OFFLINE||!PK.audit){ el.innerHTML=''; if(tag)tag.textContent='plan-scoped work order'; return; }
+  const d=PK.directive;
+  if(!d){ el.innerHTML=`<div class="dir-wrap"><div class="dir-head"><div class="dir-progress">
+      <div class="dir-sum">No directive on this audit yet — re-run <b>Generate package</b> to compile the plan-scoped work order (v5 audit).</div>
+    </div></div></div>`; if(tag)tag.textContent='needs re-audit'; return; }
+  const SEV_C={high:'#C0392B',medium:'#E67E22',low:'#4B9BD7',done:'#1E6B33'};
+  const items=d.items||[];
+  const open=items.filter(i=>i.status!=='done');
+  const inPlan=open.filter(i=>i.in_plan), upsell=open.filter(i=>!i.in_plan);
+  const done=items.length-open.length;
+  const delta=d.progress?d.progress.delta:null;
+  const row=i=>`<div class="dir-row ${i.status==='done'?'done':''}">
+    <span class="dir-dot" style="background:${SEV_C[i.severity]||'#9AA'}"></span>
+    <div class="dir-main">
+      <div class="dir-title">${esc(i.title)}${i.evidence?` <span class="ev">· ${esc(i.evidence)}</span>`:''}</div>
+      <div class="dir-act">${esc(i.action||'')}</div>
+    </div>
+    <div class="dir-tags"><span class="dir-tag">${esc(i.service||i.pillar||'')}</span>
+      ${i.in_plan?`<span class="dir-tag st-${i.status}">${i.status}</span>`
+                 :`<span class="dir-tag upsell">↑ ${esc(planLabel(i.unlock_tier))}</span>`}
+      <span class="dir-tag">+${i.points||1} pts</span></div></div>`;
+  const g=gradeOf(d.score||0);
+  el.innerHTML=`<div class="dir-wrap">
+    <div class="dir-head">
+      <div class="dir-score" style="color:${gradeColor(g)}">${d.score??'—'}<small> /100 · target ${d.target_score||90}+</small></div>
+      ${delta!=null?`<span class="dir-delta ${delta>=0?'up':'down'}">${delta>=0?'▲':'▼'} ${Math.abs(delta)} vs last audit</span>`:''}
+      <div class="dir-progress">
+        <div class="dir-pbar"><i style="width:${(d.progress&&d.progress.completion_pct)||0}%"></i></div>
+        <div class="dir-sum">${esc(d.summary||'')}</div>
+      </div>
+    </div>
+    <div class="dir-items">
+      ${inPlan.map(row).join('')||`<div class="dir-row"><div class="dir-main">
+        <div class="dir-title">All in-plan directive items are complete ✓</div>
+        <div class="dir-act">Re-run the audit to verify each check and lock in the score.</div></div></div>`}
+    </div>
+    ${upsell.length?`<div class="dir-upsell"><b>${upsell.length} more fixes</b> (~${upsell.reduce((a,i)=>a+(i.points||1),0)} audit points) are unlocked by a plan upgrade. ${esc(d.upgrade_pitch||'')}</div>`:''}
+  </div>`;
+  if(tag) tag.textContent=`${planLabel(d.tier)} · ${inPlan.length} open · ${done} done`;
+}
+// ── Audit checklist: every graded check, grouped by pillar ────────────────────
+function renderChecklist(){
+  const el=document.getElementById('checklist'); if(!el)return;
+  const cl=PK.checklist;
+  if(OFFLINE||!PK.audit||!cl||!cl.length){ el.innerHTML=''; return; }
+  const IC={pass:'✓',warn:'!',fail:'✕',na:'–'};
+  const LAB={technical:'Technical',performance:'Performance',onpage:'On-page',schema:'Schema',aeo:'AEO',eeat:'E-E-A-T',local:'Local'};
+  const pass=cl.filter(c=>c.status==='pass').length, warn=cl.filter(c=>c.status==='warn').length, fail=cl.filter(c=>c.status==='fail').length;
+  const groups=Object.keys(LAB).map(p=>{ const rows=cl.filter(c=>c.pillar===p); if(!rows.length) return '';
+    return `<div><div class="cl-pill">${LAB[p]}</div>${rows.map(c=>
+      `<div class="cl-item"><span class="cl-ic ${c.status}">${IC[c.status]||'–'}</span><span>${esc(c.label)}${c.evidence?` <span class="ev">— ${esc(c.evidence)}</span>`:''}</span></div>`).join('')}</div>`; }).join('');
+  el.innerHTML=`<details><summary>Audit checklist — ${pass} pass · ${warn} warn · ${fail} fail · ${cl.length} checks (the union of what third-party SEO auditors grade)</summary><div class="cl-groups">${groups}</div></details>`;
 }
 function renderInsights(){
   const el=document.getElementById('insights'); if(!el)return;
@@ -2412,9 +2524,12 @@ const FIX_LABEL={ title_tag:'Title tag', meta_description:'Meta description', h1
   heading:'Heading outline', image_alt:'Image alt text', page_copy:'Page copy',
   faq_schema:'FAQ + schema', local_business_schema:'LocalBusiness schema', org_schema:'Organization schema',
   person_schema:'Person schema', breadcrumb_schema:'Breadcrumb schema', aggregate_rating_schema:'Rating schema',
-  internal_link:'Internal links', gbp_post:'Profile post', schema_jsonld:'Schema', canonical:'Canonical' };
+  internal_link:'Internal links', gbp_post:'Profile post', schema_jsonld:'Schema', canonical:'Canonical',
+  robots_txt:'robots.txt', sitemap_xml:'XML sitemap', redirect_map:'301 redirect map',
+  security_headers:'Security headers', og_tags:'Social/OG tags', llms_txt:'llms.txt (AI)',
+  website_schema:'WebSite schema', favicon:'Favicon' };
 const FIX_STATUS={ suggested:'Suggested', generating:'Writing…', ready:'Ready to review',
-  edited:'Edited', pushed:'Pushed', dismissed:'Dismissed' };
+  edited:'Edited', pushed:'Pushed', verified:'Verified ✓', dismissed:'Dismissed' };
 function mapFix(r){
   return { id:r.id, kind:r.kind, label:FIX_LABEL[r.kind]||r.kind, target:(r.target_page||'').replace(/^https?:\/\/[^/]+/,'')||'/',
     before:r.before_text||'', after:r.after_text||'', schema:r.schema_jsonld||null, status:r.status||'suggested' };
@@ -2508,7 +2623,48 @@ function renderDeliverables(){
   });
   document.getElementById('deliv').innerHTML=h;
 }
-function renderEngines(){ document.getElementById('engines').innerHTML=ENGINES.map(e=>`<div class="eng"><div class="en">${e.n}</div><h4>${e.t}</h4><p>${e.p}</p><span class="st ${e.st}">${e.st==='ready'?'Ready':'Setup required'}</span></div>`).join(''); }
+// The four engine cards are live and clickable: each shows the engine's real
+// state for the OPEN CLIENT and jumps to (and highlights) its section.
+function renderEngines(){
+  const el=document.getElementById('engines'); if(!el) return;
+  const S=(PK.raw&&PK.raw.scores)||{};
+  const cl=PK.checklist||[];
+  const pass=cl.filter(c=>c.status==='pass').length, fail=cl.filter(c=>c.status==='fail').length;
+  const findings=(PK.severity||[]).reduce((a,s)=>a+(s.v||0),0);
+  const topics=PK.topics||[];
+  const drafted=topics.filter(t=>t.status==='drafted').length, approved=topics.filter(t=>t.status==='approved').length,
+        queued=topics.length-drafted-approved;
+  const fixes=PK.fixes||[];
+  const fReady=fixes.filter(f=>f.status==='ready'||f.status==='edited').length,
+        fPushed=fixes.filter(f=>f.status==='pushed').length,
+        fVerified=fixes.filter(f=>f.status==='verified').length,
+        fSuggested=fixes.filter(f=>f.status==='suggested').length;
+  const hasAudit=!!PK.audit;
+  const score=S.auditScore??(PK.audit&&PK.audit.score)??null;
+  const runDate=hasAudit&&PK.audit.run_at?new Date(PK.audit.run_at).toLocaleDateString():'';
+  const CARDS=[
+    { n:'Engine 1', t:'Audit', target:'scorecard',
+      p: hasAudit?`Score ${score??'—'}/100 · ${pass} checks pass, ${fail} fail · ${findings} findings for this client.`:'No audit for this client yet — run Generate package.',
+      st: hasAudit?'ready':'setup', lab: hasAudit?('Run '+runDate):'Not run' },
+    { n:'Engine 2', t:'Content', target:'queue',
+      p: topics.length?`${topics.length} piece${topics.length===1?'':'s'} this cycle · ${Math.max(0,queued)} queued · ${drafted} drafted · ${approved} approved. Click to review and approve.`:(hasAudit?'No topics queued this cycle — re-run Generate package (needs the package row).':'Queues automatically with the audit.'),
+      st: topics.length?'ready':'setup', lab: topics.length?`${drafted+approved}/${topics.length} written`:'Waiting' },
+    { n:'Engine 3', t:'Technical Fix', target:'fixes',
+      p: fixes.length?`${fixes.length} staged · ${fSuggested} suggested · ${fReady} ready · ${fPushed} pushed · ${fVerified} verified.`:(hasAudit?'No fixes staged for this client.':'Stages automatically with the audit.'),
+      st: fixes.length?'ready':'setup', lab: fixes.length?`${fPushed+fVerified} live`:'Waiting' },
+    { n:'Engine 4', t:'Reporting', target:'reportbar',
+      p: PK.report_html?`Client progress report built${PK.report_meta&&PK.report_meta.built_at?' '+new Date(PK.report_meta.built_at).toLocaleDateString():''} — open or print from the report bar.`:'Builds automatically after the audit + drafting finish.',
+      st: PK.report_html?'ready':'setup', lab: PK.report_html?'Built':'Not built' },
+  ];
+  el.innerHTML=CARDS.map(e=>`<div class="eng click" onclick="jumpToEngine('${e.target}')" title="View ${e.t} for this client">
+    <div class="en">${e.n}</div><h4>${e.t}</h4><p>${e.p}</p>
+    <span class="st ${e.st}">${e.lab}</span><span class="eng-go">View →</span></div>`).join('');
+}
+function jumpToEngine(id){
+  const el=document.getElementById(id); if(!el) return;
+  el.scrollIntoView({behavior:'smooth', block:'start'});
+  el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'), 1600);
+}
 
 // ── white-labeled report (the client-facing artifact) ──
 function renderReportWL(){

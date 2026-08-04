@@ -23,7 +23,7 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const MANUAL_KINDS = new Set(["h1", "heading", "page_copy", "internal_link", "image_alt"]);
-const SCHEMA_KINDS = new Set(["faq_schema", "local_business_schema", "org_schema", "person_schema", "breadcrumb_schema", "aggregate_rating_schema", "schema_jsonld"]);
+const SCHEMA_KINDS = new Set(["faq_schema", "local_business_schema", "org_schema", "person_schema", "breadcrumb_schema", "aggregate_rating_schema", "website_schema", "schema_jsonld"]);
 // content kinds that map to a WordPress page vs a blog post
 const PAGE_KINDS = new Set(["landing", "service", "pillar"]);
 
