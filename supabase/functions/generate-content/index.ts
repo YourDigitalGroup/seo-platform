@@ -21,7 +21,7 @@ const MODEL_API: Record<string, string> = {
 };
 // output budget by content kind (keeps short items cheap)
 const MAX_TOKENS: Record<string, number> = {
-  blog: 4000, pillar: 6000, landing: 2500, service: 2500, gbp_post: 500, faq: 2000,
+  blog: 4500, pillar: 6500, landing: 3500, service: 3500, gbp_post: 500, faq: 2000,
 };
 
 const CORS = {
@@ -32,23 +32,43 @@ const CORS = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
-// Build the writing brief for a given topic kind
-function buildPrompt(kind: string, title: string, keyword: string, biz: string, market: string) {
+// Build the writing brief for a given topic kind.
+// v2: HARD RULES from the delivery-QA critique — fact provenance is a legal
+// constraint (FTC fake-review rule), every piece ships publish-complete, and
+// geo pages must be genuinely page-specific (anti-doorway).
+function buildPrompt(kind: string, title: string, keyword: string, biz: string, market: string, town: string | null) {
   const loc = market ? ` serving ${market}` : "";
   const base =
-    `You are an expert SEO and Answer Engine Optimization (AEO) copywriter writing for "${biz}"${loc}. ` +
-    `Write in clear, natural, trustworthy prose. Open with a direct, declarative answer paragraph that an AI ` +
-    `assistant could quote verbatim. Use the target keyword naturally — never stuff it. Output clean Markdown ` +
-    `with a single H1 and logical H2/H3 subheads. Do not include commentary, notes, or a preamble — output only the content.`;
+    `You are an expert SEO and Answer Engine Optimization (AEO) copywriter writing for "${biz}"${loc}.\n\n` +
+    `HARD RULES — violating any of these makes the output unusable:\n` +
+    `1. FACT PROVENANCE (legal constraint, not style). The ONLY facts you know about this business are its name, its market, and the service implied by the keyword. NEVER invent:\n` +
+    `   - testimonials, reviews, customer quotes or "what our clients say" content of ANY kind — the FTC prohibits fabricated reviews;\n` +
+    `   - certifications, licenses, awards, partnerships or vendor relationships;\n` +
+    `   - years in business, client counts, team size, or industries served;\n` +
+    `   - response-time commitments, SLAs, uptime figures, or guarantees;\n` +
+    `   - pricing, contract terms, or "no lock-in" style claims;\n` +
+    `   - named tools/platforms, or capabilities like "24/7 monitoring".\n` +
+    `   Where such a claim would strengthen the page, write the literal token [CLIENT TO CONFIRM: <specific question>] instead — a human resolves it before publish.\n` +
+    `   Never write bracketed placeholders for contact details like [phone number]; write "call us or use our contact form" instead.\n` +
+    `2. ANSWER-FIRST: open with a 40–60 word direct, self-contained answer an AI assistant could quote in isolation. Name the business and its city in it.\n` +
+    `3. NO AGENCY BOILERPLATE: never use "we're your neighbors", "not a distant call center", "no jargon, no runaround", "enterprise-grade", "small issues never become major outages", or similar stock phrases.\n` +
+    `4. Use the target keyword naturally — never stuff it. Clean Markdown, ONE H1, logical H2/H3s. No commentary or preamble.\n\n` +
+    `DELIVERABLE HEADER — begin the output with exactly this block, one line each, then a blank line, then the content:\n` +
+    `SLUG: /<lowercase-hyphenated-url-slug>\n` +
+    `TITLE TAG: <50-60 char title tag>\n` +
+    `META DESCRIPTION: <140-155 char meta description with a call to action>\n` +
+    `H1: <the H1, worded differently from the title tag>\n`;
+  const faqRule = (n: number, geoNote = "") =>
+    `End with an FAQ section of ${n} question/answer pairs.${geoNote} Phrase questions the way a customer speaks (vary the openers — not all "What is…"). The first 40–60 words of each answer must be a complete, direct, standalone answer; never answer with "contact us to learn more".`;
   const kindBrief: Record<string, string> = {
-    blog:    `Write a 600–800 word blog post titled "${title}" targeting the keyword "${keyword}". Include a short FAQ of 2–3 questions at the end.`,
-    pillar:  `Write a comprehensive cornerstone/pillar article titled "${title}" targeting "${keyword}". 1200–1600 words, scannable, authoritative, with a clear FAQ section formatted for FAQPage schema.`,
-    landing: `Write a conversion-focused landing page titled "${title}" for the service/topic "${keyword}". Include a hero value statement, benefit sections, trust signals, and a clear call to action.`,
-    service: `Write a service page titled "${title}" for "${keyword}". 600+ words, an H1 with the exact keyword, benefit-led sections, local relevance, and a booking/contact CTA.`,
-    gbp_post:`Write a short Google Business Profile post (max 1500 characters) about "${title}". Friendly, local, with one clear call to action. No headings.`,
-    faq:     `Write an FAQ set of 5–7 question/answer pairs about "${keyword}" for the page "${title}". Each answer 2–4 sentences, declarative, quotable. Format as ## question then answer.`,
+    blog:    `Write a 600–800 word blog post titled "${title}" targeting the keyword "${keyword}". ${faqRule(3)}`,
+    pillar:  `Write a comprehensive cornerstone/pillar article titled "${title}" targeting "${keyword}". 1200–1600 words, definition-first opening, question-based H2s, and at least one Markdown comparison table where the topic supports it (e.g. options, models, tiers). ${faqRule(6)}`,
+    landing: `Write a conversion-focused landing page titled "${title}" for "${keyword}"${town ? `, specifically for ${town}` : ""}. ANTI-DOORWAY REQUIREMENTS: this page must be genuinely specific to its location — reference the town by name inside headings and body, speak to its proximity to the business's base only in safe generic terms ("a short drive away", never invented minutes), and DO NOT use a templated "Why [City] Businesses Choose Us" skeleton — structure this page differently from any sibling city page. Include benefit sections and one clear call to action. ${faqRule(5, town ? ` The FAQs must be ${town}-specific (e.g. service-area or response questions a ${town} customer would ask), not generic definitions.` : "")}`,
+    service: `Write a service page titled "${title}" for "${keyword}". 600+ words, H1 containing the keyword naturally, benefit-led sections with substance (what the service includes, who it's for, how engagement works), and a contact CTA. No geo-templating. Include a Markdown comparison table if the topic has natural options to compare. ${faqRule(5)}`,
+    gbp_post:`Write ONE Google Business Profile post about "${title}". STRICT SHAPE: 100–300 words of plain text, no headings, no lists, no markdown syntax, exactly one call to action. Never produce an article — a GBP post is a short update. Skip the DELIVERABLE HEADER block for this kind.`,
+    faq:     `Write an FAQ set of 5–7 question/answer pairs about "${keyword}" for the page "${title}". Each answer: first 40–60 words fully answer the question standalone, then at most 2 more sentences. Format as ## question then the answer.`,
   };
-  return `${base}\n\n${kindBrief[kind] ?? kindBrief.blog}`;
+  return `${base}\n${kindBrief[kind] ?? kindBrief.blog}`;
 }
 
 Deno.serve(async (req) => {
@@ -71,7 +91,7 @@ Deno.serve(async (req) => {
     // 1. Load the topic + business context (package -> client)
     const { data: topic, error: tErr } = await supa
       .from("content_topics")
-      .select("id, package_id, title, target_keyword, kind, model, packages(client_id, clients(name, url, market))")
+      .select("id, package_id, title, target_keyword, kind, model, location, packages(client_id, clients(name, url, market))")
       .eq("id", topic_id).single();
     if (tErr || !topic) return json({ error: "topic not found", detail: tErr?.message }, 404);
 
@@ -86,7 +106,7 @@ Deno.serve(async (req) => {
     await supa.from("content_topics").update({ status: "drafting" }).eq("id", topic_id);
 
     // 2. Build the prompt (rewrite-aware)
-    let prompt = buildPrompt(topic.kind, topic.title, keyword, biz, market);
+    let prompt = buildPrompt(topic.kind, topic.title, keyword, biz, market, (topic as any).location || null);
     const { data: existing } = await supa
       .from("content_drafts").select("id, revision, body")
       .eq("topic_id", topic_id).order("revision", { ascending: false }).limit(1).maybeSingle();

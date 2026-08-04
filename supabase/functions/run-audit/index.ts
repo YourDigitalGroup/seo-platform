@@ -87,9 +87,24 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 const grade = (n: number) => n >= 90 ? "A" : n >= 78 ? "B" : n >= 65 ? "C" : n >= 50 ? "D" : "F";
 const rootOf = (d: string) => String(d || "").replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
-// Keywords like "ia" (a bare state code or 1-3 char fragment) are junk targets —
-// they leak in from city parsing / keyword APIs and produce off-topic content.
-const junkKw = (k: unknown) => { const t = String(k || "").trim(); return t.length < 4 || /^[a-z]{2}\.?$/i.test(t); };
+// ── KEYWORD VALIDATION GATE (code, not prompt — a filter can't be talked out
+//    of rejecting "ia"). junkKw() screens research pools; validTarget() is the
+//    stricter gate a keyword must pass before ANY content is generated for it.
+const US_STATES = new Set(("al ak az ar ca co ct de fl ga hi id il in ia ks ky la me md ma mi mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt va wa wv wi wy dc " +
+  "alabama alaska arizona arkansas california colorado connecticut delaware florida georgia hawaii idaho illinois indiana iowa kansas kentucky louisiana maine maryland massachusetts michigan minnesota mississippi missouri montana nebraska nevada newhampshire newjersey newmexico newyork northcarolina northdakota ohio oklahoma oregon pennsylvania rhodeisland southcarolina southdakota tennessee texas utah vermont virginia washington westvirginia wisconsin wyoming").split(" "));
+const junkKw = (k: unknown) => { const t = String(k || "").trim().toLowerCase(); return t.length < 4 || /^[a-z]{2}\.?$/.test(t) || US_STATES.has(t.replace(/\s+/g, "")); };
+// Reject as a CONTENT TARGET: junk fragments, bare locations, single tokens,
+// ZIP codes, and near-me phrases (near-me intent is served by GBP, not pages).
+const targetRejectReason = (k: unknown, geos: string[] = []): string | null => {
+  const t = String(k || "").trim().toLowerCase();
+  if (junkKw(t)) return "junk fragment / bare state";
+  if (/^\d{5}(-\d{4})?$/.test(t)) return "bare ZIP code";
+  if (t.split(/\s+/).length < 2) return "single word — too ambiguous to target";
+  if (/\bnear me\b/.test(t)) return "near-me query — served by GBP, not an on-page target";
+  const bare = t.replace(/,?\s*[a-z]{2}$/, "").trim();
+  if (geos.some((g) => { const town = String(g).split(",")[0].trim().toLowerCase(); return town && (bare === town || t === town); })) return "bare location name";
+  return null;
+};
 
 // ── HTML parsing helpers (fallback page fetch; no DOM in Deno) ────────────────
 function getTitle(html: string){ const m=html.match(/<title[^>]*>([\s\S]*?)<\/title>/i); return m?m[1].replace(/\s+/g," ").trim():""; }
@@ -551,6 +566,7 @@ Deno.serve(async (req) => {
     check("custom_404", "technical", 1, "Unknown URLs return a real 404", B(notFoundOk), notFoundOk === false ? "nonexistent URL returned non-404 (soft 404)" : "", null, "Serve a 404 status (custom 404 template) for missing pages.", "Domain Optimization (404 fixes, 301 redirects)");
     check("home_indexable", "technical", 3, "Homepage is indexable", homeHtmlRaw ? B(!homeNoindex) : "na", homeNoindex ? "noindex on the homepage" : "", null, "Remove the noindex directive from the homepage.", "Site Health Scan");
     check("crawl_health", "technical", 3, "Crawl health (full-site)", crawlUsed && healthScore != null ? (healthScore >= 90 ? "pass" : healthScore >= 75 ? "warn" : "fail") : "na", healthScore != null ? `health ${healthScore}; ${crawlTotals?.errors ?? "?"} pages with errors` : "", null, "Resolve the crawl-issue list until site health is 90+.", "Site Health Scan");
+    check("crawl_coverage", "technical", 2, "Full-site crawl coverage", crawlUsed ? "pass" : "fail", crawlUsed ? "" : `no crawl configured — only ${okPages.length} page(s) sampled; site-wide claims are capped`, null, "Configure a crawl project so every page is audited, not a sample.", "Site Health Scan");
     check("mixed_content", "technical", 2, "No mixed content on HTTPS pages", mixedContent == null ? "na" : B(mixedContent === 0), mixedContent ? `${mixedContent} http:// resources embedded` : "", null, "Serve every script/image/stylesheet over https://.", "Site Health Scan");
     check("security_headers", "technical", 1, "Security headers set", secHeaders == null ? "na" : (secMissing.length === 0 ? "pass" : secMissing.length <= 2 ? "warn" : "fail"), secMissing.length ? `missing: ${secMissing.join(", ")}` : "", "security_headers", "Add HSTS, X-Content-Type-Options, frame-ancestors and Referrer-Policy headers.", "Site Health Scan");
     check("viewport", "technical", 2, "Mobile viewport tag", B(homePage?.ok ? !!homePage.viewport : null), "", null, "Add a responsive viewport meta tag.", "Core SEO Monitoring");
@@ -623,7 +639,10 @@ Deno.serve(async (req) => {
       const earned = rows.reduce((a: number, c: any) => a + (c.status === "pass" ? c.weight : c.status === "warn" ? c.weight / 2 : 0), 0);
       return Math.round((earned / poss) * 100);
     };
-    const techScore = pillarScore("technical") ?? 0;
+    // Integrity rule: a one-page sample cannot support an A-grade technical
+    // claim. Without a crawl the technical score is capped and says why.
+    let techScore = pillarScore("technical") ?? 0;
+    if (!crawlUsed && techScore > 79) { techScore = 79; note.push("Technical score capped at 79 — no crawl configured, findings are sampled."); }
     const perfScore = pillarScore("performance");
     const onpageScore = pillarScore("onpage") ?? 0;
     const schemaScore = pillarScore("schema") ?? 0;
@@ -704,6 +723,14 @@ Deno.serve(async (req) => {
 
     // AUTHORITY / KEYWORDS / GSC
     if (referring_domains != null && referring_domains < 50) add("medium","audit",`Thin backlink profile — ${referring_domains} referring domains`,"Earn local citations and regional links.","Raise authority to compete for harder terms.");
+    // BACKLINK INTEGRITY — a rock-bottom DR alongside hundreds of referring
+    // domains is the signature of a toxic/spam profile or previously abused
+    // domain. Material finding for the whole campaign; requires human review.
+    if (domain_rating != null && referring_domains != null && domain_rating <= 5 && referring_domains >= 100) {
+      add("critical","audit",`Backlink integrity mismatch — DR ${domain_rating} with ${referring_domains} referring domains`,
+        "Run a backlink quality/toxicity review (and disavow if warranted) BEFORE any link building; check domain history for prior abuse.",
+        "A toxic link profile suppresses every other effort — this needs human review first.");
+    }
     if (oppKws.length) add("high","content",`${oppKws.length} keywords rank in positions 4–20 (quick wins)`,"Strengthen on-page targeting + internal links to these near-miss pages.","Push page-2 terms into the top results.");
 
     // TRADE-AREA OPPORTUNITY (top 3) — the high-value local terms the client doesn't own or ranks poorly for.
@@ -759,7 +786,7 @@ Deno.serve(async (req) => {
       `${root} grades ${grades.grade_aeo} AEO, ${grades.grade_local} local, ${grades.grade_schema} schema, ${grades.grade_onpage} on-page, ${grades.grade_technical} technical${grade_performance?`, ${grade_performance} performance`:""}, ${grades.grade_eeat} E-E-A-T. ` +
       `Ranks for ${org_keywords ?? "—"} keywords (DR ${domain_rating ?? "—"}, ${referring_domains ?? "—"} ref domains). ${aeoLine} ` +
       `${crawlUsed?`Full-site crawl: ${pages.length} pages, health ${healthScore ?? "—"}.`:"Sampled pages only (no crawl configured)."} ` +
-      `Weakest: ${worst[0][0]}. Biggest lever: ${oppKws.length?`${oppKws.length} keywords in positions 4–20`:(hasFAQ?"AI-citation content":"FAQ/answer content for AEO")}.`;
+      `Weakest: ${worst[0][0]}. Biggest lever: ${oppKws.length?`${oppKws.length} keywords in positions 4–20 (${oppKws.slice(0,3).map((k:any)=>`“${k.keyword}” #${k.best_position}`).join(", ")})`:(hasFAQ?"AI-citation content":"FAQ/answer content for AEO")}.`;
 
     // ── 13. WRITE ──────────────────────────────────────────────────────────────
     // grade_performance/score need directive_engine.sql; if the live DB is
@@ -898,6 +925,7 @@ Deno.serve(async (req) => {
     let cycleMonth = 0;
     let campaignDriven = false;
     const topicsCreated: { kind: string; keyword: string; town: string | null }[] = [];
+    const rejectedKw: { keyword: string; reason: string }[] = [];
     if (package_id) {
       const titleCase = (s: string) => String(s || "").replace(/\b\w/g, (c) => c.toUpperCase());
       const seenT = new Set<string>();
@@ -909,8 +937,15 @@ Deno.serve(async (req) => {
       const townPages: string[] = [];
       services.slice(0, 3).forEach((svc: any) => secondaryTowns.slice(0, 3).forEach((t: any) => townPages.push(`${svc} ${t}`)));
       const localServices = services.slice(0, 4).map((svc: any) => primaryCity ? `${svc} ${primaryCity}` : svc);
+      // Every candidate must clear the validation gate before content is
+      // generated for it; rejections are logged, never silently dropped.
       const nextFrom = (...pools: string[][]): string | null => {
-        for (const pool of pools) for (const kw of pool) { const k = (kw || "").toLowerCase(); if (kw && !junkKw(kw) && !seenT.has(k)) { seenT.add(k); return kw; } }
+        for (const pool of pools) for (const kw of pool) {
+          const k = (kw || "").toLowerCase(); if (!kw || seenT.has(k)) continue;
+          const why = targetRejectReason(kw, geoList);
+          if (why) { seenT.add(k); rejectedKw.push({ keyword: kw, reason: why }); continue; }
+          seenT.add(k); return kw;
+        }
         return null;
       };
       // Re-running the audit in the same cycle must not re-queue topics the
@@ -966,7 +1001,10 @@ Deno.serve(async (req) => {
         const topicRows: any[] = [];
         const TOPIC_CAP = 8;
         const pushTopic = (keyword: string, kind: string, model: string, source: string, town: string | null = null) => {
-          const key = (keyword || "").toLowerCase(); if (!keyword || junkKw(keyword) || seenT.has(key) || topicRows.length >= TOPIC_CAP) return; seenT.add(key);
+          const key = (keyword || "").toLowerCase(); if (!keyword || seenT.has(key) || topicRows.length >= TOPIC_CAP) return;
+          const why = targetRejectReason(keyword, geoList);
+          if (why) { seenT.add(key); rejectedKw.push({ keyword, reason: why }); return; }
+          seenT.add(key);
           topicRows.push({ package_id, title: titleCase(keyword), target_keyword: keyword, kind, model, status: "queued", source, location: town });
         };
         opportunities.slice(0, 2).forEach((o: any) => pushTopic(o.keyword, "service", "sonnet-4-6", "opportunity", primaryCity || null));
@@ -1016,8 +1054,13 @@ Deno.serve(async (req) => {
     }
     const stagedKinds = new Set(plan.map((f: any) => f.kind));
     const items: any[] = [];
+    // One directive row per remediation: several checks can share a fix kind
+    // (e.g. LocalBusiness schema appears under both schema and local pillars) —
+    // count the work once, not once per pillar.
+    const seenFixKind = new Set<string>();
     CL.forEach((c: any) => {
       if (c.status === "na") return;
+      if (c.fix_kind) { if (seenFixKind.has(c.fix_kind)) return; seenFixKind.add(c.fix_kind); }
       const in_plan = tierServices.has(c.service);
       items.push({
         check_id: c.id, pillar: c.pillar, title: c.label, action: c.action, engine: c.engine, fix_kind: c.fix_kind,
@@ -1073,7 +1116,7 @@ Deno.serve(async (req) => {
       progress: { ...progress, completion_pct: items.length ? Math.round(100 * items.filter((i) => i.status === "done").length / items.length) : 0 },
       items,
       upgrade_pitch: upsell.length ? `Upgrading unlocks ${upsell.length} more fixes worth ~${upsell.reduce((a, i) => a + i.points, 0)} audit points.` : null,
-      summary: `Score ${auditScore}/100 (target ${90}+). ${open.filter((i) => i.in_plan).length} in-plan actions open, ${upsell.length} unlocked by upgrade. Complete the in-plan list and re-audit: every item maps 1:1 to a graded check, so the score converges by construction.`,
+      summary: `Score ${auditScore}/100 (target ${90}+). ${open.filter((i) => i.in_plan).length} in-plan actions open, ${upsell.length} available on a higher plan. The score measures completion of the graded checklist; real-world results — rankings, traffic, and AI citations — are tracked against the baseline in the monthly report.`,
     };
     if (package_id) {
       const { error: dErr } = await supa.from("packages").update({ directive }).eq("id", package_id);
@@ -1083,8 +1126,10 @@ Deno.serve(async (req) => {
       const { error: kErr } = await supa.from("audit_checks").insert(CL.map((c: any) => ({ audit_id, check_id: c.id, pillar: c.pillar, label: c.label, status: c.status, weight: c.weight, evidence: c.evidence || null, fix_kind: c.fix_kind })));
       if (kErr) errors.push(`audit_checks: ${kErr.message} (run directive_engine.sql)`);
     }
+    // Keyword-gate transparency: rejections are reported, never silent.
+    if (rejectedKw.length) note.push(`Keyword gate rejected ${rejectedKw.length}: ${rejectedKw.slice(0, 6).map((r) => `“${r.keyword}” (${r.reason})`).join("; ")}${rejectedKw.length > 6 ? " …" : ""}`);
     // Keep the directive readable even when packages.directive doesn't exist yet.
-    await supa.from("audits").update({ raw: { ...auditRow.raw, directive } }).eq("id", audit_id);
+    await supa.from("audits").update({ raw: { ...auditRow.raw, directive, keyword_gate: rejectedKw } }).eq("id", audit_id);
 
     return json({ ok: true, audit_id, package_id, cycle: cycleMonth, campaign_driven: campaignDriven, grades, grade_performance,
       score: auditScore,

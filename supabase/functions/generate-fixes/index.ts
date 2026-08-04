@@ -78,6 +78,15 @@ Deno.serve(async (req) => {
       { auth: { persistSession: false } },
     );
 
+    // Fact-provenance wall applied to EVERY AI-written artifact (legal
+    // constraint — the FTC prohibits fabricated reviews/testimonials, and the
+    // model knows nothing about this business beyond name/city/keyword).
+    const PROVENANCE =
+      "HARD RULE: you know NOTHING about this business except its name, city and the keyword. " +
+      "Never invent testimonials/reviews/quotes, certifications, awards, years in business, client counts, " +
+      "SLAs or response-time commitments, pricing/contract claims, named tools, or capabilities like '24/7 monitoring'. " +
+      "If such a claim would help, write the token [CLIENT TO CONFIRM: <question>] instead. " +
+      "Never output bracketed contact placeholders like [phone number] — say 'call us or use our contact form'. ";
     // Call the AI writer once; return plain text.
     const writeAI = async (model: string, system: string, user: string, maxTokens = 700): Promise<string> => {
       if (!AI_KEY) throw new Error("AI writer key is not set");
@@ -140,7 +149,7 @@ Deno.serve(async (req) => {
           // ── AI copy kinds ─────────────────────────────────────────────────────
           const model = MODEL_FOR[kind] || MODEL_FOR._default; usedModel = model;
           const { system, user, max } = promptFor(kind, { name, city, kw, page, before: fix.before_text || "", instruction });
-          after_text = await writeAI(model, system, user, max);
+          after_text = await writeAI(model, PROVENANCE + system, user, max);
           if (kind === "faq_schema") schema_jsonld = faqToJsonLd(after_text);
         }
 
@@ -191,7 +200,7 @@ function promptFor(kind: string, a: { name: string; city: string; kw: string; pa
       return { max: 600, system: "You produce an internal-linking plan: for each suggested anchor text, give the source page idea and target page. Output a concise list.",
         user: `Business: ${a.name}${loc}. Keyword theme: "${a.kw}". Suggest 5 internal links that strengthen topical relevance and funnel toward conversion pages.${tail}` };
     case "gbp_post":
-      return { max: 350, system: "You write Google Business Profile posts: 1 short paragraph (under 1500 chars), engaging, with a clear CTA. No hashtags. Output only the post.",
+      return { max: 350, system: "You write Google Business Profile posts. STRICT SHAPE: 100-300 words of plain text, no headings, no lists, no markdown, exactly one call to action. Never an article. Output only the post.",
         user: `Business: ${a.name}${loc}. Theme/keyword: "${a.kw}". Write one Business Profile post for this month.${tail}` };
     case "llms_txt":
       return { max: 900, system: "You write llms.txt files — the markdown file AI assistants read to understand a website. Format: '# <Business Name>' heading, one-paragraph plain-language summary, then '## Services' and '## Key Pages' sections with markdown links. Factual, declarative, no marketing fluff. Output only the file content.",
@@ -210,9 +219,14 @@ function buildSchema(kind: string, a: { name: string; city: string; page: string
   const origin = (() => { try { return new URL(a.page).origin; } catch { return a.page; } })();
   switch (kind) {
     case "local_business_schema":
-      return { "@context": "https://schema.org", "@type": "LocalBusiness", name: a.name, url: origin,
+      // Stable @id so Service/blog schema on other pages can reference this
+      // entity instead of re-declaring it.
+      return { "@context": "https://schema.org", "@type": "LocalBusiness", "@id": `${origin}/#business`, name: a.name, url: origin,
         address: { "@type": "PostalAddress", addressLocality: a.city || "[CITY]", addressRegion: "[STATE]", postalCode: "[ZIP]", streetAddress: "[STREET]" },
-        telephone: "[PHONE]", areaServed: a.city || "[CITY]", image: `${origin}/[IMAGE]` };
+        geo: { "@type": "GeoCoordinates", latitude: "[LAT]", longitude: "[LNG]" },
+        openingHours: "[e.g. Mo-Fr 08:00-17:00]",
+        telephone: "[PHONE]", areaServed: a.city || "[CITY]", image: `${origin}/[IMAGE]`,
+        sameAs: ["[GBP_URL]", "[FACEBOOK_URL]", "[LINKEDIN_URL]"] };
     case "org_schema":
       return { "@context": "https://schema.org", "@type": "Organization", name: a.name, url: origin,
         logo: `${origin}/[LOGO]`, sameAs: ["[FACEBOOK_URL]", "[INSTAGRAM_URL]", "[LINKEDIN_URL]"] };

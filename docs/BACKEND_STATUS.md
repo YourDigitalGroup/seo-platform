@@ -4,6 +4,38 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-04 — V2.0.0 hardening (delivery-QA critique implemented)
+
+Code gates, not prompt requests (a filter can't be talked out of rejecting
+"ia"). Redeploy `run-audit`, `generate-content`, `generate-fixes`; re-zip the
+connector (v1.2.1).
+
+- **Keyword validation gate** (run-audit): rejects bare state codes/names,
+  ZIPs, single-word/near-me/bare-town targets before any content is
+  generated; every rejection is logged to `audits.raw.keyword_gate` + notes.
+- **Fact provenance** (generate-content + generate-fixes): hard prompt wall —
+  no testimonials/reviews ever (FTC rule), no invented certifications, years,
+  SLAs, tools, pricing, or "24/7" claims; unknown facts become
+  `[CLIENT TO CONFIRM: …]` tokens; no `[phone number]`-style placeholders.
+- **Publish-complete content**: every draft opens with SLUG / TITLE TAG /
+  META DESCRIPTION / H1; FAQ blocks (40–60-word standalone answers) required
+  per kind; geo landings must be town-specific (anti-doorway) — no shared H2
+  skeletons; GBP posts locked to 100–300 words plain text.
+- **Console QA gate** (V2.0.0): drafts with unresolved CONFIRM tokens,
+  placeholders, or testimonial patterns cannot be approved; deploy-file
+  content items carry parsed slug/seo_title/seo_description + a `qa` array;
+  campaign doc gains an executive summary, status key, content summary table
+  with full drafts moved to Appendix A, and a red INTERNAL REVIEW banner when
+  QA issues exist. Draft save/approve now persist to content_drafts.
+- **Audit integrity** (run-audit): technical score capped at 79 without a
+  crawl (+ new crawl_coverage check), DR-vs-referring-domains mismatch flagged
+  as a critical toxic-backlink finding, directive rows deduped by fix kind,
+  "biggest lever" names its keywords, honest directive summary (checklist
+  score ≠ visibility; baseline-tracked outcomes in the report).
+- Connector v1.2.1: content items apply `slug`, `seo_title`,
+  `seo_description`; LocalBusiness scaffold gains stable `@id`, geo, hours,
+  sameAs.
+
 ## 2026-08-04 — One-file deploy package (V1.7.0, connector v1.1.0)
 
 - `index.html` V1.7.0: **⬇ Deploy file (.json)** button in the package hero

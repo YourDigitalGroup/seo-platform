@@ -80,9 +80,14 @@ the agency uploads ONE file regardless of which CMS the client runs.
   //    post_type "page" vs "post" → map to Fourge's equivalents.
   "content": [
     { "external_id": "uuid", "title": "…", "body_html": "<h2>…</h2><p>…</p>",
+      "slug": "/network-support-cedar-rapids",      // may be null on older exports
+      "seo_title": "50-60 char title tag",           // may be null
+      "seo_description": "140-155 char meta",        // may be null
       "post_type": "post", "kind": "blog|landing|service|pillar|faq",
       "focus_keyword": "…", "location": "Town, ST", "approved": true,
-      "status": "schedule", "schedule": "2026-08-11T09:00:00.000Z" }
+      "status": "schedule", "schedule": "2026-08-11T09:00:00.000Z",
+      "qa": ["unresolved [CLIENT TO CONFIRM] …"]     // non-empty = needs human review; refuse to publish (create as draft) until empty
+    }
   ],
 
   // 8) Things a human must do (GBP posts, server-level items, directive
