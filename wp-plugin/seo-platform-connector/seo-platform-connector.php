@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: 44i Digital
  * License: GPL-2.0+
  */
@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) exit;
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.2.0');
+define('SEOP_VERSION', '1.2.1');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -143,6 +143,7 @@ function seop_upsert_content($p) {
         'post_title' => $title, 'post_content' => $content, 'post_excerpt' => $excerpt,
         'post_status' => $status, 'post_type' => $type,
     ];
+    if (!empty($p['slug'])) $data['post_name'] = sanitize_title($p['slug']);
     if ($status === 'future') {
         $gmt = isset($p['schedule']) ? strtotime($p['schedule']) : 0;
         if (!$gmt || $gmt <= time()) { $gmt = time() + 300; } // past date → 5 min from now
@@ -344,7 +345,8 @@ function seop_apply_package($pkg) {
             'title' => $cItem['title'] ?? '', 'content' => $cItem['body_html'] ?? '',
             'post_type' => $cItem['post_type'] ?? 'post', 'status' => $status,
             'schedule' => $cItem['schedule'] ?? null, 'external_id' => $cItem['external_id'] ?? '',
-            'focus_keyword' => $cItem['focus_keyword'] ?? '',
+            'focus_keyword' => $cItem['focus_keyword'] ?? '', 'slug' => $cItem['slug'] ?? '',
+            'seo_title' => $cItem['seo_title'] ?? '', 'seo_description' => $cItem['seo_description'] ?? '',
         ]);
         if (is_wp_error($res)) $skip('Content "' . ($cItem['title'] ?? '?') . '"', $res->get_error_message());
         else { $status === 'future' ? $scheduled++ : $drafted++; }

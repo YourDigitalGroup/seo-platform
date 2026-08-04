@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.9.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V2.0.0</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.9.0</span>
+        <span>44i, Inc. · Internal Ops Console · V2.0.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.9.0</span>
+        <span>44i, Inc. · Internal Ops Console · V2.0.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -882,7 +882,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V1.9.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V2.0.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1996,13 +1996,33 @@ function saveDraft(){
   if(_draftIdx==null||!canEditContent()) return;
   const t=PK.topics[_draftIdx]; t.body=document.getElementById('dm-body').value;
   t.edited=true; if(t.status==='queued') t.status='drafted';
-  // //SB: sb.from('content_drafts').update({body:t.body, edited_by:me.id, updated_at:now()}).eq(...)
+  if(!OFFLINE&&t._id){ sb.from('content_drafts').update({body:t.body, updated_at:new Date().toISOString()}).eq('topic_id', t._id).then(()=>{}); }
   renderQueue(); showToast('Draft saved — your edits overwrite the generated copy');
+}
+// ── QA gate (code, not prompt): a draft cannot be APPROVED while it still
+//    contains unresolved facts or forbidden content. This is what stops
+//    invented testimonials and [placeholders] reaching a client site.
+const QA_STOCK=['we’re your neighbors','we are your neighbors','not a distant call center','no jargon, no runaround','enterprise-grade','small issues never become major outages'];
+function qaScan(text){
+  const t=String(text||''), issues=[];
+  const confirms=(t.match(/\[CLIENT TO CONFIRM[^\]]*\]/gi)||[]);
+  if(confirms.length) issues.push(`${confirms.length} unresolved [CLIENT TO CONFIRM] item${confirms.length>1?'s':''} — fill with real facts or delete the claim`);
+  const ph=(t.match(/\[(phone|address|email|city|zip|state|street|image|logo|url)[^\]]*\]/gi)||[]);
+  if(ph.length) issues.push(`${ph.length} unfilled placeholder${ph.length>1?'s':''} (${ph.slice(0,3).join(', ')})`);
+  if(/["“][^"”]{30,}["”]\s*[—-]\s*[^,\n]{0,40}(owner|manager|customer|client)/i.test(t)) issues.push('possible fabricated testimonial (quote attributed to an unnamed owner/manager) — testimonials must be real (FTC rule)');
+  const stock=QA_STOCK.filter(p=>t.toLowerCase().includes(p));
+  if(stock.length) issues.push(`agency boilerplate: ${stock.map(s=>'“'+s+'”').join(', ')}`);
+  return issues;
 }
 function approveDraft(){
   if(_draftIdx==null||!canEditContent()) return;
-  const t=PK.topics[_draftIdx]; t.body=document.getElementById('dm-body').value; t.status='approved';
-  // //SB: sb.from('content_drafts').update({approved:true, body:t.body}).eq(...)
+  const t=PK.topics[_draftIdx]; t.body=document.getElementById('dm-body').value;
+  const issues=qaScan(t.body);
+  const blocking=issues.filter(i=>!i.startsWith('agency boilerplate'));
+  if(blocking.length){ showToast('Cannot approve — '+blocking[0], true); return; }
+  if(issues.length) showToast('Approved with a style note: '+issues[0]);
+  t.status='approved';
+  if(!OFFLINE&&t._id){ sb.from('content_drafts').update({approved:true, body:t.body}).eq('topic_id', t._id).then(()=>{}); }
   renderQueue(); closeDraft(); showToast('Draft approved ✓', false, true);
 }
 function requestRewrite(){
@@ -2782,9 +2802,11 @@ function buildCampaignDoc(){
   const deliverables=`<table><tr><th>Service</th><th>Engine</th><th>Cadence</th></tr>${svc.map(s=>
     `<tr><td>${esc(s.name)}</td><td>${esc(s.engine)}</td><td>${cadenceLabel(s)}</td></tr>`).join('')}</table>`;
 
-  const dirRow=i=>`<tr><td><b>${esc(i.title)}</b>${i.evidence?`<br><small>${esc(i.evidence)}</small>`:''}</td><td>${esc(i.action||'')}</td><td>${esc(i.service||'')}</td><td>${i.in_plan?esc(i.status):('upgrade: '+esc(planLabel(i.unlock_tier)))}</td></tr>`;
+  const STATUS_LAB={done:'Completed ✓',staged:'In production',todo:'Scheduled'};
+  const dirRow=i=>`<tr><td><b>${esc(i.title)}</b>${i.evidence?`<br><small>${esc(i.evidence)}</small>`:''}</td><td>${esc(i.action||'')}</td><td>${esc(i.service||'')}</td><td>${i.in_plan?esc(STATUS_LAB[i.status]||i.status):('Available on '+esc(planLabel(i.unlock_tier)))}</td></tr>`;
   const directive=d?`<p>${esc(d.summary||'')}</p>
-    <table><tr><th>Item</th><th>Action</th><th>Service</th><th>Status</th></tr>${open.map(dirRow).join('')}${upsell.map(dirRow).join('')}</table>`
+    <table><tr><th>Item</th><th>Action</th><th>Service</th><th>Status</th></tr>${open.map(dirRow).join('')}${upsell.map(dirRow).join('')}</table>
+    <p class="before"><b>Status key:</b> Completed ✓ = done and verified by re-audit · In production = being written/built now · Scheduled = queued for an upcoming cycle.</p>`
     :'<p>No directive on this audit — re-run Generate package.</p>';
 
   const fixBlocks=fixes.length?fixes.map(f=>`<div class="item">
@@ -2793,11 +2815,29 @@ function buildCampaignDoc(){
       ${f.after?pre(f.after):f.status==='suggested'?'<p class="before"><em>Not written yet — run “Approve &amp; write all” in the console.</em></p>':''}
     </div>`).join(''):'<p>No fixes staged.</p>';
 
-  const contentBlocks=topics.length?topics.map(t=>`<div class="item page-break">
-      <h3>${esc(t.title)} <span class="pill">${esc(t.kind)}</span> <span class="pill">${esc(t.status)}</span></h3>
-      <p class="before">Target keyword: <b>${esc(t.keyword||'—')}</b>${t.town?` · ${esc(t.town)}`:''}</p>
-      ${t.body?`<div class="body">${md2html(t.body)}</div>`:'<p class="before"><em>Not drafted yet.</em></p>'}
-    </div>`).join(''):'<p>No content queued this cycle.</p>';
+  // Content: summary table in the report body; full text in the appendix
+  // (a status report should not be a 15,000-word wall).
+  const cTopics=topics.filter(t=>t.kind!=='gbp_post');
+  const wordsOf=b=>String(b||'').split(/\s+/).filter(Boolean).length;
+  const contentSummary=cTopics.length?`<table><tr><th>Piece</th><th>Type</th><th>Target keyword</th><th>Status</th><th>Words</th></tr>${cTopics.map(t=>
+      `<tr><td>${esc(t.title)}</td><td>${esc(t.kind)}</td><td>${esc(t.keyword||'—')}</td><td>${t.status==='approved'?'Approved — publishing on schedule':t.body?'Drafted — awaiting approval':'Queued'}</td><td class="num">${t.body?wordsOf(t.body):'—'}</td></tr>`).join('')}</table>
+    <p class="before">Full text of every piece is in Appendix A.</p>`:'<p>No content queued this cycle.</p>';
+  const contentAppendix=cTopics.filter(t=>t.body).map(t=>{ const dd=splitDraft(t.body);
+    return `<div class="item page-break">
+      <h3>${esc(t.title)} <span class="pill">${esc(t.kind)}</span></h3>
+      <p class="before">${dd.slug?`URL: <b>${esc(dd.slug)}</b> · `:''}${dd.seo_title?`Title tag: ${esc(dd.seo_title)} · `:''}${dd.seo_desc?`Meta: ${esc(dd.seo_desc)}`:''}</p>
+      <div class="body">${md2html(dd.body)}</div>
+    </div>`;}).join('');
+  // Internal QA banner — anything unresolved is flagged loudly, up top.
+  const qaAll=[]; topics.forEach(t=>{ if(t.body) qaScan(t.body).forEach(x=>qaAll.push(`${t.title}: ${x}`)); });
+  const qaBanner=qaAll.length?`<div style="border:2px solid #C0392B;background:#FBE9E7;border-radius:8px;padding:12px 16px;margin-bottom:22px">
+      <b style="color:#C0392B">INTERNAL REVIEW REQUIRED — resolve these and regenerate before sending to the client:</b>
+      <ul style="margin:8px 0 0 18px">${qaAll.slice(0,12).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:'';
+  // Plain-language executive summary — what's wrong, what we're doing, when.
+  const worstNames=[['Technical',S.techScore],['Performance',S.perfScore],['On-page',S.onpageScore],['Schema',S.schemaScore],['AEO / AI visibility',S.aeoScore],['Trust signals (E-E-A-T)',S.eeatScore],['Local presence',S.localScore]]
+    .filter(([,v])=>v!=null).sort((a,b)=>a[1]-b[1]).slice(0,2).map(([l])=>l);
+  const fixesWritten=fixes.filter(f=>f.after||f.schema).length;
+  const execSummary=`<p>This document is the complete work plan for ${esc(c.name||c.url||'this client')}'s search and AI-visibility campaign. Our audit of the website found the biggest gaps in <b>${esc(worstNames.join(' and ')||'the fundamentals')}</b> — the issues most holding the site back from being found in Google and recommended by AI assistants. This cycle we are correcting those with <b>${fixesWritten} ready-to-deploy technical fixes</b> and <b>${cTopics.length} pieces of new content</b> targeting searches real customers make in the trade area. Technical fixes take effect as soon as they are deployed; content builds momentum over the following weeks as it is indexed. Progress is re-measured every cycle against today's baseline — rankings, traffic and AI citations — and reported monthly.</p>`;
 
   const gbp=(PK.topics||[]).filter(t=>t.kind==='gbp_post');
   const manualItems=items.filter(i=>i.in_plan&&i.status==='todo'&&!i.fix_kind);
@@ -2831,12 +2871,15 @@ function buildCampaignDoc(){
   <div class="meta">${esc(c.url||'')} · ${esc(c.market||'')} · <b>${esc(planLabel(tier))}</b> plan · ${contractLabel(c)} contract · Prepared ${today} · 44i Digital, Inc.</div>
   ${score!=null?`<div class="scorebig">${score}<span style="font-size:16px;color:#5a6675">/100 audit score · target 90+ ${cl.length?`· ${clPass} checks pass / ${clWarn} warn / ${clFail} fail`:''}</span></div>`:''}
 </header>
+${qaBanner}
+${sec('Executive summary',execSummary)}
 ${sec('1 · What the '+esc(planLabel(tier))+' plan delivers',deliverables)}
 ${sec('2 · Pillar scores','<table><tr><th>Pillar</th><th>Score</th><th>Grade</th></tr>'+pillarRows+'</table>'+(PK.audit&&PK.audit.diagnosis?`<p>${esc(PK.audit.diagnosis)}</p>`:''))}
 ${sec('3 · The directive — the work order for this campaign',directive)}
 ${sec('4 · Technical fixes ('+fixes.length+') — deployable artifacts',fixBlocks)}
-${sec('5 · Content ('+topics.filter(t=>t.kind!=='gbp_post').length+' pieces)',contentBlocks)}
+${sec('5 · Content this cycle ('+cTopics.length+' pieces)',contentSummary)}
 ${sec('6 · Manual / off-site work (GBP, server-level)',manual)}
+${contentAppendix?sec('Appendix A · Full content drafts',contentAppendix):''}
 <footer style="margin-top:40px;border-top:1px solid #d6dee8;padding-top:10px;color:#5a6675;font-size:12px">44i Digital, Inc. — generated by the SEO/AEO delivery platform. Print to PDF via the browser for a client-shareable copy.</footer>
 </body></html>`;
 }
@@ -2881,6 +2924,25 @@ function parseRedirects(raw){
     const p=l.trim().split(/\s+/); return { from:p[2], to:p[3], code:301 };
   });
 }
+// v2 drafts open with a DELIVERABLE HEADER (SLUG / TITLE TAG / META
+// DESCRIPTION / H1). Split it out so the deploy file carries real per-page
+// SEO fields and the published body stays clean. Older drafts pass through.
+function splitDraft(md){
+  const out={slug:null,seo_title:null,seo_desc:null,h1:null,body:String(md||'')};
+  const lines=out.body.split(/\r?\n/); const meta={}; let i=0;
+  while(i<lines.length){
+    const m=lines[i].match(/^(SLUG|TITLE TAG|META DESCRIPTION|H1)\s*:\s*(.+)$/i);
+    if(m){ meta[m[1].toUpperCase()]=m[2].replace(/\s*\(\d+\s*chars?\)\s*$/i,'').trim(); i++; continue; }
+    if(!lines[i].trim()&&Object.keys(meta).length){ i++; continue; }
+    break;
+  }
+  if(Object.keys(meta).length){
+    out.slug=meta['SLUG']||null; out.seo_title=meta['TITLE TAG']||null;
+    out.seo_desc=meta['META DESCRIPTION']||null; out.h1=meta['H1']||null;
+    out.body=lines.slice(i).join('\n');
+  }
+  return out;
+}
 function buildDeployPackage(){
   const c=activeClient||{};
   const site='https://'+String(c.url||'').replace(/^https?:\/\//,'').replace(/\/+$/,'');
@@ -2910,10 +2972,13 @@ function buildDeployPackage(){
   const content=(PK.topics||[]).filter(t=>t.body&&t.kind!=='gbp_post').map(t=>{
     const approved=t.status==='approved';
     const when=approved?new Date(start.getTime()+(si++)*7*24*3600*1000).toISOString():null;
-    return { external_id:t._id||null, title:t.title, body_html:md2html(t.body),
+    const d=splitDraft(t.body);
+    return { external_id:t._id||null, title:d.h1||t.title, body_html:md2html(d.body),
+      slug:d.slug, seo_title:d.seo_title, seo_description:d.seo_desc,
       post_type:(t.kind==='landing'||t.kind==='service'||t.kind==='pillar')?'page':'post',
       kind:t.kind, focus_keyword:t.keyword||'', location:t.town||null,
-      approved, status:approved?'schedule':'draft', schedule:when };
+      approved, status:approved?'schedule':'draft', schedule:when,
+      qa:qaScan(t.body) };
   });
   (PK.topics||[]).filter(t=>t.kind==='gbp_post'&&t.body).forEach(t=>manual.push({ title:'GBP post: '+t.title, action:t.body, kind:'gbp_post' }));
   ((PK.directive&&PK.directive.items)||[]).filter(i=>i.in_plan&&i.status==='todo'&&!i.fix_kind).forEach(i=>
