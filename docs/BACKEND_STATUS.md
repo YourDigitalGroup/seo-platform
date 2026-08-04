@@ -4,6 +4,24 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-04 — One-file deploy package (V1.7.0, connector v1.1.0)
+
+- `index.html` V1.7.0: **⬇ Deploy file (.json)** button in the package hero
+  exports a `44i-deploy-package` file containing everything generated: SEO
+  meta, JSON-LD, OG tags, robots.txt/llms.txt/sitemap fallback, parsed 301
+  rules, security headers, content with weekly publish schedules (approved →
+  scheduled, unapproved → drafts), and manual tasks (GBP posts, directive
+  items). `generatePackage()` remains the single generate-everything action
+  and now ends with a completion toast.
+- WP connector **v1.1.0**: Settings → SEO Platform → **Import package**
+  (file upload) + REST `POST /package`. Applies the whole file with an
+  applied/skipped/manual report; scheduled posts use native `future` status;
+  robots.txt via filter, llms.txt served at /llms.txt, redirects + security
+  headers at runtime; idempotent re-imports. Re-zip and update the plugin on
+  client sites to get the importer.
+- `docs/FOURGE_IMPORTER_PROMPT.md`: paste-ready prompt + full format spec for
+  building the identical importer into Fourge CMS.
+
 ## 2026-07-20 — v4 "Directive Engine" (V1.5.0)
 
 The audit is now an exhaustive, weighted checklist + plan-scoped directive:
