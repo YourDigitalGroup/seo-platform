@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.7.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.7.1</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.7.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.7.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.7.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.7.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -881,7 +881,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V1.7.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V1.7.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2746,13 +2746,16 @@ async function generatePackage(){
 // GBP posts and non-file tasks land in manual_tasks.
 function md2html(md){
   const esc2=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const inline=s=>esc2(s).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>');
+  const inline=s=>esc2(s)
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,(w,txt,url)=>/^https?:\/\//i.test(url)?'<a href="'+url.replace(/"/g,'')+'">'+txt+'</a>':txt)
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>');
   const out=[]; let para=[], list=null;
   const flush=()=>{ if(para.length){ out.push('<p>'+inline(para.join(' '))+'</p>'); para=[]; } };
   const flushList=()=>{ if(list){ out.push('<ul>'+list.map(li=>'<li>'+inline(li)+'</li>').join('')+'</ul>'); list=null; } };
   for(const ln of String(md||'').split(/\r?\n/)){
     const t=ln.trim(); let m;
     if(!t){ flush(); flushList(); continue; }
+    if(/^[-*_]{3,}$/.test(t)){ flush(); flushList(); continue; }  // '---' separators: headings already delineate sections
     if((m=t.match(/^(#{1,4})\s+(.*)/))){ const h=Math.min(4,m[1].length+1); flush(); flushList(); out.push(`<h${h}>`+inline(m[2])+`</h${h}>`); }
     else if((m=t.match(/^H([2-4]):\s*(.*)/i))){ flush(); flushList(); out.push(`<h${m[1]}>`+inline(m[2])+`</h${m[1]}>`); }
     else if((m=t.match(/^[-*•]\s+(.*)/))){ flush(); (list=list||[]).push(m[1]); }
