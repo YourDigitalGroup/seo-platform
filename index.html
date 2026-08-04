@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.7.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.8.0</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.7.1</span>
+        <span>44i, Inc. · Internal Ops Console · V1.8.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.7.1</span>
+        <span>44i, Inc. · Internal Ops Console · V1.8.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -881,7 +881,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V1.7.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V1.8.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2821,6 +2821,12 @@ function buildDeployPackage(){
 }
 function downloadDeployPackage(){
   if(OFFLINE||!PK.audit){ showToast('Generate the package first',true); return; }
+  // Guardrail: staged-but-unwritten fixes would silently export empty
+  // seo_meta/schema/site_files sections. Say so instead.
+  const sug=(PK.fixes||[]).filter(f=>f.status==='suggested').length;
+  const written=(PK.fixes||[]).filter(f=>(f.after||f.schema)&&f.status!=='suggested'&&f.status!=='dismissed').length;
+  if(sug&&!written){ showToast(`${sug} technical fixes are staged but not written yet — click “Approve & write all” in Section 4, then download again.`, true); jumpToEngine('fixes'); return; }
+  if(sug) showToast(`Heads up: ${sug} staged fixes are still unwritten and won't be in this file.`, true);
   const pkg=buildDeployPackage();
   const n=pkg.seo_meta.length+pkg.schema.length+pkg.og_tags.length+pkg.content.length+pkg.redirects.rules.length;
   if(!n&&!pkg.site_files.robots_txt&&!pkg.site_files.llms_txt){ showToast('Nothing deployable yet — generate/approve fixes and drafts first',true); return; }

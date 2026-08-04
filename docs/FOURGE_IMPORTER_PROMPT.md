@@ -124,4 +124,29 @@ the agency uploads ONE file regardless of which CMS the client runs.
 
 Reference implementation (same format): the WordPress connector in the
 seo-platform repo, `wp-plugin/seo-platform-connector/seo-platform-connector.php`
-v1.1.0 — mirror its semantics where Fourge has an equivalent concept.
+— mirror its semantics where Fourge has an equivalent concept.
+
+## Phase 2 — AI auto-fix (Fourge already has Anthropic connected)
+
+Once the importer works, add the self-healing layer the WP connector v1.2.0
+ships (`seop_ai_autofix()` is the reference):
+
+- **Fill MISSING SEO metas**: for every published page with no SEO title or
+  meta description, send the site name + page title + first ~1200 chars of
+  stripped content to Claude (`claude-haiku-4-5`, low max_tokens) with a
+  strict JSON-only prompt: `{"title":"50-60 chars","description":"150-160
+  chars with CTA"}`. Write only the missing field(s) — NEVER overwrite an
+  existing value.
+- **Fill missing image alts**: for pages whose content has `<img>` tags with
+  no/empty `alt`, send the filenames (numbered list) and page title; get back
+  a numbered list of ≤12-word alts; inject only the `alt` attribute. Mark the
+  page done so re-runs skip it.
+- **Batch caps per run** (e.g. 10 pages of metas + 8 pages of alts) so each
+  run is cheap and fast; a **weekly scheduled run** keeps newly created pages
+  covered; an authenticated **POST /api/seo-platform/ai-autofix** endpoint
+  lets the platform trigger runs remotely.
+- **Report** every run the same way as package imports: what was written,
+  what was skipped and why. Store the last report.
+- Guardrails: JSON-parse defensively (strip code fences), sanitize all AI
+  output before writing, count every failure in `skipped`, and keep the
+  never-overwrite rule absolute — the AI only fills gaps.
