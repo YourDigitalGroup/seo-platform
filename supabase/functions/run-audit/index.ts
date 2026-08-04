@@ -87,6 +87,9 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 const grade = (n: number) => n >= 90 ? "A" : n >= 78 ? "B" : n >= 65 ? "C" : n >= 50 ? "D" : "F";
 const rootOf = (d: string) => String(d || "").replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+// Keywords like "ia" (a bare state code or 1-3 char fragment) are junk targets —
+// they leak in from city parsing / keyword APIs and produce off-topic content.
+const junkKw = (k: unknown) => { const t = String(k || "").trim(); return t.length < 4 || /^[a-z]{2}\.?$/i.test(t); };
 
 // ── HTML parsing helpers (fallback page fetch; no DOM in Deno) ────────────────
 function getTitle(html: string){ const m=html.match(/<title[^>]*>([\s\S]*?)<\/title>/i); return m?m[1].replace(/\s+/g," ").trim():""; }
@@ -236,7 +239,7 @@ Deno.serve(async (req) => {
     });
     if (businessType && primaryCity) candidateSet.add(`${businessType} ${primaryCity}`.toLowerCase());
     ownKw.slice(0, 8).forEach((k: any) => candidateSet.add(String(k.keyword).toLowerCase()));
-    const candidates = [...candidateSet].filter(Boolean).slice(0, 30);
+    const candidates = [...candidateSet].filter((k) => k && !junkKw(k)).slice(0, 30);
     let coreKeywords: any[] = [];
     if (candidates.length) {
       const ke = await ah("keywords-explorer/overview", { country: COUNTRY, keywords: candidates.join(","), select: "keyword,volume,difficulty,cpc,intents,serp_features" });
@@ -290,7 +293,7 @@ Deno.serve(async (req) => {
       .map((k: any) => ({ keyword: k.keyword, volume: k.volume, position: k.best_position, difficulty: null, source: "ranking_low" }));
     const oppMap = new Map<string, any>();
     [...oppFromOwn, ...oppFromCore].forEach((o) => { const key = String(o.keyword).toLowerCase(); if (!oppMap.has(key)) oppMap.set(key, o); });
-    const opportunities = [...oppMap.values()].sort((a, b) => (b.volume || 0) - (a.volume || 0)).slice(0, 12);
+    const opportunities = [...oppMap.values()].filter((o) => !junkKw(o.keyword)).sort((a, b) => (b.volume || 0) - (a.volume || 0)).slice(0, 12);
     const compDRs = competitors.map((c) => c.domain_rating).filter((d): d is number => d != null);
     const medianCompDR = compDRs.length ? compDRs.slice().sort((a, b) => a - b)[Math.floor(compDRs.length / 2)] : null;
     const brandedTraffic = ownKw.filter((k: any) => k.is_branded).reduce((a: number, k: any) => a + (k.sum_traffic || 0), 0);
@@ -317,7 +320,7 @@ Deno.serve(async (req) => {
       const intentOf = (k: any) => k.is_transactional ? "transactional" : k.is_commercial ? "commercial" : k.is_local ? "local" : k.is_informational ? "informational" : null;
       gaps = (gkw?.keywords ?? []).filter((k: any) => k?.keyword).map((k: any) => { const kw=String(k.keyword).toLowerCase(); const ourPos=ownKwSet.has(kw)?ownKwPos[kw]:null;
         return { keyword: k.keyword, competitor_domain: competitors[0].domain, their_position: k.best_position, our_position: ourPos, volume: k.volume, difficulty: null, intent: intentOf(k), _isGap: ourPos==null||ourPos>20 }; })
-        .filter((g: any) => g._isGap).slice(0, GAP_KEEP);
+        .filter((g: any) => g._isGap && !junkKw(g.keyword)).slice(0, GAP_KEEP);
     }
 
     // ── 7. SITE COVERAGE: CRAWL (UPGRADE #1) or FALLBACK FETCH ─────────────────
@@ -891,9 +894,19 @@ Deno.serve(async (req) => {
       services.slice(0, 3).forEach((svc: any) => secondaryTowns.slice(0, 3).forEach((t: any) => townPages.push(`${svc} ${t}`)));
       const localServices = services.slice(0, 4).map((svc: any) => primaryCity ? `${svc} ${primaryCity}` : svc);
       const nextFrom = (...pools: string[][]): string | null => {
-        for (const pool of pools) for (const kw of pool) { const k = (kw || "").toLowerCase(); if (kw && !seenT.has(k)) { seenT.add(k); return kw; } }
+        for (const pool of pools) for (const kw of pool) { const k = (kw || "").toLowerCase(); if (kw && !junkKw(kw) && !seenT.has(k)) { seenT.add(k); return kw; } }
         return null;
       };
+      // Re-running the audit in the same cycle must not re-queue topics the
+      // package already has (root cause of duplicate pages in the deploy file).
+      {
+        const { data: exT } = await supa.from("content_topics").select("target_keyword, title").eq("package_id", package_id);
+        (exT || []).forEach((t: any) => {
+          if (t.target_keyword) seenT.add(String(t.target_keyword).toLowerCase());
+          if (t.title) seenT.add(String(t.title).toLowerCase());
+        });
+        if ((exT || []).length) note.push(`${(exT || []).length} topics already queued on this package — re-run will only add new ones.`);
+      }
       const pickFor = (kind: string): string | null => {
         if (kind === "gbp_post") return nextFrom(localServices, oppKwPool, coreUnowned);
         if (kind === "blog") return nextFrom(gapPool, coreUnowned, oppKwPool);
@@ -937,7 +950,7 @@ Deno.serve(async (req) => {
         const topicRows: any[] = [];
         const TOPIC_CAP = 8;
         const pushTopic = (keyword: string, kind: string, model: string, source: string, town: string | null = null) => {
-          const key = (keyword || "").toLowerCase(); if (!keyword || seenT.has(key) || topicRows.length >= TOPIC_CAP) return; seenT.add(key);
+          const key = (keyword || "").toLowerCase(); if (!keyword || junkKw(keyword) || seenT.has(key) || topicRows.length >= TOPIC_CAP) return; seenT.add(key);
           topicRows.push({ package_id, title: titleCase(keyword), target_keyword: keyword, kind, model, status: "queued", source, location: town });
         };
         opportunities.slice(0, 2).forEach((o: any) => pushTopic(o.keyword, "service", "sonnet-4-6", "opportunity", primaryCity || null));
