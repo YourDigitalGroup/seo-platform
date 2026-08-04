@@ -7,13 +7,30 @@ WordPress site automatically — without ever touching the site's appearance.
 - **Content** → create a blog post / page as a **draft** (human publishes in WP).
 - **SEO meta** → set SEO title, meta description, canonical (writes to Yoast or
   Rank Math's own fields). Invisible on the page.
-- **Schema** → inject JSON-LD into the `<head>`. Invisible.
+- **Schema** → inject JSON-LD into the `<head>` (multiple blocks per page,
+  site-wide blocks for the front page). Invisible.
+- **v1.1 — Import package (one file deploys everything)**: upload the
+  `deploy-*.json` exported by the platform's **⬇ Deploy file** button under
+  **Settings → SEO Platform → Import package** (or POST it to the `/package`
+  REST endpoint). In one shot it applies SEO meta, JSON-LD, OG/social tags,
+  robots.txt (when WP serves it), llms.txt (served at `/llms.txt`),
+  301 redirects, security headers, and creates the content — **approved
+  content is scheduled** (weekly publish dates set by the platform),
+  unapproved content lands as drafts. It finishes with an apply report:
+  applied / skipped-with-reason / manual follow-ups (GBP posts, server-level
+  rules). Re-importing the same file updates rather than duplicates
+  (external-id + hash idempotency).
 
-## What it cannot do (by design — there are no endpoints for it)
+## What it cannot do (by design)
 - No theme, template, CSS, layout, menu, widget, or settings changes.
-- Nothing is published live without a human clicking Publish.
+- Unapproved content is never published — it arrives as drafts; only content
+  explicitly approved in the platform gets a publish schedule.
 - Visible/technical fixes (H1, page copy, internal links, image alt) are **not**
   auto-deployed — the platform refuses them and they stay manual.
+- Google Business Profile posts stay manual (listed in the import report).
+
+The same deploy-package file format is consumed by the Fourge CMS importer —
+see `docs/FOURGE_IMPORTER_PROMPT.md` for the spec.
 
 ## Install (once per client site)
 1. Zip the `seo-platform-connector/` folder and upload it under

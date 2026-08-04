@@ -313,6 +313,8 @@ header.show{display:block}
 .eng p{font-size:12px;color:var(--muted);line-height:1.5;min-height:48px}
 .eng .st{margin-top:12px;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;display:inline-block}
 .st.ready{background:var(--mint);color:#3C5A1E} .st.setup{background:#FBE3D4;color:#9A4A12}
+.deploy-btn.file{background:#fff;color:var(--navy);border:1px solid var(--line);margin-right:8px}
+.deploy-btn.file:hover{background:var(--mist)}
 .eng.click{cursor:pointer;transition:box-shadow .15s,transform .15s}
 .eng.click:hover{box-shadow:0 4px 14px rgba(27,35,48,.14);transform:translateY(-1px)}
 .eng-go{position:absolute;right:14px;bottom:16px;font-size:11px;font-weight:700;color:var(--blue)}
@@ -688,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.6.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V1.7.0</div>
   </div>
 </div>
 
@@ -730,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.6.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.7.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -784,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V1.6.0</span>
+        <span>44i, Inc. · Internal Ops Console · V1.7.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -802,6 +804,7 @@ footer .fbadges{display:flex;gap:18px}
       <div class="pkg-hero-spacer"></div>
       <div class="pkg-statline">
         <span class="pkg-statbig" id="pk-statbig"><i></i><span>—</span></span>
+        <button class="deploy-btn file" id="pk-dlfile" onclick="downloadDeployPackage()" title="Download the one-file deploy package for the WordPress connector or Fourge CMS">⬇ Deploy file (.json)</button>
         <button class="deploy-btn" id="pk-deploy" onclick="deployPackage()">Deploy package →</button>
       </div>
     </div>
@@ -878,7 +881,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V1.6.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V1.7.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2729,9 +2732,100 @@ async function generatePackage(){
       if(tasks.length) await Promise.all(tasks);
       await liveBuildReport(data.package_id || (PK && PK.package_id));
       await loadLiveAudit(); renderPackage();
+      showToast('Package complete — audit, directive, drafts, fixes and report all generated. Review + approve, then click “⬇ Deploy file” to export everything.', false, true);
     }
   }catch(e){ console.error(e); showToast('Audit error — see console', true); c.pkg_status='none'; renderPackage(); }
   finally{ const b=document.querySelector('#v-package .run'); if(b){ b.disabled=false; b.textContent='Generate package →'; } }
+}
+// ── ONE-FILE DEPLOY PACKAGE ───────────────────────────────────────────────────
+// Bundles EVERYTHING the engines generated — SEO meta, JSON-LD, OG tags,
+// robots.txt / llms.txt, redirects, security headers, and content with
+// scheduled publish dates — into a single portable JSON file (format:
+// 44i-deploy-package). Upload it in WP Admin → Settings → SEO Platform →
+// Import package, or feed it to any CMS importer that speaks the format.
+// GBP posts and non-file tasks land in manual_tasks.
+function md2html(md){
+  const esc2=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inline=s=>esc2(s).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>');
+  const out=[]; let para=[], list=null;
+  const flush=()=>{ if(para.length){ out.push('<p>'+inline(para.join(' '))+'</p>'); para=[]; } };
+  const flushList=()=>{ if(list){ out.push('<ul>'+list.map(li=>'<li>'+inline(li)+'</li>').join('')+'</ul>'); list=null; } };
+  for(const ln of String(md||'').split(/\r?\n/)){
+    const t=ln.trim(); let m;
+    if(!t){ flush(); flushList(); continue; }
+    if((m=t.match(/^(#{1,4})\s+(.*)/))){ const h=Math.min(4,m[1].length+1); flush(); flushList(); out.push(`<h${h}>`+inline(m[2])+`</h${h}>`); }
+    else if((m=t.match(/^H([2-4]):\s*(.*)/i))){ flush(); flushList(); out.push(`<h${m[1]}>`+inline(m[2])+`</h${m[1]}>`); }
+    else if((m=t.match(/^[-*•]\s+(.*)/))){ flush(); (list=list||[]).push(m[1]); }
+    else para.push(t);
+  }
+  flush(); flushList(); return out.join('\n');
+}
+function parseRedirects(raw){
+  if(!raw) return [];
+  return (String(raw).match(/^\s*Redirect\s+301\s+\S+\s+\S+/gim)||[]).map(l=>{
+    const p=l.trim().split(/\s+/); return { from:p[2], to:p[3], code:301 };
+  });
+}
+function buildDeployPackage(){
+  const c=activeClient||{};
+  const site='https://'+String(c.url||'').replace(/^https?:\/\//,'').replace(/\/+$/,'');
+  const toUrl=p=>!p||p==='/'?site+'/':(/^https?:/i.test(p)?p:site+p);
+  const metaBy={}; const schema=[]; const og_tags=[]; const manual=[];
+  let robots=null, llms=null, redirectsRaw=null, headers=null, sitemap=null;
+  (PK.fixes||[]).filter(f=>(f.after||f.schema)&&f.status!=='dismissed'&&f.status!=='suggested').forEach(f=>{
+    const target=toUrl(f.target);
+    const slot=()=> (metaBy[target]=metaBy[target]||{target});
+    if(f.kind==='title_tag') slot().seo_title=f.after;
+    else if(f.kind==='meta_description') slot().seo_description=f.after;
+    else if(f.kind==='canonical'){ const href=(f.after.match(/href=["']([^"']+)["']/i)||[])[1]; slot().canonical=href||target; }
+    else if(f.kind==='robots_txt') robots=f.after;
+    else if(f.kind==='llms_txt') llms=f.after;
+    else if(f.kind==='redirect_map') redirectsRaw=(redirectsRaw?redirectsRaw+'\n\n':'')+f.after;
+    else if(f.kind==='security_headers') headers=f.after;
+    else if(f.kind==='sitemap_xml') sitemap=f.after;
+    else if(f.kind==='og_tags') og_tags.push({ target, html:f.after });
+    else if(f.kind==='gbp_post') manual.push({ title:'Google Business Profile post', action:f.after, kind:'gbp_post' });
+    else if(f.schema) schema.push({ target, jsonld:f.schema });
+    else manual.push({ title:(f.label||f.kind)+' — '+(f.target||'/'), action:f.after, kind:f.kind });
+  });
+  // Content: approved drafts get real publish schedules (weekly, next Monday
+  // 9am onward); unapproved travel as CMS drafts. GBP posts are manual.
+  const start=new Date(); start.setDate(start.getDate()+(((8-start.getDay())%7)||7)); start.setHours(9,0,0,0);
+  let si=0;
+  const content=(PK.topics||[]).filter(t=>t.body&&t.kind!=='gbp_post').map(t=>{
+    const approved=t.status==='approved';
+    const when=approved?new Date(start.getTime()+(si++)*7*24*3600*1000).toISOString():null;
+    return { external_id:t._id||null, title:t.title, body_html:md2html(t.body),
+      post_type:(t.kind==='landing'||t.kind==='service'||t.kind==='pillar')?'page':'post',
+      kind:t.kind, focus_keyword:t.keyword||'', location:t.town||null,
+      approved, status:approved?'schedule':'draft', schedule:when };
+  });
+  (PK.topics||[]).filter(t=>t.kind==='gbp_post'&&t.body).forEach(t=>manual.push({ title:'GBP post: '+t.title, action:t.body, kind:'gbp_post' }));
+  ((PK.directive&&PK.directive.items)||[]).filter(i=>i.in_plan&&i.status==='todo'&&!i.fix_kind).forEach(i=>
+    manual.push({ title:i.title, action:i.action, kind:'directive' }));
+  return {
+    format:'44i-deploy-package', format_version:1, generated_at:new Date().toISOString(),
+    site, client:{ name:c.name||'', market:c.market||'', tier:c.tier||'' },
+    source:{ package_id:PK.package_id||null, audit_id:PK.audit?PK.audit.id:null,
+      audit_score:(PK.raw&&PK.raw.scores&&PK.raw.scores.auditScore)??null },
+    seo_meta:Object.values(metaBy),
+    schema, og_tags,
+    site_files:{ robots_txt:robots, llms_txt:llms, sitemap_xml:sitemap },
+    redirects:{ raw:redirectsRaw, rules:parseRedirects(redirectsRaw) },
+    security_headers:{ raw:headers },
+    content, manual_tasks:manual,
+  };
+}
+function downloadDeployPackage(){
+  if(OFFLINE||!PK.audit){ showToast('Generate the package first',true); return; }
+  const pkg=buildDeployPackage();
+  const n=pkg.seo_meta.length+pkg.schema.length+pkg.og_tags.length+pkg.content.length+pkg.redirects.rules.length;
+  if(!n&&!pkg.site_files.robots_txt&&!pkg.site_files.llms_txt){ showToast('Nothing deployable yet — generate/approve fixes and drafts first',true); return; }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(pkg,null,2)],{type:'application/json'}));
+  a.download='deploy-'+String((activeClient&&activeClient.url)||'site').replace(/^https?:\/\//,'').replace(/[^a-z0-9.-]/gi,'_')+'-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  showToast(`Deploy file downloaded — ${n} items + site files. Upload in WP Admin → Settings → SEO Platform → Import package.`, false, true);
 }
 function deployPackage(){
   const c=activeClient, g=groupOf(c);
