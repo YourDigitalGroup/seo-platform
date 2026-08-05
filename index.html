@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.3.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.3.1</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.3.0</span>
+        <span>44i, Inc. · Internal Ops Console · V3.3.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.3.0</span>
+        <span>44i, Inc. · Internal Ops Console · V3.3.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -882,7 +882,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V3.3.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V3.3.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2444,7 +2444,7 @@ function renderQueue(){
       <span><select class="qsel" onchange="changeModel(${i},this.value)">${modelOpts(t.model)}</select></span>
       <span><span class="qstatus qs-${t.status}">${cap(t.status)}</span></span>
       <span>${openable?`<button class="qopen" onclick="openDraft(${i})">Open</button>`:''}</span>
-      <span class="cx"><button class="cxbtn" title="Remove from queue" onclick="removeTopic(${i})">✕</button></span>
+      <span class="cx">${t._id&&t.status!=='approved'?`<button class="cxbtn" title="Retire — remove from the campaign permanently (logged in the internal review)" onclick="retireTopic(${i})">⛔</button>`:''}<button class="cxbtn" title="Remove from queue" onclick="removeTopic(${i})">✕</button></span>
     </div>`;
   }).join('');
   if(!PK.topics.length) rows=`<div class="qempty">No content queued. Select gap keywords above, or add a topic.</div>`;
@@ -2455,8 +2455,41 @@ function renderQueue(){
     rows+
     `<div class="addrow"><input class="dom" id="newtopic" type="text" placeholder="add a custom topic…"><button class="addbtn" onclick="addTopic()">＋ Add topic</button></div>`+
     `<div class="qbar"><span class="qsum">${PK.topics.length} piece${PK.topics.length===1?'':'s'} · ${summary}</span>
+      ${(()=>{const n=PK.topics.filter(t=>t.body&&qaScan(t.body).blocking.length).length;
+        return n?`<button class="qgen" style="background:#C0392B;margin-right:8px" onclick="autoFixFlagged()" title="Rewrite every flagged draft with its violations as explicit removal instructions">⚠ Auto-fix ${n} flagged →</button>`:'';})()}
       <button class="qgen" onclick="generateDrafts()">Generate drafts →</button></div>`;
   document.getElementById('queue-tag').textContent=`${PK.topics.length} queued · Engine 2`;
+}
+// Retire a piece from the console (logged; the DB error is surfaced, never
+// swallowed — that silence is how 11 phantom retirements shipped).
+async function retireTopic(i){
+  const t=PK.topics[i]; if(!t||!t._id) return;
+  if(!confirm(`Retire “${t.title}”? It leaves the campaign, deploy file and documents permanently.`)) return;
+  const { error } = await sb.from('content_topics').update({ status:'retired' }).eq('id', t._id);
+  if(error){ showToast('Retire failed: '+error.message+' — run content_status_text.sql in the SQL editor', true); return; }
+  try{ await sb.from('deliverables').update({ state:'planned', topic_id:null }).eq('topic_id', t._id); }catch(_){}
+  PK.topics.splice(i,1); renderQueue(); renderEngines();
+  showToast(`Retired “${t.title}”.`, false, true);
+}
+// One click clears content-level blocking failures: each flagged draft is
+// rewritten with its exact violations as removal instructions (the provenance
+// wall in generate-content prevents new ones).
+async function autoFixFlagged(){
+  const flagged=PK.topics.map((t,i)=>({t,i,qa:t.body?qaScan(t.body):{blocking:[]}})).filter(x=>x.qa.blocking.length&&x.t._id);
+  if(!flagged.length){ showToast('Nothing flagged',true); return; }
+  showToast(`Rewriting ${flagged.length} flagged draft${flagged.length>1?'s':''} to remove violations…`);
+  for(const f of flagged){ f.t.status='drafting'; } renderQueue();
+  await Promise.all(flagged.map(async f=>{
+    const instruction='COMPLIANCE REWRITE — remove every one of these violations and replace with compliant copy (no invented facts; use [CLIENT TO CONFIRM: …] only if a real fact is required): '
+      +f.qa.blocking.join(' | ')
+      +'. Also remove ALL testimonials/quotes, invented credentials, uncited statistics, and bracketed placeholders anywhere in the piece.';
+    try{ const {data,error}=await sb.functions.invoke('generate-content',{ body:{ topic_id:f.t._id, instruction } });
+      f.t.status=(error||(data&&data.error))?'drafted':'drafted';
+    }catch(_){ f.t.status='drafted'; }
+  }));
+  await reloadDrafts(); renderQueue();
+  const still=PK.topics.filter(t=>t.body&&qaScan(t.body).blocking.length).length;
+  showToast(still?`Rewrites done — ${still} draft(s) still flagged; open them to review or retire.`:`All flagged drafts rewritten clean ✓`, false, !still);
 }
 function editTopicTitle(i,v){ PK.topics[i].title=v; /* no re-render: keep focus */ }
 function changeKind(i,k){ PK.topics[i].kind=k; PK.topics[i].model=modelForKind(k); renderQueue(); }

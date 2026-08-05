@@ -981,9 +981,17 @@ Deno.serve(async (req) => {
           if (t.package_id === package_id) usedOf["cycle:" + t.kind] = (usedOf["cycle:" + t.kind] || 0) + 1;
         }
         if (toRetire.length) {
-          await supa.from("content_topics").update({ status: "retired" }).in("id", toRetire.map((r) => r.id));
-          recon.retired = toRetire.map((r) => ({ title: r.title, reason: r.reason }));
-          note.push(`Reconciliation: retired ${toRetire.length} prior piece(s) — ${toRetire.slice(0, 5).map((r) => `“${r.title}” (${r.reason})`).join("; ")}${toRetire.length > 5 ? " …" : ""}`);
+          const { error: rErr } = await supa.from("content_topics").update({ status: "retired" }).in("id", toRetire.map((r) => r.id));
+          if (rErr) {
+            // NEVER report a retirement that didn't land (bug found in the
+            // first shipped version: an enum/CHECK on status rejected the
+            // value and the failure was invisible).
+            errors.push(`RETIREMENT FAILED: ${rErr.message} — run content_status_text.sql; the ${toRetire.length} flagged pieces are still live`);
+            note.push(`⚠ Reconciliation could not retire ${toRetire.length} piece(s) (${rErr.message}) — run content_status_text.sql and re-run the audit.`);
+          } else {
+            recon.retired = toRetire.map((r) => ({ title: r.title, reason: r.reason }));
+            note.push(`Reconciliation: retired ${toRetire.length} prior piece(s) — ${toRetire.slice(0, 5).map((r) => `“${r.title}” (${r.reason})`).join("; ")}${toRetire.length > 5 ? " …" : ""}`);
+          }
         }
       }
 
