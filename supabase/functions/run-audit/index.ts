@@ -536,6 +536,34 @@ Deno.serve(async (req) => {
     const mapPresence = /google\.com\/maps|maps\.app\.goo|g\.page|maps\.google/i.test(homeHtmlRaw);
     const homeNoindex = /<meta[^>]+name=["']robots["'][^>]*noindex/i.test(homeHtmlRaw) || /noindex/i.test(hdr("x-robots-tag"));
 
+    // ── 8c. INTAKE SUGGESTIONS — scrape candidate business facts from the
+    //        live site (schema first, text patterns second) for HUMAN APPROVAL
+    //        in the console. Never auto-trusted, never written to intake here.
+    const intakeSuggested: Record<string, string> = {};
+    if (homeHtmlRaw) {
+      const h = homeHtmlRaw;
+      const text = h.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ");
+      const tel = h.match(/href=["']tel:([^"']+)["']/i)?.[1] || text.match(/(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}/)?.[0] || "";
+      if (tel) intakeSuggested.phone = tel.replace(/^tel:/i, "").trim();
+      const mail = h.match(/href=["']mailto:([^"'?]+)/i)?.[1]; if (mail) intakeSuggested.email = mail.trim();
+      const sv = (k: string) => h.match(new RegExp(`"${k}"\\s*:\\s*"([^"]+)"`))?.[1];
+      if (sv("streetAddress")) intakeSuggested.street = sv("streetAddress")!;
+      if (sv("addressLocality")) intakeSuggested.city = sv("addressLocality")!;
+      if (sv("addressRegion")) intakeSuggested.state = sv("addressRegion")!;
+      if (sv("postalCode")) intakeSuggested.zip = sv("postalCode")!;
+      if (sv("openingHours")) intakeSuggested.hours = sv("openingHours")!;
+      if (!intakeSuggested.street) {
+        const am = text.match(/(\d{1,5}\s+[A-Za-z0-9. ]{3,40}?(?:St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pkwy|Hwy)\.?)\s*,?\s*([A-Z][A-Za-z .]{2,25}),?\s*([A-Z]{2})\s+(\d{5})/);
+        if (am) { intakeSuggested.street = am[1].trim(); intakeSuggested.city = intakeSuggested.city || am[2].trim(); intakeSuggested.state = intakeSuggested.state || am[3]; intakeSuggested.zip = intakeSuggested.zip || am[4]; }
+      }
+      const so = (re: RegExp) => h.match(re)?.[0];
+      const fb = so(/https?:\/\/(?:www\.)?facebook\.com\/[A-Za-z0-9_.\-]+/i); if (fb && !/sharer|plugins|\/tr\b/i.test(fb)) intakeSuggested.facebook = fb;
+      const ig = so(/https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9_.\-]+/i); if (ig) intakeSuggested.instagram = ig;
+      const li = so(/https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[A-Za-z0-9_.\-]+/i); if (li) intakeSuggested.linkedin = li;
+      const gb = so(/https?:\/\/(?:goo\.gl\/maps|maps\.app\.goo\.gl|g\.page)\/[A-Za-z0-9_.\-]+/i); if (gb) intakeSuggested.gbp = gb;
+      if (Object.keys(intakeSuggested).length) note.push(`Intake: ${Object.keys(intakeSuggested).length} business facts scraped from the site, awaiting approval in the console.`);
+    }
+
     // ── 8b. PERFORMANCE — Google PageSpeed Insights (free API; key optional
     //        via PAGESPEED_API_KEY). Prefers real-user CrUX field data, falls
     //        back to lab data, then to our own TTFB/payload heuristics.
@@ -886,6 +914,7 @@ Deno.serve(async (req) => {
         crawl: { used: crawlUsed, project_id: crawlProjectId, health: healthScore, totals: crawlTotals, issues: crawlIssues.slice(0, 30) },
         aeo: { aiOverviewKws: aiOverviewKws.length, aiCaptured: aiCaptured.length, snippetKws: snippetKws.length, snippetWon: snippetWon.length, paaKws: paaKws.length, hasFAQ, questionHeads },
         backlinks: { profile: linkProfile, gap: linkGap },
+        intake_suggested: intakeSuggested,
         brandRadar, serp: { seed: serpSeed, localCompetitors: serpLocal },
         local: { localIntentKws: localIntentKws.length, localPackKws: localPackKws.length, localPackWon: localPackWon.length, hasNAP },
         schema: { present: schemaPresent, all: [...allSchema] },

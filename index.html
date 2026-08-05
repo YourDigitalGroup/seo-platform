@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.5.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.5.1</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.5.0</span>
+        <span>44i, Inc. · Internal Ops Console · V3.5.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.5.0</span>
+        <span>44i, Inc. · Internal Ops Console · V3.5.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -830,7 +830,6 @@ footer .fbadges{display:flex;gap:18px}
     <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
     <div class="acp" id="access-panel"></div>
     <div class="datasrc" id="datasrc"></div>
-    <div class="datasrc" id="bizfacts"></div>
 
     <div class="section-h"><h2>1 · Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
     <div class="tradearea" id="tradearea"></div>
@@ -872,6 +871,7 @@ footer .fbadges{display:flex;gap:18px}
 
     <div class="section-h"><h2>5 · Deliverables this cycle</h2><div class="ln"></div><span class="tag" id="delivtag"></span></div>
     <div class="deliv" id="deliv"></div>
+    <div class="datasrc" id="bizfacts" style="margin-top:12px"></div>
 
     <div class="section-h"><h2>6 · Monthly Report</h2><div class="ln"></div><span class="tag">white-labeled · client-facing</span></div>
     <div class="report-wl" id="report-wl"></div>
@@ -883,7 +883,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V3.5.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V3.5.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2480,10 +2480,13 @@ async function autoFixFlagged(){
   if(!flagged.length){ showToast('Nothing flagged',true); return; }
   showToast(`Rewriting ${flagged.length} flagged draft${flagged.length>1?'s':''} to remove violations…`);
   for(const f of flagged){ f.t.status='drafting'; } renderQueue();
+  const iv=(activeClient&&activeClient._intake)||{};
+  const facts=INTAKE_FIELDS.map(([k,l])=>iv[k]?`${l}: ${iv[k]}`:null).filter(Boolean).join('; ');
   await Promise.all(flagged.map(async f=>{
     const instruction='COMPLIANCE REWRITE — remove every one of these violations and replace with compliant copy (no invented facts; use [CLIENT TO CONFIRM: …] only if a real fact is required): '
       +f.qa.blocking.join(' | ')
-      +'. Also remove ALL testimonials/quotes, invented credentials, uncited statistics, and bracketed placeholders anywhere in the piece.';
+      +'. Also remove ALL testimonials/quotes, invented credentials, uncited statistics, and bracketed placeholders anywhere in the piece.'
+      +(facts?` VERIFIED CLIENT FACTS you may state and should use to replace placeholders: ${facts}.`:'');
     try{ const {data,error}=await sb.functions.invoke('generate-content',{ body:{ topic_id:f.t._id, instruction } });
       f.t.status=(error||(data&&data.error))?'drafted':'drafted';
     }catch(_){ f.t.status='drafted'; }
@@ -2847,19 +2850,34 @@ async function renderBizFacts(){
       activeClient._intake=(!error&&data&&data.intake)||{}; }catch(_){ activeClient._intake={}; }
   }
   const iv=activeClient._intake||{};
-  el.innerHTML=`<div class="ds-row">
-    <div style="flex-basis:100%;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Business facts (intake) — the only source content may state as fact · powers the citation pack</div>
-    ${INTAKE_FIELDS.map(([k,l])=>`<div class="ds-field"><label>${l}</label><input id="bf-${k}" value="${esc(iv[k]||'')}"></div>`).join('')}
-    <button class="ds-save" onclick="saveBizFacts()">Save facts</button>
+  // Suggestions scraped from the live site by the audit — prefilled but NOT
+  // saved until a human clicks "Approve & save" (that click is the approval).
+  const sug=((PK.raw||{}).intake_suggested)||{};
+  const saved=INTAKE_FIELDS.filter(([k])=>iv[k]).length;
+  const suggested=INTAKE_FIELDS.filter(([k])=>!iv[k]&&sug[k]).length;
+  const missReq=intakeMissing().length;
+  const summary=`Business facts (intake) · ${5-missReq}/5 required saved`
+    +(suggested?` · ${suggested} scraped from the site — review below`:'')
+    +' · powers the citation pack (LLO)';
+  el.innerHTML=`<details ${suggested&&missReq?'open':''} style="border:1px dashed var(--line);border-radius:var(--r-sm);background:var(--mist)">
+    <summary style="cursor:pointer;padding:11px 14px;font-size:12px;font-weight:700;color:${missReq?'var(--muted)':'#3C5A1E'}">${esc(summary)}</summary>
+    <div class="ds-row" style="border:none;background:none">
+    ${INTAKE_FIELDS.map(([k,l])=>{
+      const isSug=!iv[k]&&sug[k];
+      return `<div class="ds-field"><label>${l}${isSug?' <span style="color:#8A6D12;text-transform:none;letter-spacing:0">· from site — verify</span>':''}</label>
+        <input id="bf-${k}" value="${esc(iv[k]||sug[k]||'')}" ${isSug?'style="border-color:#C9A227;background:#FFFDF2"':''}></div>`;}).join('')}
+    <button class="ds-save" onclick="saveBizFacts()">Approve &amp; save</button>
     <button class="ds-save" style="background:var(--blue)" onclick="downloadCitationPack()">📇 Citation pack</button>
     <button class="ds-save" style="background:#6FA53C" onclick="downloadCitationCSV()">⬇ Citations CSV</button>
-  </div>`;
+    </div>
+  </details>`;
 }
 async function saveBizFacts(){
   const iv={}; INTAKE_FIELDS.forEach(([k])=>{ const e=document.getElementById('bf-'+k); if(e) iv[k]=e.value.trim(); });
   activeClient._intake=iv;
   const {error}=await sb.from('clients').update({intake:iv}).eq('id',activeClient.id);
-  showToast(error?('Save failed: '+error.message+' — run client_intake.sql in the SQL editor'):'Business facts saved ✓',!!error,!error);
+  showToast(error?('Save failed: '+error.message+' — run client_intake.sql in the SQL editor'):'Business facts approved & saved ✓',!!error,!error);
+  if(!error) renderBizFacts();
 }
 function intakeMissing(){ const iv=(activeClient&&activeClient._intake)||{}; return ['phone','street','city','state','zip'].filter(k=>!iv[k]); }
 function citationPayload(){
