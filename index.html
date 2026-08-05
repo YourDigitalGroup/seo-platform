@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.5.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.6.0</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.5.1</span>
+        <span>44i, Inc. · Internal Ops Console · V3.6.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.5.1</span>
+        <span>44i, Inc. · Internal Ops Console · V3.6.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -865,6 +865,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="section-h"><h2>3 · Content Plan</h2><div class="ln"></div><span class="tag" id="queue-tag">Engine 2 · AI Writer</span></div>
     <div class="model-legend" id="model-legend"></div>
     <div class="queue" id="queue"></div>
+    <div id="suggestions"></div>
 
     <div class="section-h"><h2>4 · Technical Fixes</h2><div class="ln"></div><span class="tag" id="fix-tag">paste-ready</span></div>
     <div class="fixes" id="fixes"></div>
@@ -883,7 +884,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V3.5.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V3.6.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2458,8 +2459,52 @@ function renderQueue(){
     `<div class="qbar"><span class="qsum">${PK.topics.length} piece${PK.topics.length===1?'':'s'} · ${summary}</span>
       ${(()=>{const n=PK.topics.filter(t=>t.body&&qaScan(t.body).blocking.length).length;
         return n?`<button class="qgen" style="background:#C0392B;margin-right:8px" onclick="autoFixFlagged()" title="Rewrite every flagged draft with its violations as explicit removal instructions">⚠ Auto-fix ${n} flagged →</button>`:'';})()}
+      <button class="qgen" id="sugbtn" style="background:var(--navy);margin-right:8px" onclick="suggestTopics()" title="Claude combines the owner's business description with the audit data and proposes topics — you pick what to queue">💡 Suggest topics</button>
       <button class="qgen" onclick="generateDrafts()">Generate drafts →</button></div>`;
   document.getElementById('queue-tag').textContent=`${PK.topics.length} queued · Engine 2`;
+}
+// ── TOPIC SUGGESTIONS — Claude proposes, deterministic gates filter, a human
+//    picks what to queue. Fed by the owner's business description in intake.
+let _suggestions=[];
+const KIND_MODEL={gbp_post:'haiku-4-5',blog:'sonnet-4-6',pillar:'opus-4-8',landing:'sonnet-4-6',service:'sonnet-4-6',faq:'haiku-4-5'};
+async function suggestTopics(){
+  if(OFFLINE||!activeClient){ showToast('Open a client first',true); return; }
+  if(!PK.package_id){ showToast('Generate the package first — suggestions queue into it',true); return; }
+  const btn=document.getElementById('sugbtn'); if(btn){btn.disabled=true;btn.textContent='Thinking…';}
+  try{
+    const {data,error}=await sb.functions.invoke('suggest-topics',{body:{client_id:activeClient.id}});
+    if(error||(data&&data.error)) throw new Error((data&&data.error)||error.message);
+    _suggestions=(data&&data.suggestions)||[];
+    renderSuggestions();
+    showToast(_suggestions.length?`${_suggestions.length} topic ideas passed the gates — pick what to queue below.`:'No new suggestions cleared the gates — existing pieces may already cover the space.', !_suggestions.length, !!_suggestions.length);
+  }catch(e){ showToast('Suggestions failed: '+e.message+' — is the suggest-topics function deployed?',true); }
+  finally{ if(btn){btn.disabled=false;btn.textContent='💡 Suggest topics';} }
+}
+function renderSuggestions(){
+  const el=document.getElementById('suggestions'); if(!el) return;
+  if(!_suggestions.length){ el.innerHTML=''; return; }
+  el.innerHTML=`<div class="ds-row" style="margin-top:10px">
+    <div style="flex-basis:100%;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Suggested topics — gate-checked · pick what to queue</div>
+    ${_suggestions.map((s,i)=>`<label style="flex-basis:100%;display:flex;gap:9px;align-items:baseline;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="sg-${i}" checked>
+      <b>${esc(s.keyword)}</b>
+      <span style="font-size:11px;font-weight:700;background:var(--blue-l);color:var(--blue-d);padding:1px 8px;border-radius:999px">${esc(s.kind)}</span>
+      <span style="color:var(--muted)">${esc(s.rationale||'')}</span></label>`).join('')}
+    <button class="ds-save" onclick="addSelectedTopics()">＋ Queue selected</button>
+    <button class="ds-save" style="background:var(--muted)" onclick="_suggestions=[];renderSuggestions()">Dismiss</button>
+  </div>`;
+}
+async function addSelectedTopics(){
+  const picked=_suggestions.filter((s,i)=>{const cb=document.getElementById('sg-'+i);return cb&&cb.checked;});
+  if(!picked.length){ showToast('Nothing selected',true); return; }
+  const tc=s=>String(s||'').replace(/\b\w/g,c=>c.toUpperCase());
+  const rows=picked.map(s=>({ package_id:PK.package_id, title:tc(s.keyword), target_keyword:s.keyword, kind:s.kind,
+    model:KIND_MODEL[s.kind]||'sonnet-4-6', status:'queued', source:'suggested', location:(activeClient&&activeClient.market)||null }));
+  const {error}=await sb.from('content_topics').insert(rows);
+  if(error){ showToast('Queue failed: '+error.message,true); return; }
+  _suggestions=[]; renderSuggestions();
+  await loadLiveAudit(); renderPackage();
+  showToast(`${rows.length} topic${rows.length>1?'s':''} queued — Generate drafts when ready.`, false, true);
 }
 // Retire a piece from the console (logged; the DB error is surfaced, never
 // swallowed — that silence is how 11 phantom retirements shipped).
@@ -2822,7 +2867,8 @@ async function generatePackage(){
 // email/SMS/postcard and prohibit bots) — the pack makes it copy-paste-fast.
 const INTAKE_FIELDS=[['phone','Phone'],['email','Email'],['street','Street address'],['city','City'],['state','State'],['zip','ZIP'],
   ['hours','Hours (e.g. Mo-Fr 8:00-17:00)'],['categories','Categories (comma-separated)'],
-  ['facebook','Facebook URL'],['instagram','Instagram URL'],['linkedin','LinkedIn URL'],['gbp','Google Business Profile URL']];
+  ['facebook','Facebook URL'],['instagram','Instagram URL'],['linkedin','LinkedIn URL'],['gbp','Google Business Profile URL'],
+  ['description','Business description — services, specialties, who they serve (feeds the audit + topic suggestions)']];
 const DIRECTORIES=[
   ['Google Business Profile','https://business.google.com/create','Owner verification required (postcard/phone/video) — schedule with the client'],
   ['Bing Places','https://www.bingplaces.com/','Fastest path: “Import from Google Business Profile”'],
@@ -2864,7 +2910,10 @@ async function renderBizFacts(){
     <div class="ds-row" style="border:none;background:none">
     ${INTAKE_FIELDS.map(([k,l])=>{
       const isSug=!iv[k]&&sug[k];
-      return `<div class="ds-field"><label>${l}${isSug?' <span style="color:#8A6D12;text-transform:none;letter-spacing:0">· from site — verify</span>':''}</label>
+      const hint=isSug?' <span style="color:#8A6D12;text-transform:none;letter-spacing:0">· from site — verify</span>':'';
+      if(k==='description') return `<div class="ds-field" style="flex-basis:100%"><label>${l}${hint}</label>
+        <textarea id="bf-${k}" rows="3" style="font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;color:var(--ink);background:#fff;resize:vertical">${esc(iv[k]||sug[k]||'')}</textarea></div>`;
+      return `<div class="ds-field"><label>${l}${hint}</label>
         <input id="bf-${k}" value="${esc(iv[k]||sug[k]||'')}" ${isSug?'style="border-color:#C9A227;background:#FFFDF2"':''}></div>`;}).join('')}
     <button class="ds-save" onclick="saveBizFacts()">Approve &amp; save</button>
     <button class="ds-save" style="background:var(--blue)" onclick="downloadCitationPack()">📇 Citation pack</button>
