@@ -6,7 +6,7 @@
 <title>44i SEO/AEO Delivery System — Internal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
 <!--
   44i SEO/AEO Delivery System — Internal Ops Console v8
   Stack: static front-end · secure cloud backend · search & authority data
@@ -35,6 +35,7 @@
   --crit:#C0392B; --crit-l:#FDECEA; --high:#E67E22; --high-l:#FBE3D4;
   --gold:#C9A227; --gold-l:#F7F0D8;
   --r:14px; --r-sm:10px; --r-xs:6px;
+  --display:'Fraunces',Georgia,serif;   /* display face: headings + hero numbers (body stays Manrope) */
   --gsc:#4285F4; --gsc-l:#E8F0FE; --gbp:#34A853; --gbp-l:#E6F4EA;
   --wp:#21759B;  --wp-l:#E4F2FA;  --ga4:#E8710A; --ga4-l:#FDE9D9;
   --st-active:#6FA53C; --st-onboard:#4B9BD7; --st-paused:#E67E22; --st-churned:#9CA8B4;
@@ -42,6 +43,11 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Manrope',system-ui,sans-serif;color:var(--ink);background:var(--paper);line-height:1.5;-webkit-font-smoothing:antialiased}
+/* Display/body pairing: Fraunces (roman) carries page titles, section
+   headings and hero numbers; Manrope stays on all functional UI. The
+   body-prefixed selectors out-rank the per-component rules below. */
+body h1,body .login-h,body .section-h h2,body .navycard h3,body .diag h3{font-family:var(--display);font-weight:600}
+body .scgrade,body .dir-score,body .navycard .big,body .insbig,body .card .v{font-family:var(--display);font-weight:600;letter-spacing:-.3px}
 .wrap{max-width:1240px;margin:0 auto;padding:0 28px}
 button{cursor:pointer;font-family:inherit}
 
@@ -689,7 +695,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V2.1.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V2.2.0</div>
   </div>
 </div>
 
@@ -731,7 +737,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V2.1.0</span>
+        <span>44i, Inc. · Internal Ops Console · V2.2.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -785,7 +791,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V2.1.0</span>
+        <span>44i, Inc. · Internal Ops Console · V2.2.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -830,7 +836,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="acp" id="access-panel"></div>
     <div class="datasrc" id="datasrc"></div>
 
-    <div class="section-h"><h2>1 · Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
+    <div class="section-h"><h2>Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
     <div class="tradearea" id="tradearea"></div>
     <div class="scorecard" id="scorecard"></div>
     <div class="insights" id="insights"></div>
@@ -854,24 +860,24 @@ footer .fbadges{display:flex;gap:18px}
       </div>
     </div>
 
-    <div class="section-h"><h2>2 · Competitive Analysis</h2><div class="ln"></div><span class="tag" id="comp-tag">run up-front · editable</span></div>
+    <div class="section-h"><h2>Competitive Analysis</h2><div class="ln"></div><span class="tag" id="comp-tag">run up-front · editable</span></div>
     <div class="comp" id="comp"></div>
     <div class="subh">Top competitor pages <span class="sct">— what's pulling their traffic</span></div>
     <div class="cpages" id="cpages"></div>
     <div class="subh">Content gap <span class="sct">— keywords they rank for that you don't · select what to target</span></div>
     <div class="gaps" id="gaps"></div>
 
-    <div class="section-h"><h2>3 · Content Plan</h2><div class="ln"></div><span class="tag" id="queue-tag">Engine 2 · AI Writer</span></div>
+    <div class="section-h"><h2>Content Plan</h2><div class="ln"></div><span class="tag" id="queue-tag">Engine 2 · AI Writer</span></div>
     <div class="model-legend" id="model-legend"></div>
     <div class="queue" id="queue"></div>
 
-    <div class="section-h"><h2>4 · Technical Fixes</h2><div class="ln"></div><span class="tag" id="fix-tag">paste-ready</span></div>
+    <div class="section-h"><h2>Technical Fixes</h2><div class="ln"></div><span class="tag" id="fix-tag">paste-ready</span></div>
     <div class="fixes" id="fixes"></div>
 
-    <div class="section-h"><h2>5 · Deliverables this cycle</h2><div class="ln"></div><span class="tag" id="delivtag"></span></div>
+    <div class="section-h"><h2>Deliverables this cycle</h2><div class="ln"></div><span class="tag" id="delivtag"></span></div>
     <div class="deliv" id="deliv"></div>
 
-    <div class="section-h"><h2>6 · Monthly Report</h2><div class="ln"></div><span class="tag">white-labeled · client-facing</span></div>
+    <div class="section-h"><h2>Monthly Report</h2><div class="ln"></div><span class="tag">white-labeled · client-facing</span></div>
     <div class="report-wl" id="report-wl"></div>
 
     <div class="section-h"><h2>Campaign roadmap</h2><div class="ln"></div><span class="tag" id="camp-tag"></span></div>
@@ -881,7 +887,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V2.1.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V2.2.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
