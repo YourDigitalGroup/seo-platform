@@ -250,6 +250,19 @@ header.show{display:block}
 .run{font-weight:700;font-size:15px;color:#fff;background:var(--blue);border:none;border-radius:999px;padding:14px 28px;white-space:nowrap;transition:.12s;align-self:flex-end}
 .run:hover{background:var(--blue-d)}
 
+/* ── 5-step package workflow tabs ── */
+.ptabs{display:flex;gap:4px;margin:18px 0 4px;border-bottom:2px solid var(--line);flex-wrap:wrap;position:sticky;top:62px;background:var(--paper);z-index:15}
+.ptabs .pt{border:none;background:none;font-size:13.5px;font-weight:700;color:var(--muted);padding:11px 14px;border-bottom:3px solid transparent;margin-bottom:-2px;cursor:pointer;transition:.12s}
+.ptabs .pt:hover{color:var(--ink)}
+.ptabs .pt.on{color:var(--ink);border-bottom-color:var(--blue)}
+.ptabs .ptb{display:inline-block;min-width:18px;text-align:center;padding:1px 6px;margin-left:7px;border-radius:999px;background:var(--blue-l);color:var(--blue-d);font-size:11px;font-weight:800}
+.ptabs .ptb:empty{display:none}
+.ptab{display:none}.ptab.on{display:block}
+.howto{background:var(--blue-l);border:1px solid rgba(75,155,215,.28);border-radius:var(--r);padding:15px 20px;margin:14px 0 18px;font-size:13.5px;line-height:1.55;color:var(--ink)}
+.howto b{color:var(--navy)}
+.howto ol{margin:8px 0 0 20px;display:flex;flex-direction:column;gap:6px}
+.howto i{font-style:italic}
+
 .section-h{display:flex;align-items:center;gap:10px;margin:30px 0 14px}
 .section-h h2{font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase}
 .section-h .ln{flex:1;height:1px;background:var(--line)}
@@ -690,7 +703,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.6.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V4.0.0</div>
   </div>
 </div>
 
@@ -732,7 +745,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.6.1</span>
+        <span>44i, Inc. · Internal Ops Console · V4.0.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +799,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.6.1</span>
+        <span>44i, Inc. · Internal Ops Console · V4.0.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -810,81 +823,132 @@ footer .fbadges{display:flex;gap:18px}
       </div>
     </div>
 
-    <div class="intake">
-      <div style="display:flex;flex-direction:column;gap:14px">
-        <div class="ifield"><label>Client URL</label><input id="url" type="text" value=""></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div class="ifield"><label>Target market</label><input id="market" type="text" value=""></div>
-          <div class="ifield"><label>Plan</label>
-            <div class="tiers" id="tiers">
-              <div class="tsel" data-t="starter">SEO Starter<small>$199</small></div>
-              <div class="tsel" data-t="builder">SEO Pro<small>$599</small></div>
-              <div class="tsel on" data-t="pro">AEO Pro<small>$799</small></div>
+    <!-- ── 5-step workflow: each tab is one job with instructions on top ── -->
+    <div class="ptabs" id="ptabs">
+      <button class="pt on" data-pt="1" onclick="showPTab(1)">① Setup<span class="ptb" id="ptb-1"></span></button>
+      <button class="pt" data-pt="2" onclick="showPTab(2)">② Audit &amp; Plan<span class="ptb" id="ptb-2"></span></button>
+      <button class="pt" data-pt="3" onclick="showPTab(3)">③ Content<span class="ptb" id="ptb-3"></span></button>
+      <button class="pt" data-pt="4" onclick="showPTab(4)">④ Fixes &amp; Deploy<span class="ptb" id="ptb-4"></span></button>
+      <button class="pt" data-pt="5" onclick="showPTab(5)">⑤ Report &amp; Roadmap<span class="ptb" id="ptb-5"></span></button>
+      <button class="pt" data-pt="all" onclick="showPTab('all')" title="One continuous page with every section, like the classic view" style="margin-left:auto">☰ Full overview</button>
+    </div>
+
+    <div class="ptab on" id="ptab-1">
+      <div class="howto"><b>Step 1 — Set the client up.</b> (Once per client, then only when something changes.)
+        <ol>
+          <li>Check the URL, target market and plan, then click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it.</li>
+          <li>Open <b>📍 Local Listing Optimization</b> below and fill in the business facts. Amber fields were read off the client's website — verify them, then click <b>Approve &amp; save</b>.</li>
+          <li>In Platform Access, connect what you have: the WordPress key (from the client site's connector plugin — see tab ④), Search Console, Business Profile.</li>
+        </ol>
+      </div>
+      <div class="intake">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="ifield"><label>Client URL</label><input id="url" type="text" value=""></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div class="ifield"><label>Target market</label><input id="market" type="text" value=""></div>
+            <div class="ifield"><label>Plan</label>
+              <div class="tiers" id="tiers">
+                <div class="tsel" data-t="starter">SEO Starter<small>$199</small></div>
+                <div class="tsel" data-t="builder">SEO Pro<small>$599</small></div>
+                <div class="tsel on" data-t="pro">AEO Pro<small>$799</small></div>
+              </div>
             </div>
           </div>
         </div>
+        <button class="run" onclick="generatePackage()">Generate package →</button>
       </div>
-      <button class="run" onclick="generatePackage()">Generate package →</button>
+      <div class="datasrc" id="bizfacts" style="margin-top:14px"></div>
+      <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
+      <div class="acp" id="access-panel"></div>
+      <div class="datasrc" id="datasrc"></div>
     </div>
 
-    <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
-    <div class="acp" id="access-panel"></div>
-    <div class="datasrc" id="datasrc"></div>
-
-    <div class="section-h"><h2>1 · Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
-    <div class="tradearea" id="tradearea"></div>
-    <div class="scorecard" id="scorecard"></div>
-    <div class="insights" id="insights"></div>
-
-    <div class="section-h"><h2>Plan Directive</h2><div class="ln"></div><span class="tag" id="dir-tag">plan-scoped work order</span></div>
-    <div class="directive" id="directive"></div>
-    <div class="checklist" id="checklist"></div>
-
-    <div class="opportunities" id="opportunities"></div>
-    <div class="reportbar" id="reportbar"></div>
-    <div class="cards" id="cards"></div>
-    <div class="panel">
-      <div class="navycard">
-        <div class="lab">Findings by severity</div><h3>What the audit surfaced</h3>
-        <div class="bars" id="bars"></div>
-        <div class="big" id="f-total">—</div><div class="bigsub" id="f-sub"></div>
+    <div class="ptab" id="ptab-2">
+      <div class="howto"><b>Step 2 — Read the plan.</b> (Nothing to implement on this tab — it tells you what the platform found and what it's doing about it.)
+        <ol>
+          <li>The big number is the site's <b>audit score out of 100</b>; the campaign drives it to 90+.</li>
+          <li><b>The Directive</b> is the work order. <i>In production</i> = being written for you now (tabs ③ and ④). <i>Scheduled</i> = a later month. <i>Available on…</i> = needs a plan upgrade — mention it to the account manager.</li>
+          <li>Competitors and the content-gap list are editable — tick any gap keyword worth writing and it joins the Content tab queue.</li>
+        </ol>
       </div>
-      <div class="diag">
-        <div class="lab">Auto-diagnosis</div><h3 id="diag-h">—</h3>
-        <p id="diag-p"></p><div class="focus" id="diag-f"></div>
+      <div class="section-h"><h2>Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
+      <div class="tradearea" id="tradearea"></div>
+      <div class="scorecard" id="scorecard"></div>
+      <div class="insights" id="insights"></div>
+      <div class="section-h"><h2>Plan Directive</h2><div class="ln"></div><span class="tag" id="dir-tag">plan-scoped work order</span></div>
+      <div class="directive" id="directive"></div>
+      <div class="checklist" id="checklist"></div>
+      <div class="opportunities" id="opportunities"></div>
+      <div class="cards" id="cards"></div>
+      <div class="panel">
+        <div class="navycard">
+          <div class="lab">Findings by severity</div><h3>What the audit surfaced</h3>
+          <div class="bars" id="bars"></div>
+          <div class="big" id="f-total">—</div><div class="bigsub" id="f-sub"></div>
+        </div>
+        <div class="diag">
+          <div class="lab">Auto-diagnosis</div><h3 id="diag-h">—</h3>
+          <p id="diag-p"></p><div class="focus" id="diag-f"></div>
+        </div>
       </div>
+      <div class="section-h"><h2>Competitive Analysis</h2><div class="ln"></div><span class="tag" id="comp-tag">run up-front · editable</span></div>
+      <div class="comp" id="comp"></div>
+      <div class="subh">Top competitor pages <span class="sct">— what's pulling their traffic</span></div>
+      <div class="cpages" id="cpages"></div>
+      <div class="subh">Content gap <span class="sct">— keywords they rank for that you don't · select what to target</span></div>
+      <div class="gaps" id="gaps"></div>
     </div>
 
-    <div class="section-h"><h2>2 · Competitive Analysis</h2><div class="ln"></div><span class="tag" id="comp-tag">run up-front · editable</span></div>
-    <div class="comp" id="comp"></div>
-    <div class="subh">Top competitor pages <span class="sct">— what's pulling their traffic</span></div>
-    <div class="cpages" id="cpages"></div>
-    <div class="subh">Content gap <span class="sct">— keywords they rank for that you don't · select what to target</span></div>
-    <div class="gaps" id="gaps"></div>
+    <div class="ptab" id="ptab-3">
+      <div class="howto"><b>Step 3 — Review and approve the writing.</b>
+        <ol>
+          <li>Every queued piece drafts itself after Generate. Click <b>Open</b> on each one, read it, and edit anything you'd say differently.</li>
+          <li>If a red <b>⚠ Auto-fix flagged</b> button appears, click it once — it rewrites any draft that broke a compliance rule (invented claims, placeholders) using the approved business facts.</li>
+          <li>Click <b>Approve</b> on drafts that are ready. <b>Approval is what puts a piece on the publishing schedule</b> — unapproved drafts deploy as WordPress drafts instead.</li>
+          <li>Want more options? <b>💡 Suggest topics</b> proposes ideas from the business description — tick the good ones.</li>
+        </ol>
+      </div>
+      <div class="section-h"><h2>Content Plan</h2><div class="ln"></div><span class="tag" id="queue-tag">Engine 2 · AI Writer</span></div>
+      <div class="model-legend" id="model-legend"></div>
+      <div class="queue" id="queue"></div>
+      <div id="suggestions"></div>
+    </div>
 
-    <div class="section-h"><h2>3 · Content Plan</h2><div class="ln"></div><span class="tag" id="queue-tag">Engine 2 · AI Writer</span></div>
-    <div class="model-legend" id="model-legend"></div>
-    <div class="queue" id="queue"></div>
-    <div id="suggestions"></div>
+    <div class="ptab" id="ptab-4">
+      <div class="howto"><b>Step 4 — Put it on the website (WordPress).</b>
+        <ol>
+          <li>The fixes below are already written — schema, titles, robots.txt, all of it. Nothing here changes how the site <i>looks</i>.</li>
+          <li><b>One-time per site:</b> wp-admin → Plugins → Add New → Upload → <i>seo-platform-connector.zip</i> → Activate. Then Settings → SEO Platform → copy the <b>API key</b> into this client's Platform Access on tab ①.</li>
+          <li><b>Deploy everything in one shot:</b> click <b>⬇ Deploy file (.json)</b> in the header above, then in wp-admin go to <b>Settings → SEO Platform → Import package</b>, choose the file, click <b>Import &amp; apply</b>. It applies every fix and schedules the approved content, then prints a report — anything listed under <i>Manual follow-ups</i> is yours to do by hand.</li>
+          <li><b>Google Business Profile posts</b> can't be automated: copy each post's text from the campaign doc (tab ⑤) into business.google.com → Add update.</li>
+          <li><b>Citations (LLO):</b> on tab ① open 📍 LLO → <b>📇 Citation pack</b> — work the checklist top to bottom, pasting the NAP block <i>exactly</i>. For bulk, import the <b>⬇ Citations CSV</b> into BrightLocal/Whitespark.</li>
+        </ol>
+      </div>
+      <div class="section-h"><h2>Technical Fixes</h2><div class="ln"></div><span class="tag" id="fix-tag">paste-ready</span></div>
+      <div class="fixes" id="fixes"></div>
+    </div>
 
-    <div class="section-h"><h2>4 · Technical Fixes</h2><div class="ln"></div><span class="tag" id="fix-tag">paste-ready</span></div>
-    <div class="fixes" id="fixes"></div>
-
-    <div class="section-h"><h2>5 · Deliverables this cycle</h2><div class="ln"></div><span class="tag" id="delivtag"></span></div>
-    <div class="deliv" id="deliv"></div>
-    <div class="datasrc" id="bizfacts" style="margin-top:12px"></div>
-
-    <div class="section-h"><h2>6 · Monthly Report</h2><div class="ln"></div><span class="tag">white-labeled · client-facing</span></div>
-    <div class="report-wl" id="report-wl"></div>
-
-    <div class="section-h"><h2>Campaign roadmap</h2><div class="ln"></div><span class="tag" id="camp-tag"></span></div>
-    <div class="roadmap" id="roadmap"></div>
-
-    <div class="section-h"><h2>The Four Engines</h2><div class="ln"></div><span class="tag" id="tiertag">AEO Pro plan</span></div>
-    <div class="engines" id="engines"></div>
+    <div class="ptab" id="ptab-5">
+      <div class="howto"><b>Step 5 — Prove it, and plan next month.</b>
+        <ol>
+          <li><b>📄 Campaign doc</b> (header button) downloads the full work plan — the client-safe copy only generates when every compliance check passes; the INTERNAL file lists anything left to resolve.</li>
+          <li>The client progress report below: <b>Rebuild</b> after big changes, <b>Open</b> to check it, <b>Print to PDF</b> to send.</li>
+          <li>The roadmap shows the whole contract month by month. <b>Seed campaign</b> (once per client) schedules every deliverable; each month you repeat steps ①→④ and the platform paces the plan for you.</li>
+        </ol>
+      </div>
+      <div class="reportbar" id="reportbar"></div>
+      <div class="section-h"><h2>Deliverables this cycle</h2><div class="ln"></div><span class="tag" id="delivtag"></span></div>
+      <div class="deliv" id="deliv"></div>
+      <div class="section-h"><h2>Monthly Report</h2><div class="ln"></div><span class="tag">white-labeled · client-facing</span></div>
+      <div class="report-wl" id="report-wl"></div>
+      <div class="section-h"><h2>Campaign roadmap</h2><div class="ln"></div><span class="tag" id="camp-tag"></span></div>
+      <div class="roadmap" id="roadmap"></div>
+      <div class="section-h"><h2>The Four Engines</h2><div class="ln"></div><span class="tag" id="tiertag">AEO Pro plan</span></div>
+      <div class="engines" id="engines"></div>
+    </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V3.6.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V4.0.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1892,6 +1956,7 @@ function renderPackage(){
   renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
+  updatePTabBadges();
 }
 
 // ── strategist assignment (AM/admin assigns; others see read-only) ──
@@ -2782,7 +2847,29 @@ function renderEngines(){
     <div class="en">${e.n}</div><h4>${e.t}</h4><p>${e.p}</p>
     <span class="st ${e.st}">${e.lab}</span><span class="eng-go">View →</span></div>`).join('');
 }
+// ── package workflow tabs ──
+let _ptab=1;
+function showPTab(n){
+  _ptab=n;
+  const all=n==='all';   // '☰ Full overview' = every section on one page, classic style
+  document.querySelectorAll('.ptab').forEach(d=>d.classList.toggle('on', all||d.id==='ptab-'+n));
+  document.querySelectorAll('.ptabs .pt').forEach(b=>b.classList.toggle('on', b.dataset.pt==String(n)));
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+// Badge counts tell the team where work is waiting.
+function updatePTabBadges(){
+  const set=(n,v)=>{const b=document.getElementById('ptb-'+n); if(b) b.textContent=v?String(v):'';};
+  const missReq=(activeClient&&activeClient._intake!==undefined)?intakeMissing().length:0;
+  const d=PK.directive;
+  set(1, missReq);
+  set(2, d?((d.items||[]).filter(i=>i.in_plan&&i.status!=='done').length):0);
+  set(3, (PK.topics||[]).filter(t=>t.status==='drafted').length);
+  set(4, (PK.fixes||[]).filter(f=>f.status==='ready'||f.status==='edited').length);
+  set(5, 0);
+}
 function jumpToEngine(id){
+  const TAB={scorecard:2,directive:2,queue:3,fixes:4,reportbar:5};
+  if(TAB[id]&&_ptab!=='all'&&_ptab!==TAB[id]) showPTab(TAB[id]);
   const el=document.getElementById(id); if(!el) return;
   el.scrollIntoView({behavior:'smooth', block:'start'});
   el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'), 1600);
