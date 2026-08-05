@@ -247,6 +247,11 @@ Deno.serve(async (req) => {
         bizText = `TITLE: ${getTitle(h)}\nMETA: ${getMeta(h, "description")}\nHEADINGS: ${heads}\nTEXT: ${body}`;
       }
     } catch { /* ignore */ }
+    // The owner's own description (clients.intake.description) is authoritative:
+    // it sharpens classification on thin sites and rescues it entirely when the
+    // homepage is unreachable — better services/keywords flow from here.
+    const ownerDesc = (client.intake && (client.intake as any).description) || "";
+    if (ownerDesc) bizText = `${bizText ? bizText + "\n" : ""}OWNER DESCRIPTION (authoritative — provided by the business): ${ownerDesc}`;
     const cityHint = client.market || "";
     let businessType = "", services: string[] = [], seedKeywords: string[] = [], primaryCity = cityHint, secondaryTowns: string[] = [];
     if (bizText) {
