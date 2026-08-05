@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.6.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.6.1</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.6.0</span>
+        <span>44i, Inc. · Internal Ops Console · V3.6.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.6.0</span>
+        <span>44i, Inc. · Internal Ops Console · V3.6.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -884,7 +884,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V3.6.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V3.6.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2902,9 +2902,8 @@ async function renderBizFacts(){
   const saved=INTAKE_FIELDS.filter(([k])=>iv[k]).length;
   const suggested=INTAKE_FIELDS.filter(([k])=>!iv[k]&&sug[k]).length;
   const missReq=intakeMissing().length;
-  const summary=`Business facts (intake) · ${5-missReq}/5 required saved`
-    +(suggested?` · ${suggested} scraped from the site — review below`:'')
-    +' · powers the citation pack (LLO)';
+  const summary=`📍 Local Listing Optimization (LLO) — business facts & citation pack · ${5-missReq}/5 required saved`
+    +(suggested?` · ${suggested} scraped from the site — review & approve`:'');
   el.innerHTML=`<details ${suggested&&missReq?'open':''} style="border:1px dashed var(--line);border-radius:var(--r-sm);background:var(--mist)">
     <summary style="cursor:pointer;padding:11px 14px;font-size:12px;font-weight:700;color:${missReq?'var(--muted)':'#3C5A1E'}">${esc(summary)}</summary>
     <div class="ds-row" style="border:none;background:none">
