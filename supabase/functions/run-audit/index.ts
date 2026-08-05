@@ -105,6 +105,21 @@ const targetRejectReason = (k: unknown, geos: string[] = []): string | null => {
   if (geos.some((g) => { const town = String(g).split(",")[0].trim().toLowerCase(); return town && (bare === town || t === town); })) return "bare location name";
   return null;
 };
+// ── KEYWORD IDENTITY (round-2 rule 6.2): two keywords are the same keyword if
+//    they normalize to the same string OR one's token set contains the other's
+//    (same head terms + geography = same search intent = one page).
+const KW_FILLERS = new Set(["and", "the", "a", "an", "in", "for", "of", "services", "service", "solutions", "company", "provider", "llc", "inc"]);
+const kwTokens = (k: unknown): string[] =>
+  String(k || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/).filter((t) => t && !KW_FILLERS.has(t));
+const kwKey = (k: unknown): string => [...new Set(kwTokens(k))].sort().join(" ");
+const sameIntent = (keyA: string, keyB: string): boolean => {
+  if (!keyA || !keyB) return false;
+  if (keyA === keyB) return true;
+  const A = keyA.split(" "), B = keyB.split(" ");
+  const [small, big] = A.length <= B.length ? [A, new Set(B)] : [B, new Set(A)];
+  return small.every((t) => big.has(t));   // subset ⇒ "network support cedar rapids" ≡ "network support and management cedar rapids"
+};
 
 // ── HTML parsing helpers (fallback page fetch; no DOM in Deno) ────────────────
 function getTitle(html: string){ const m=html.match(/<title[^>]*>([\s\S]*?)<\/title>/i); return m?m[1].replace(/\s+/g," ").trim():""; }
@@ -926,9 +941,9 @@ Deno.serve(async (req) => {
     let campaignDriven = false;
     const topicsCreated: { kind: string; keyword: string; town: string | null }[] = [];
     const rejectedKw: { keyword: string; reason: string }[] = [];
+    const recon = { kept: 0, retired: [] as { title: string; reason: string }[] };
     if (package_id) {
       const titleCase = (s: string) => String(s || "").replace(/\b\w/g, (c) => c.toUpperCase());
-      const seenT = new Set<string>();
       const MODEL: Record<string, string> = { gbp_post: "haiku-4-5", blog: "sonnet-4-6", pillar: "opus-4-8", landing: "sonnet-4-6", service: "sonnet-4-6", faq: "haiku-4-5" };
       // prioritized keyword pools drawn from the live audit
       const oppKwPool = opportunities.map((o: any) => o.keyword).filter(Boolean);
@@ -937,27 +952,81 @@ Deno.serve(async (req) => {
       const townPages: string[] = [];
       services.slice(0, 3).forEach((svc: any) => secondaryTowns.slice(0, 3).forEach((t: any) => townPages.push(`${svc} ${t}`)));
       const localServices = services.slice(0, 4).map((svc: any) => primaryCity ? `${svc} ${primaryCity}` : svc);
-      // Every candidate must clear the validation gate before content is
-      // generated for it; rejections are logged, never silently dropped.
+
+      // ── RECONCILIATION (rule 6.1): regeneration replaces, never appends.
+      // Every prior topic for this CLIENT (all cycles) claims its keyword so
+      // covered intent is never regenerated. Queued/drafted pieces in THIS
+      // package that fail today's gates or collide on intent are RETIRED
+      // (status='retired'), never silently carried forward. Approved work is
+      // always KEEP.
+      const seenKeys: string[] = [];
+      const takenKw = (kw: unknown) => { const key = kwKey(kw); return !key || seenKeys.some((k) => sameIntent(k, key)); };
+      const claimKw = (kw: unknown) => { const key = kwKey(kw); if (key) seenKeys.push(key); };
+      const usedOf: Record<string, number> = {};   // allocation usage: contract-total + "cycle:"-prefixed per-cycle
+      {
+        const { data: allT } = await supa.from("content_topics")
+          .select("id, title, target_keyword, kind, status, package_id, packages!inner(client_id)")
+          .eq("packages.client_id", client.id);
+        const rows = (allT || []).filter((t: any) => t.status !== "retired")
+          .sort((a: any, b: any) => (a.status === "approved" ? 0 : 1) - (b.status === "approved" ? 0 : 1));
+        const toRetire: { id: string; title: string; reason: string }[] = [];
+        for (const t of rows) {
+          const kw = t.target_keyword || t.title || "";
+          const editable = t.package_id === package_id && ["queued", "drafted", "drafting"].includes(String(t.status));
+          const gate = targetRejectReason(kw, geoList);
+          if (editable && gate) { toRetire.push({ id: t.id, title: t.title, reason: gate }); continue; }
+          if (editable && takenKw(kw)) { toRetire.push({ id: t.id, title: t.title, reason: "duplicate intent — same searcher need as an existing piece" }); continue; }
+          claimKw(kw); recon.kept++;
+          usedOf[t.kind] = (usedOf[t.kind] || 0) + 1;
+          if (t.package_id === package_id) usedOf["cycle:" + t.kind] = (usedOf["cycle:" + t.kind] || 0) + 1;
+        }
+        if (toRetire.length) {
+          await supa.from("content_topics").update({ status: "retired" }).in("id", toRetire.map((r) => r.id));
+          recon.retired = toRetire.map((r) => ({ title: r.title, reason: r.reason }));
+          note.push(`Reconciliation: retired ${toRetire.length} prior piece(s) — ${toRetire.slice(0, 5).map((r) => `“${r.title}” (${r.reason})`).join("; ")}${toRetire.length > 5 ? " …" : ""}`);
+        }
+      }
+
+      // ── PLAN ALLOCATION CEILING (rule 6.6): never generate more of a
+      // content kind than the plan funds. fixed_quantity = contract total;
+      // recurring = per-cycle quantity. Static fallback mirrors the catalog.
+      const tierNow = String(client.tier || "starter");
+      const capOf: Record<string, { cap: number | null; perCycle: boolean }> = {};
+      {
+        const { data: tmplA } = await supa.from("service_templates")
+          .select("content_kind, cadence_type, quantity_total, quantity_per_interval")
+          .eq("tier", tierNow).eq("engine", "content").eq("active", true);
+        (tmplA || []).forEach((r: any) => { if (!r.content_kind) return;
+          if (r.cadence_type === "fixed_quantity") capOf[r.content_kind] = { cap: r.quantity_total ?? null, perCycle: false };
+          else if (r.cadence_type === "recurring") capOf[r.content_kind] = { cap: r.quantity_per_interval ?? null, perCycle: true };
+        });
+        const FB: Record<string, { cap: Record<string, number>; perCycle: boolean }> = {
+          blog:     { cap: { starter: 1, builder: 2, pro: 4 }, perCycle: false },
+          landing:  { cap: { starter: 0, builder: 0, pro: 5 }, perCycle: false },
+          gbp_post: { cap: { starter: 1, builder: 2, pro: 3 }, perCycle: true },
+          pillar:   { cap: { starter: 0, builder: 0, pro: 1 }, perCycle: true },
+        };
+        Object.entries(FB).forEach(([k, v]) => { if (!capOf[k]) capOf[k] = { cap: v.cap[tierNow] ?? null, perCycle: v.perCycle }; });
+      }
+      const allocRemaining = (kind: string): number => {
+        const c = capOf[kind]; if (!c || c.cap == null) return 99;
+        return Math.max(0, c.cap - (c.perCycle ? (usedOf["cycle:" + kind] || 0) : (usedOf[kind] || 0)));
+      };
+      const consumeAlloc = (kind: string) => { usedOf[kind] = (usedOf[kind] || 0) + 1; usedOf["cycle:" + kind] = (usedOf["cycle:" + kind] || 0) + 1; };
+      const allocShort: string[] = [];
+
+      // Every candidate must clear the validation gate AND the intent registry
+      // before content is generated for it; rejections are logged, never
+      // silently dropped.
       const nextFrom = (...pools: string[][]): string | null => {
         for (const pool of pools) for (const kw of pool) {
-          const k = (kw || "").toLowerCase(); if (!kw || seenT.has(k)) continue;
+          if (!kw || takenKw(kw)) continue;
           const why = targetRejectReason(kw, geoList);
-          if (why) { seenT.add(k); rejectedKw.push({ keyword: kw, reason: why }); continue; }
-          seenT.add(k); return kw;
+          if (why) { claimKw(kw); rejectedKw.push({ keyword: kw, reason: why }); continue; }
+          claimKw(kw); return kw;
         }
         return null;
       };
-      // Re-running the audit in the same cycle must not re-queue topics the
-      // package already has (root cause of duplicate pages in the deploy file).
-      {
-        const { data: exT } = await supa.from("content_topics").select("target_keyword, title").eq("package_id", package_id);
-        (exT || []).forEach((t: any) => {
-          if (t.target_keyword) seenT.add(String(t.target_keyword).toLowerCase());
-          if (t.title) seenT.add(String(t.title).toLowerCase());
-        });
-        if ((exT || []).length) note.push(`${(exT || []).length} topics already queued on this package — re-run will only add new ones.`);
-      }
       const pickFor = (kind: string): string | null => {
         if (kind === "gbp_post") return nextFrom(localServices, oppKwPool, coreUnowned);
         if (kind === "blog") return nextFrom(gapPool, coreUnowned, oppKwPool);
@@ -987,6 +1056,7 @@ Deno.serve(async (req) => {
         campaignDriven = true;
         for (const d of due) {
           const kind = d.kind || "blog";
+          if (allocRemaining(kind) <= 0) { allocShort.push(kind); continue; }
           const kw = pickFor(kind);
           if (!kw) continue;
           const town = kind === "landing" ? (secondaryTowns.find((t: any) => kw.includes(t)) || null) : (primaryCity || null);
@@ -994,17 +1064,18 @@ Deno.serve(async (req) => {
             package_id, title: titleCase(kw), target_keyword: kw, kind, model: MODEL[kind] || "sonnet-4-6",
             status: "queued", source: "campaign", location: town }).select("id").single();
           if (tErr) { errors.push(`content_topics: ${tErr.message}`); continue; }
-          if (t?.id) { await supa.from("deliverables").update({ state: "generating", topic_id: t.id }).eq("id", d.id); topicCount++; topicsCreated.push({ kind, keyword: kw, town }); }
+          if (t?.id) { await supa.from("deliverables").update({ state: "generating", topic_id: t.id }).eq("id", d.id); topicCount++; topicsCreated.push({ kind, keyword: kw, town }); consumeAlloc(kind); }
         }
       } else {
         // FALLBACK: generic recommendations when no campaign is seeded for this cycle
         const topicRows: any[] = [];
         const TOPIC_CAP = 8;
         const pushTopic = (keyword: string, kind: string, model: string, source: string, town: string | null = null) => {
-          const key = (keyword || "").toLowerCase(); if (!keyword || seenT.has(key) || topicRows.length >= TOPIC_CAP) return;
+          if (!keyword || takenKw(keyword) || topicRows.length >= TOPIC_CAP) return;
           const why = targetRejectReason(keyword, geoList);
-          if (why) { seenT.add(key); rejectedKw.push({ keyword, reason: why }); return; }
-          seenT.add(key);
+          if (why) { claimKw(keyword); rejectedKw.push({ keyword, reason: why }); return; }
+          if (allocRemaining(kind) <= 0) { allocShort.push(kind); return; }
+          claimKw(keyword); consumeAlloc(kind);
           topicRows.push({ package_id, title: titleCase(keyword), target_keyword: keyword, kind, model, status: "queued", source, location: town });
         };
         opportunities.slice(0, 2).forEach((o: any) => pushTopic(o.keyword, "service", "sonnet-4-6", "opportunity", primaryCity || null));
@@ -1018,6 +1089,7 @@ Deno.serve(async (req) => {
         if (topicRows.length) { const { error: tErr } = await supa.from("content_topics").insert(topicRows); if (tErr) errors.push(`content_topics: ${tErr.message}`);
           else { topicCount = topicRows.length; topicsCreated.push(...topicRows.map((r: any) => ({ kind: r.kind, keyword: r.target_keyword, town: r.location }))); } }
       }
+      if (allocShort.length) note.push(`Plan allocation ceiling reached for: ${[...new Set(allocShort)].join(", ")} — deliverables beyond the signed plan were NOT generated (recommend an upgrade or narrower scope).`);
     }
 
     // ── 16. DIRECTIVE — the plan-scoped work order ────────────────────────────
@@ -1129,7 +1201,7 @@ Deno.serve(async (req) => {
     // Keyword-gate transparency: rejections are reported, never silent.
     if (rejectedKw.length) note.push(`Keyword gate rejected ${rejectedKw.length}: ${rejectedKw.slice(0, 6).map((r) => `“${r.keyword}” (${r.reason})`).join("; ")}${rejectedKw.length > 6 ? " …" : ""}`);
     // Keep the directive readable even when packages.directive doesn't exist yet.
-    await supa.from("audits").update({ raw: { ...auditRow.raw, directive, keyword_gate: rejectedKw } }).eq("id", audit_id);
+    await supa.from("audits").update({ raw: { ...auditRow.raw, directive, keyword_gate: rejectedKw, reconciliation: recon } }).eq("id", audit_id);
 
     return json({ ok: true, audit_id, package_id, cycle: cycleMonth, campaign_driven: campaignDriven, grades, grade_performance,
       score: auditScore,
@@ -1144,6 +1216,7 @@ Deno.serve(async (req) => {
       authority: { client: domain_rating, medianCompetitor: medianCompDR },
       counts: { competitors: competitors.length, competitor_pages: compPages.length, keywords: ownKw.length, core_keywords: coreKeywords.length, opportunities: opportunities.length, gaps: gaps.length, findings: FN.length, fixes: plan.length, content_topics: topicCount },
       fix_ids: fixIds, fixes_dispatched: fixesDispatched,
+      reconciliation: { kept: recon.kept, retired: recon.retired.length, created: topicCount },
       notes: note, ahrefs_errors: errors });
   } catch (e) {
     console.error("run-audit fatal", e);
