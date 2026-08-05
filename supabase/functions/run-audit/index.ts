@@ -64,6 +64,9 @@ const FETCH_PAGES      = 4;    // pages fetched in FALLBACK (no crawl) mode
 const CRAWL_PAGE_LIMIT = 100;  // pages pulled from a crawl project
 const FIX_PAGE_CAP     = 20;   // pages individually staged for fixes (keeps review sane)
 const SERP_TOP         = 10;   // SERP positions read for local competitors
+const SITEMAP_CRAWL    = 25;   // pages fetched in the LIGHTWEIGHT sitemap crawl (no crawl project)
+const LINKGAP_LIMIT    = 50;   // competitor referring domains scanned for the link gap
+const LINKGAP_KEEP     = 15;   // link/citation opportunities kept
 const COUNTRY          = "us";
 // Which AI assistants to measure brand presence across.
 const AI_SOURCES       = "chatgpt,google_ai_overviews,perplexity,gemini";
@@ -337,6 +340,35 @@ Deno.serve(async (req) => {
       (tp?.pages ?? []).forEach((p: any) => { if (p?.url) compPages.push({ domain: c.domain, url: p.url, top_keyword: p.top_keyword, position: p.top_keyword_best_position, traffic: p.sum_traffic }); });
     }
 
+    // ── 4b. BACKLINK INTELLIGENCE — referring-domain quality + competitor
+    //        link gap: domains linking to the local rivals but NOT the client
+    //        are the exact citation/link targets to pursue.
+    let linkProfile: any = null;
+    const linkGap: any[] = [];
+    {
+      const rd = await ah("site-explorer/refdomains", { target, date: today, mode: "subdomains", limit: "100", order_by: "domain_rating:desc", select: "domain,domain_rating" });
+      const ours = (rd?.refdomains ?? []).filter((r: any) => r?.domain);
+      if (ours.length) {
+        const low = ours.filter((r: any) => (r.domain_rating ?? 0) < 10).length;
+        linkProfile = { sampled: ours.length, lowDrPct: Math.round((100 * low) / ours.length), topDomains: ours.slice(0, 10) };
+      }
+      const ourSet = new Set(ours.map((r: any) => rootOf(r.domain)));
+      const gapTally = new Map<string, any>();
+      for (const c of competitors.slice(0, 2)) {
+        const crd = await ah("site-explorer/refdomains", { target: c.domain, date: today, mode: "subdomains", limit: String(LINKGAP_LIMIT), order_by: "domain_rating:desc", select: "domain,domain_rating" });
+        for (const r of (crd?.refdomains ?? [])) {
+          const dm = rootOf(r?.domain); if (!dm || ourSet.has(dm) || dm === root || PLATFORM_DENYLIST.some((x) => dm.includes(x))) continue;
+          const cur = gapTally.get(dm) || { domain: dm, dr: r.domain_rating ?? null, links_competitors: 0 };
+          cur.links_competitors += 1; if (r.domain_rating != null) cur.dr = r.domain_rating;
+          gapTally.set(dm, cur);
+        }
+      }
+      linkGap.push(...[...gapTally.values()]
+        .sort((a, b) => (b.links_competitors - a.links_competitors) || ((b.dr ?? 0) - (a.dr ?? 0)))
+        .slice(0, LINKGAP_KEEP));
+      if (linkGap.length) note.push(`Link gap: ${linkGap.length} domains link to local competitors but not the client.`);
+    }
+
     // ── 5. CLIENT TOP PAGES ───────────────────────────────────────────────────
     const ctp = await ah("site-explorer/top-pages", { target, date: today, country: COUNTRY, mode: "subdomains", limit: String(CLIENT_PAGES), order_by: "sum_traffic:desc",
       select: "url,top_keyword,sum_traffic,keywords" });
@@ -396,12 +428,33 @@ Deno.serve(async (req) => {
         });
       if (pages.length) { crawlUsed = true; note.push(`Full-site crawl used (${pages.length} pages audited; health ${healthScore ?? "—"}).`); }
     }
+    let sitemapCrawled = false;
     if (!crawlUsed) {
-      // Fallback: fetch homepage + top trafficked pages.
-      const targets = [home, ...clientTopPages.map((p: any) => p.url)].filter((u, i, a) => a.indexOf(u) === i).slice(0, FETCH_PAGES);
+      // Fallback: LIGHTWEIGHT SITEMAP CRAWL — audit up to SITEMAP_CRAWL pages
+      // straight from /sitemap.xml (one level of sitemapindex followed), no
+      // paid crawl project needed. Last resort: homepage + top pages.
+      let smList: string[] = [];
+      try {
+        const smr = await fetch(`https://${target}/sitemap.xml`);
+        if (smr.ok) {
+          let xml = await smr.text();
+          if (/<sitemapindex/i.test(xml)) {
+            const first = xml.match(/<loc>\s*([^<]+?)\s*<\/loc>/i)?.[1];
+            if (first) { try { const cs = await fetch(first.trim()); if (cs.ok) xml = await cs.text(); } catch { /* ignore */ } }
+          }
+          smList = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map((m) => m[1].trim())
+            .filter((u) => rootOf(u) === root && !/\.(jpg|jpeg|png|gif|webp|svg|pdf|xml)(\?|$)/i.test(u));
+        }
+      } catch { /* ignore */ }
+      const targets = [home, ...clientTopPages.map((p: any) => p.url), ...smList]
+        .filter((u, i, a) => u && a.indexOf(u) === i).slice(0, smList.length ? SITEMAP_CRAWL : FETCH_PAGES);
       const fetched = await Promise.all(targets.map((u) => u === home ? Promise.resolve(homePage) : fetchPage(u)));
       pages = fetched.filter(Boolean);
-      note.push(`No crawl project found — sampled ${pages.filter((p:any)=>p.ok).length} pages. Set up a crawl for full-site coverage.`);
+      const okN = pages.filter((p: any) => p.ok).length;
+      sitemapCrawled = smList.length > 0 && okN >= 10;
+      note.push(sitemapCrawled
+        ? `Lightweight sitemap crawl: ${okN} pages audited (no crawl project needed).`
+        : `No crawl project found — sampled ${okN} pages. Set up a crawl for full-site coverage.`);
     }
     const okPages = pages.filter((p: any) => p.ok);
 
@@ -581,7 +634,7 @@ Deno.serve(async (req) => {
     check("custom_404", "technical", 1, "Unknown URLs return a real 404", B(notFoundOk), notFoundOk === false ? "nonexistent URL returned non-404 (soft 404)" : "", null, "Serve a 404 status (custom 404 template) for missing pages.", "Domain Optimization (404 fixes, 301 redirects)");
     check("home_indexable", "technical", 3, "Homepage is indexable", homeHtmlRaw ? B(!homeNoindex) : "na", homeNoindex ? "noindex on the homepage" : "", null, "Remove the noindex directive from the homepage.", "Site Health Scan");
     check("crawl_health", "technical", 3, "Crawl health (full-site)", crawlUsed && healthScore != null ? (healthScore >= 90 ? "pass" : healthScore >= 75 ? "warn" : "fail") : "na", healthScore != null ? `health ${healthScore}; ${crawlTotals?.errors ?? "?"} pages with errors` : "", null, "Resolve the crawl-issue list until site health is 90+.", "Site Health Scan");
-    check("crawl_coverage", "technical", 2, "Full-site crawl coverage", crawlUsed ? "pass" : "fail", crawlUsed ? "" : `no crawl configured — only ${okPages.length} page(s) sampled; site-wide claims are capped`, null, "Configure a crawl project so every page is audited, not a sample.", "Site Health Scan");
+    check("crawl_coverage", "technical", 2, "Full-site crawl coverage", crawlUsed ? "pass" : sitemapCrawled ? "warn" : "fail", crawlUsed ? "" : sitemapCrawled ? `lightweight sitemap crawl — ${okPages.length} pages audited` : `no crawl configured — only ${okPages.length} page(s) sampled; site-wide claims are capped`, null, "Configure a crawl project so every page is audited, not a sample.", "Site Health Scan");
     check("mixed_content", "technical", 2, "No mixed content on HTTPS pages", mixedContent == null ? "na" : B(mixedContent === 0), mixedContent ? `${mixedContent} http:// resources embedded` : "", null, "Serve every script/image/stylesheet over https://.", "Site Health Scan");
     check("security_headers", "technical", 1, "Security headers set", secHeaders == null ? "na" : (secMissing.length === 0 ? "pass" : secMissing.length <= 2 ? "warn" : "fail"), secMissing.length ? `missing: ${secMissing.join(", ")}` : "", "security_headers", "Add HSTS, X-Content-Type-Options, frame-ancestors and Referrer-Policy headers.", "Site Health Scan");
     check("viewport", "technical", 2, "Mobile viewport tag", B(homePage?.ok ? !!homePage.viewport : null), "", null, "Add a responsive viewport meta tag.", "Core SEO Monitoring");
@@ -657,7 +710,7 @@ Deno.serve(async (req) => {
     // Integrity rule: a one-page sample cannot support an A-grade technical
     // claim. Without a crawl the technical score is capped and says why.
     let techScore = pillarScore("technical") ?? 0;
-    if (!crawlUsed && techScore > 79) { techScore = 79; note.push("Technical score capped at 79 — no crawl configured, findings are sampled."); }
+    if (!crawlUsed && !sitemapCrawled && techScore > 79) { techScore = 79; note.push("Technical score capped at 79 — no crawl configured, findings are sampled."); }
     const perfScore = pillarScore("performance");
     const onpageScore = pillarScore("onpage") ?? 0;
     const schemaScore = pillarScore("schema") ?? 0;
@@ -746,6 +799,14 @@ Deno.serve(async (req) => {
         "Run a backlink quality/toxicity review (and disavow if warranted) BEFORE any link building; check domain history for prior abuse.",
         "A toxic link profile suppresses every other effort — this needs human review first.");
     }
+    if (linkProfile && linkProfile.lowDrPct >= 70 && (domain_rating ?? 99) <= 10)
+      add("high","audit",`Backlink quality: ${linkProfile.lowDrPct}% of sampled referring domains are DR<10`,
+        "Review the low-quality links (disavow if spammy) and prioritize the link-gap targets below.",
+        "Weak links dilute authority; quality beats count.");
+    if (linkGap.length)
+      add("high","content",`${linkGap.length} link/citation opportunities — domains linking to local competitors but not the client`,
+        `Pursue listings/links on: ${linkGap.slice(0, 5).map((g: any) => g.domain).join(", ")}${linkGap.length > 5 ? ", …" : ""}.`,
+        "Close the local authority gap using the exact sources competitors already use.");
     if (oppKws.length) add("high","content",`${oppKws.length} keywords rank in positions 4–20 (quick wins)`,"Strengthen on-page targeting + internal links to these near-miss pages.","Push page-2 terms into the top results.");
 
     // TRADE-AREA OPPORTUNITY (top 3) — the high-value local terms the client doesn't own or ranks poorly for.
@@ -824,6 +885,7 @@ Deno.serve(async (req) => {
         coreKeywords: coreKeywords.slice(0, 20),
         crawl: { used: crawlUsed, project_id: crawlProjectId, health: healthScore, totals: crawlTotals, issues: crawlIssues.slice(0, 30) },
         aeo: { aiOverviewKws: aiOverviewKws.length, aiCaptured: aiCaptured.length, snippetKws: snippetKws.length, snippetWon: snippetWon.length, paaKws: paaKws.length, hasFAQ, questionHeads },
+        backlinks: { profile: linkProfile, gap: linkGap },
         brandRadar, serp: { seed: serpSeed, localCompetitors: serpLocal },
         local: { localIntentKws: localIntentKws.length, localPackKws: localPackKws.length, localPackWon: localPackWon.length, hasNAP },
         schema: { present: schemaPresent, all: [...allSchema] },
@@ -1162,6 +1224,14 @@ Deno.serve(async (req) => {
         in_plan: tierServices.has(service), service, unlock_tier: (CATALOG[service] || ["starter"])[0],
         status: "staged", evidence: "",
       });
+    });
+    if (linkGap.length) items.push({
+      check_id: "link_gap", pillar: "authority",
+      title: `${linkGap.length} link/citation opportunities from competitor backlinks`,
+      action: `Pursue listings/links on: ${linkGap.slice(0, 5).map((g: any) => g.domain).join(", ")}${linkGap.length > 5 ? ", …" : ""}`,
+      engine: "audit", fix_kind: null, severity: "medium", points: 3,
+      in_plan: tierServices.has("Local Listing Optimization"), service: "Local Listing Optimization",
+      unlock_tier: "starter", status: "todo", evidence: "",
     });
     const sevRank: Record<string, number> = { high: 0, medium: 1, low: 2, done: 3 };
     items.sort((a, b) => (sevRank[a.severity] - sevRank[b.severity]) || (b.points - a.points));

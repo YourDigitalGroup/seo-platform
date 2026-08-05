@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.3.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.4.0</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.3.1</span>
+        <span>44i, Inc. · Internal Ops Console · V3.4.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.3.1</span>
+        <span>44i, Inc. · Internal Ops Console · V3.4.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -882,7 +882,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V3.3.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V3.4.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2988,6 +2988,11 @@ ${sec('1 · What the '+esc(planLabel(tier))+' plan delivers',deliverables)}
 ${sec('2 · Pillar scores','<table><tr><th>Pillar</th><th>Score</th><th>Grade</th></tr>'+pillarRows+'</table>'+(PK.audit&&PK.audit.diagnosis?`<p>${esc(PK.audit.diagnosis)}</p>`:''))}
 ${sec('3 · The directive — the work order for this campaign',directive)}
 ${sec('4 · Technical fixes ('+fixes.length+') — deployable artifacts',fixBlocks)}
+${(()=>{const lg=(((PK.raw||{}).backlinks)||{}).gap||[];
+  return lg.length?sec('Link & citation opportunities',
+    `<p>These sites link to local competitors but not to ${esc(c.name||'the client')} — the fastest available authority gains.</p>
+     <table><tr><th>Domain</th><th>Authority (DR)</th><th>Links to competitors</th></tr>${lg.map(g=>
+       `<tr><td>${esc(g.domain)}</td><td class="num">${g.dr??'—'}</td><td class="num">${g.links_competitors}</td></tr>`).join('')}</table>`):'';})()}
 ${sec('5 · Content this cycle ('+cTopics.length+' pieces)',contentSummary)}
 ${sec('6 · Manual / off-site work (GBP, server-level)',manual)}
 ${contentAppendix?sec('Appendix A · Full content drafts',contentAppendix):''}
