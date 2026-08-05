@@ -1166,9 +1166,13 @@ Deno.serve(async (req) => {
           if (t?.id) { await supa.from("deliverables").update({ state: "generating", topic_id: t.id }).eq("id", d.id); topicCount++; topicsCreated.push({ kind, keyword: kw, town }); consumeAlloc(kind); }
         }
       } else {
-        // FALLBACK: generic recommendations when no campaign is seeded for this cycle
+        // FALLBACK: PLAN-FUNDED DELIVERABLES FIRST, generic recommendations
+        // after. Previously blogs/pillars only appeared if the gap/keyword
+        // pools happened to supply them — a Pro client could get zero of the
+        // 4 contracted blogs. Now every funded content kind is queued each
+        // cycle (recurring kinds at per-cycle quantity, fixed totals paced).
         const topicRows: any[] = [];
-        const TOPIC_CAP = 8;
+        const TOPIC_CAP = 10;
         const pushTopic = (keyword: string, kind: string, model: string, source: string, town: string | null = null) => {
           if (!keyword || takenKw(keyword) || topicRows.length >= TOPIC_CAP) return;
           const why = targetRejectReason(keyword, geoList);
@@ -1177,6 +1181,28 @@ Deno.serve(async (req) => {
           claimKw(keyword); consumeAlloc(kind);
           topicRows.push({ package_id, title: titleCase(keyword), target_keyword: keyword, kind, model, status: "queued", source, location: town });
         };
+        // Blog formats that always clear the gate and invent no facts —
+        // used when the gap/keyword pools can't fund the contracted blogs.
+        const blogIdeas = [
+          ...services.slice(0, 4).map((s: any) => `how much does ${s} cost${primaryCity ? ` in ${String(primaryCity).split(",")[0]}` : ""}`),
+          ...(businessType ? [`how to choose a ${businessType}${primaryCity ? ` in ${String(primaryCity).split(",")[0]}` : ""}`] : []),
+          ...services.slice(0, 2).map((s: any) => `${s} questions to ask before hiring`),
+        ];
+        const pace: [string, number][] = [];
+        Object.entries(capOf).forEach(([kind, cc]: [string, any]) => {
+          if (cc.cap == null || cc.cap <= 0) return;
+          const rem = allocRemaining(kind);
+          if (rem <= 0) return;
+          pace.push([kind, cc.perCycle ? rem : (kind === "landing" ? Math.min(2, rem) : 1)]);
+        });
+        for (const [kind, n] of pace) for (let i = 0; i < n && topicRows.length < TOPIC_CAP; i++) {
+          const kw = kind === "blog" ? nextFrom(gapPool, coreUnowned, blogIdeas) : pickFor(kind);
+          if (!kw || allocRemaining(kind) <= 0) break;
+          const town = kind === "landing" ? (secondaryTowns.find((t: any) => kw.toLowerCase().includes(String(t).split(",")[0].trim().toLowerCase())) || null) : (primaryCity || null);
+          consumeAlloc(kind);
+          topicRows.push({ package_id, title: titleCase(kw), target_keyword: kw, kind, model: MODEL[kind] || "sonnet-4-6", status: "queued", source: "plan", location: town });
+        }
+        // generic recommendations fill whatever capacity remains
         opportunities.slice(0, 2).forEach((o: any) => pushTopic(o.keyword, "service", "sonnet-4-6", "opportunity", primaryCity || null));
         coreKeywords.filter((k: any) => !k.owned && (k.volume || 0) > 0).slice(0, 3).forEach((k: any) => {
           const inf = k.intents?.informational && !k.intents?.transactional && !k.intents?.commercial;
