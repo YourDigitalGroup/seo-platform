@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.2.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.3.0</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.2.0</span>
+        <span>44i, Inc. · Internal Ops Console · V3.3.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.2.0</span>
+        <span>44i, Inc. · Internal Ops Console · V3.3.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -882,7 +882,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V3.2.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V3.3.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1498,7 +1498,7 @@ async function loadLiveAudit(){
       sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', PK.package_id),
     ]);
     const byTopic={}; (drf.data||[]).forEach(d=>{ const c=byTopic[d.topic_id]; if(!c||(d.revision||1)>(c.revision||1)) byTopic[d.topic_id]=d; });
-    PK.topics=(tr.data||[]).map(t=>{ const d=byTopic[t.id];
+    PK.topics=(tr.data||[]).filter(t=>t.status!=='retired').map(t=>{ const d=byTopic[t.id];
       return { _id:t.id, title:t.title, keyword:t.target_keyword||'', kind:t.kind||'blog', model:M2K[t.model]||'sonnet',
         status: d?(t.status==='approved'?'approved':'drafted'):(t.status||'queued'), source:t.source||'', body:d?d.body:'', revision:d?d.revision:1 }; });
   }
@@ -2003,24 +2003,29 @@ function saveDraft(){
 //    contains unresolved facts or forbidden content. This is what stops
 //    invented testimonials and [placeholders] reaching a client site.
 const QA_STOCK=['we’re your neighbors','we are your neighbors','not a distant call center','no jargon, no runaround','enterprise-grade','small issues never become major outages'];
+// Round-2 rule 6.3: deterministic fabrication checks, in code, that BLOCK.
+// blocking = FTC/legal exposure and broken deliverables; warnings = style.
 function qaScan(text){
-  const t=String(text||''), issues=[];
+  const t=String(text||''), blocking=[], warnings=[];
   const confirms=(t.match(/\[CLIENT TO CONFIRM[^\]]*\]/gi)||[]);
-  if(confirms.length) issues.push(`${confirms.length} unresolved [CLIENT TO CONFIRM] item${confirms.length>1?'s':''} — fill with real facts or delete the claim`);
+  if(confirms.length) blocking.push(`${confirms.length} unresolved [CLIENT TO CONFIRM] item${confirms.length>1?'s':''} — fill with real facts or delete the claim`);
   const ph=(t.match(/\[(phone|address|email|city|zip|state|street|image|logo|url)[^\]]*\]/gi)||[]);
-  if(ph.length) issues.push(`${ph.length} unfilled placeholder${ph.length>1?'s':''} (${ph.slice(0,3).join(', ')})`);
-  if(/["“][^"”]{30,}["”]\s*[—-]\s*[^,\n]{0,40}(owner|manager|customer|client)/i.test(t)) issues.push('possible fabricated testimonial (quote attributed to an unnamed owner/manager) — testimonials must be real (FTC rule)');
+  if(ph.length) blocking.push(`${ph.length} unfilled placeholder${ph.length>1?'s':''} (${ph.slice(0,3).join(', ')})`);
+  if(/["“][^"”]{25,}["”]\s*[—–-]\s*[^,\n<]{0,60}(owner|manager|customer|client|ceo|director)/i.test(t)) blocking.push('fabricated testimonial pattern (quote attributed to an unnamed person) — FTC prohibition');
+  if(/what our clients say|client testimonials|^#{1,4}\s*testimonials/im.test(t)) blocking.push('testimonial section — testimonials must come from verified client records (FTC prohibition)');
+  if(/trust signals/i.test(t)) blocking.push('“Trust Signals” style block — credentials must come from intake, never generated');
+  if(/\b(studies show|research shows|according to (?:industry )?(?:research|studies))\b/i.test(t)) blocking.push('uncited “studies show” claim');
+  if(/\b(?:costs?|average of|averages?)\b[^.\n]{0,60}\b(?:thousands|millions|\$\d[\d,]*)\b[^.\n]{0,40}\b(?:per hour|an hour|per day|a day|per year)\b/i.test(t)) blocking.push('uncited cost statistic (e.g. “costs thousands per hour”) — cite a source or cut it');
   const stock=QA_STOCK.filter(p=>t.toLowerCase().includes(p));
-  if(stock.length) issues.push(`agency boilerplate: ${stock.map(s=>'“'+s+'”').join(', ')}`);
-  return issues;
+  if(stock.length) warnings.push(`agency boilerplate: ${stock.map(s=>'“'+s+'”').join(', ')}`);
+  return {blocking, warnings};
 }
 function approveDraft(){
   if(_draftIdx==null||!canEditContent()) return;
   const t=PK.topics[_draftIdx]; t.body=document.getElementById('dm-body').value;
-  const issues=qaScan(t.body);
-  const blocking=issues.filter(i=>!i.startsWith('agency boilerplate'));
-  if(blocking.length){ showToast('Cannot approve — '+blocking[0], true); return; }
-  if(issues.length) showToast('Approved with a style note: '+issues[0]);
+  const qa=qaScan(t.body);
+  if(qa.blocking.length){ showToast('Cannot approve — '+qa.blocking[0], true); return; }
+  if(qa.warnings.length) showToast('Approved with a style note: '+qa.warnings[0]);
   t.status='approved';
   if(!OFFLINE&&t._id){ sb.from('content_drafts').update({approved:true, body:t.body}).eq('topic_id', t._id).then(()=>{}); }
   renderQueue(); closeDraft(); showToast('Draft approved ✓', false, true);
@@ -2772,6 +2777,57 @@ async function generatePackage(){
   }catch(e){ console.error(e); showToast('Audit error — see console', true); c.pkg_status='none'; renderPackage(); }
   finally{ const b=document.querySelector('#v-package .run'); if(b){ b.disabled=false; b.textContent='Generate package →'; } }
 }
+// ── KEYWORD IDENTITY (mirror of run-audit rule 6.2) + ASSEMBLY QA ─────────────
+const KW_FILL=new Set(['and','the','a','an','in','for','of','services','service','solutions','company','provider','llc','inc']);
+function kwKeyJS(k){ return [...new Set(String(k||'').toLowerCase().replace(/&/g,' and ').replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(t=>t&&!KW_FILL.has(t)))].sort().join(' '); }
+function sameIntentJS(a,b){ if(!a||!b) return false; if(a===b) return true; const A=a.split(' '),B=b.split(' '); const [s,l]=A.length<=B.length?[A,new Set(B)]:[B,new Set(A)]; return s.every(t=>l.has(t)); }
+// Runs BEFORE assembling any client artifact and BLOCKS (rule 6.3): per-piece
+// fabrication checks, near-me/junk targets, intent collisions across the
+// batch, and the plan allocation ceiling.
+function assembleQA(){
+  const blocking=[], warnings=[];
+  const topics=(PK.topics||[]).filter(t=>t.kind!=='gbp_post');
+  (PK.topics||[]).forEach(t=>{ if(!t.body) return; const q=qaScan(t.body);
+    q.blocking.forEach(x=>blocking.push(`${t.title}: ${x}`));
+    q.warnings.forEach(x=>warnings.push(`${t.title}: ${x}`)); });
+  topics.forEach(t=>{ const kw=String(t.keyword||t.title||'').trim().toLowerCase();
+    if(/\bnear me\b/.test(kw)) blocking.push(`${t.title}: targets a near-me query — retire it (GBP serves that intent, on-page matching cannot)`);
+    else if(kw.length<4||/^[a-z]{2}$/.test(kw)) blocking.push(`${t.title}: junk target keyword “${t.keyword}” — retire this piece`); });
+  const seenK=[];
+  topics.forEach(t=>{ const key=kwKeyJS(t.keyword||t.title); if(!key) return;
+    const hit=seenK.find(s=>sameIntentJS(s.key,key));
+    if(hit) blocking.push(`Duplicate intent: “${t.title}” and “${hit.title}” answer the same search — keep one, retire the other`);
+    else seenK.push({key,title:t.title}); });
+  const tier=(activeClient&&activeClient.tier)||activeTier||'pro';
+  const totals={}; planServices(tier).forEach(s=>{ if(s.kind&&s.cadence==='fixed_quantity'&&s.total!=null) totals[s.kind]=s.total; });
+  const counts={}; topics.forEach(t=>{ counts[t.kind]=(counts[t.kind]||0)+1; });
+  Object.entries(totals).forEach(([k,cap])=>{ if((counts[k]||0)>cap) blocking.push(`Plan allocation exceeded: ${counts[k]} ${k} page(s) against a contract total of ${cap}`); });
+  return {blocking, warnings};
+}
+// The internal artifact (rule 6.4): reviewer-facing, never the client's file.
+function buildInternalReview(qa){
+  const raw=PK.raw||{}, recon=raw.reconciliation||null, gate=raw.keyword_gate||[];
+  const c=activeClient||{};
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>INTERNAL — ${esc(c.url||'')}</title>
+<style>body{font-family:Arial,Helvetica,sans-serif;max-width:860px;margin:30px auto;padding:0 20px;color:#111;line-height:1.5}
+h1{font-size:22px}h2{font-size:15px;margin:26px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+table{width:100%;border-collapse:collapse;font-size:12.5px}td,th{padding:6px 8px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+.b{color:#C0392B}.w{color:#8a5a00}</style></head><body>
+<h1>Internal review — ${esc(c.name||c.url||'')}</h1>
+<p><b>Not client-facing.</b> The client document is only produced when the blocking list below is empty.</p>
+<h2>Blocking failures (${qa.blocking.length})</h2>
+${qa.blocking.length?`<ul>${qa.blocking.map(x=>`<li class="b">${esc(x)}</li>`).join('')}</ul>`:'<p>None — the client document may ship.</p>'}
+<h2>Warnings (${qa.warnings.length})</h2>
+${qa.warnings.length?`<ul>${qa.warnings.map(x=>`<li class="w">${esc(x)}</li>`).join('')}</ul>`:'<p>None.</p>'}
+<h2>Reconciliation (this run)</h2>
+${recon?`<p>${recon.kept} piece(s) kept · ${(recon.retired||[]).length} retired.</p>${(recon.retired||[]).length?`<table><tr><th>Retired piece</th><th>Reason</th></tr>${recon.retired.map(r=>`<tr><td>${esc(r.title)}</td><td>${esc(r.reason)}</td></tr>`).join('')}</table>`:''}`:'<p>No reconciliation data — the audit predates the reconciliation engine; regenerate the package.</p>'}
+<h2>Keyword gate rejections (${gate.length})</h2>
+${gate.length?`<table><tr><th>Keyword</th><th>Reason</th></tr>${gate.map(g=>`<tr><td>${esc(g.keyword)}</td><td>${esc(g.reason)}</td></tr>`).join('')}</table>`:'<p>None recorded on this audit.</p>'}
+<h2>Content inventory (${(PK.topics||[]).length})</h2>
+<table><tr><th>Piece</th><th>Kind</th><th>Target keyword</th><th>Status</th></tr>
+${(PK.topics||[]).map(t=>`<tr><td>${esc(t.title)}</td><td>${esc(t.kind)}</td><td>${esc(t.keyword||'—')}</td><td>${esc(t.status)}</td></tr>`).join('')}</table>
+</body></html>`;
+}
 // ── CAMPAIGN MASTER DOCUMENT ──────────────────────────────────────────────────
 // One self-contained, print-to-PDF-ready HTML document containing the ENTIRE
 // campaign for the open client: the plan's deliverable checklist (from the
@@ -2819,8 +2875,8 @@ function buildCampaignDoc(){
   // (a status report should not be a 15,000-word wall).
   const cTopics=topics.filter(t=>t.kind!=='gbp_post');
   const wordsOf=b=>String(b||'').split(/\s+/).filter(Boolean).length;
-  const contentSummary=cTopics.length?`<table><tr><th>Piece</th><th>Type</th><th>Target keyword</th><th>Status</th><th>Words</th></tr>${cTopics.map(t=>
-      `<tr><td>${esc(t.title)}</td><td>${esc(t.kind)}</td><td>${esc(t.keyword||'—')}</td><td>${t.status==='approved'?'Approved — publishing on schedule':t.body?'Drafted — awaiting approval':'Queued'}</td><td class="num">${t.body?wordsOf(t.body):'—'}</td></tr>`).join('')}</table>
+  const contentSummary=cTopics.length?`<table><tr><th>Piece</th><th>Type</th><th>Status</th><th>Words</th></tr>${cTopics.map(t=>
+      `<tr><td>${esc(t.title)}</td><td>${esc(t.kind)}</td><td>${t.status==='approved'?'Approved — publishing on schedule':t.body?'Drafted — awaiting approval':'Queued'}</td><td class="num">${t.body?wordsOf(t.body):'—'}</td></tr>`).join('')}</table>
     <p class="before">Full text of every piece is in Appendix A.</p>`:'<p>No content queued this cycle.</p>';
   const contentAppendix=cTopics.filter(t=>t.body).map(t=>{ const dd=splitDraft(t.body);
     return `<div class="item page-break">
@@ -2828,19 +2884,41 @@ function buildCampaignDoc(){
       <p class="before">${dd.slug?`URL: <b>${esc(dd.slug)}</b> · `:''}${dd.seo_title?`Title tag: ${esc(dd.seo_title)} · `:''}${dd.seo_desc?`Meta: ${esc(dd.seo_desc)}`:''}</p>
       <div class="body">${md2html(dd.body)}</div>
     </div>`;}).join('');
-  // Internal QA banner — anything unresolved is flagged loudly, up top.
-  const qaAll=[]; topics.forEach(t=>{ if(t.body) qaScan(t.body).forEach(x=>qaAll.push(`${t.title}: ${x}`)); });
-  const qaBanner=qaAll.length?`<div style="border:2px solid #C0392B;background:#FBE9E7;border-radius:8px;padding:12px 16px;margin-bottom:22px">
-      <b style="color:#C0392B">INTERNAL REVIEW REQUIRED — resolve these and regenerate before sending to the client:</b>
-      <ul style="margin:8px 0 0 18px">${qaAll.slice(0,12).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:'';
-  // Plain-language executive summary — what's wrong, what we're doing, when.
+  // Plain-language executive summary (rule 1.4: never render a zero into the
+  // summary; print the actual baseline instead of claiming one exists).
   const worstNames=[['Technical',S.techScore],['Performance',S.perfScore],['On-page',S.onpageScore],['Schema',S.schemaScore],['AEO / AI visibility',S.aeoScore],['Trust signals (E-E-A-T)',S.eeatScore],['Local presence',S.localScore]]
     .filter(([,v])=>v!=null).sort((a,b)=>a[1]-b[1]).slice(0,2).map(([l])=>l);
   const fixesWritten=fixes.filter(f=>f.after||f.schema).length;
-  const execSummary=`<p>This document is the complete work plan for ${esc(c.name||c.url||'this client')}'s search and AI-visibility campaign. Our audit of the website found the biggest gaps in <b>${esc(worstNames.join(' and ')||'the fundamentals')}</b> — the issues most holding the site back from being found in Google and recommended by AI assistants. This cycle we are correcting those with <b>${fixesWritten} ready-to-deploy technical fixes</b> and <b>${cTopics.length} pieces of new content</b> targeting searches real customers make in the trade area. Technical fixes take effect as soon as they are deployed; content builds momentum over the following weeks as it is indexed. Progress is re-measured every cycle against today's baseline — rankings, traffic and AI citations — and reported monthly.</p>`;
+  const workLine=fixesWritten>0
+    ?`<b>${fixesWritten} ready-to-deploy technical fixes</b> and <b>${cTopics.length} pieces of new content</b>`
+    :`<b>${cTopics.length} pieces of new content</b>; the technical fix set for this cycle is being written and deploys separately`;
+  const aud=PK.audit||{};
+  const baselineLine=`Baseline recorded ${aud.run_at?new Date(aud.run_at).toLocaleDateString():'today'}: audit score <b>${(S.auditScore??aud.score)??'—'}/100</b>, ${aud.org_keywords??'—'} ranking keywords, ${aud.org_traffic??'—'} est. monthly organic visits, domain rating ${aud.domain_rating??'—'}. Every future report measures against these numbers.`;
+  const execSummary=`<p>This document is the complete work plan for ${esc(c.name||c.url||'this client')}'s search and AI-visibility campaign. Our audit found the biggest gaps in <b>${esc(worstNames.join(' and ')||'the fundamentals')}</b> — the issues most holding the site back from being found in Google and recommended by AI assistants. This cycle we are correcting those with ${workLine} targeting searches real customers make in the trade area. Technical fixes take effect as soon as they are deployed; content builds momentum over the following weeks as it is indexed.</p><p>${baselineLine}</p>`;
+
+  // Change summary + regression alerts (rule 6.5): regressions surface first,
+  // every changed number gets a cause, and ownership is stated plainly.
+  const prog=(d&&d.progress)||{};
+  let changeSummary='';
+  if(prog.previous_score!=null&&d&&d.score!=null){
+    const labOf=id=>{const x=(PK.checklist||[]).find(y=>y.id===id);return x?x.label+(x.evidence?` — now ${x.evidence}`:''):id;};
+    const HOSTING=new Set(['ttfb','psi_perf','lcp','cls','inp','perf_fixables']);
+    const regressed=(prog.regressed||[]);
+    const delta=d.score-prog.previous_score;
+    const regRows=regressed.map(id=>`<li><b>${esc(labOf(id))}</b> — ${HOSTING.has(id)
+      ?'a site infrastructure/hosting change, outside the campaign scope of work: it needs hosting attention and is not a campaign result'
+      :'re-opened and escalated into the current cycle'}</li>`).join('');
+    changeSummary=sec('Change since last audit',
+      `<p>Overall score <b>${prog.previous_score} → ${d.score}</b> (${delta>=0?'+':''}${delta}). ${(prog.fixed||[]).length} check(s) fixed and verified since the last audit${regressed.length?`; <b style="color:#C0392B">${regressed.length} regressed</b>:`:'.'}</p>${regRows?`<ul style="margin-left:18px">${regRows}</ul>`:''}`);
+  }
 
   const gbp=(PK.topics||[]).filter(t=>t.kind==='gbp_post');
-  const manualItems=items.filter(i=>i.in_plan&&i.status==='todo'&&!i.fix_kind);
+  // State sync (rule 6.7): drop "manual" directive items already fulfilled by
+  // this cycle's content so completed work never shows as open elsewhere.
+  const hasGeoPages=cTopics.some(t=>t.kind==='landing'||t.kind==='service');
+  const hasFaqBody=(PK.topics||[]).some(t=>t.body&&/^#{2,4}\s[^\n]*\?/m.test(t.body));
+  const manualItems=items.filter(i=>i.in_plan&&i.status==='todo'&&!i.fix_kind)
+    .filter(i=>!((hasGeoPages&&(i.check_id==='local_geo_pages'||i.check_id==='local_intent'))||(hasFaqBody&&i.check_id==='aeo_qheads')));
   const manual=(manualItems.length||gbp.length)?`<ul>${manualItems.map(i=>`<li><b>${esc(i.title)}</b> — ${esc(i.action||'')}</li>`).join('')}${gbp.filter(t=>t.body).map(t=>`<li><b>GBP post: ${esc(t.title)}</b><div class="body">${md2html(t.body)}</div></li>`).join('')}</ul>`:'<p>None this cycle.</p>';
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Campaign — ${esc(c.url||'')}</title>
@@ -2871,7 +2949,7 @@ function buildCampaignDoc(){
   <div class="meta">${esc(c.url||'')} · ${esc(c.market||'')} · <b>${esc(planLabel(tier))}</b> plan · ${contractLabel(c)} contract · Prepared ${today} · 44i Digital, Inc.</div>
   ${score!=null?`<div class="scorebig">${score}<span style="font-size:16px;color:#5a6675">/100 audit score · target 90+ ${cl.length?`· ${clPass} checks pass / ${clWarn} warn / ${clFail} fail`:''}</span></div>`:''}
 </header>
-${qaBanner}
+${changeSummary}
 ${sec('Executive summary',execSummary)}
 ${sec('1 · What the '+esc(planLabel(tier))+' plan delivers',deliverables)}
 ${sec('2 · Pillar scores','<table><tr><th>Pillar</th><th>Score</th><th>Grade</th></tr>'+pillarRows+'</table>'+(PK.audit&&PK.audit.diagnosis?`<p>${esc(PK.audit.diagnosis)}</p>`:''))}
@@ -2880,10 +2958,30 @@ ${sec('4 · Technical fixes ('+fixes.length+') — deployable artifacts',fixBloc
 ${sec('5 · Content this cycle ('+cTopics.length+' pieces)',contentSummary)}
 ${sec('6 · Manual / off-site work (GBP, server-level)',manual)}
 ${contentAppendix?sec('Appendix A · Full content drafts',contentAppendix):''}
-<footer style="margin-top:40px;border-top:1px solid #d6dee8;padding-top:10px;color:#5a6675;font-size:12px">44i Digital, Inc. — generated by the SEO/AEO delivery platform. Print to PDF via the browser for a client-shareable copy.</footer>
+<footer style="margin-top:40px;border-top:1px solid #d6dee8;padding-top:10px;color:#5a6675;font-size:12px">Prepared by 44i Digital, Inc.</footer>
 </body></html>`;
 }
+function saveHtml(html,name){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+  a.download=name; document.body.appendChild(a); a.click(); a.remove();
+}
+// Two artifacts, never one (rule 6.4): the internal review always downloads;
+// the client document is produced ONLY when the blocking list is empty.
 function downloadCampaignDoc(){
+  if(OFFLINE||!PK.audit){ showToast('Generate the package first',true); return; }
+  const qa=assembleQA();
+  const base=String((activeClient&&activeClient.url)||'site').replace(/^https?:\/\//,'').replace(/[^a-z0-9.-]/gi,'_')+'-'+new Date().toISOString().slice(0,10);
+  saveHtml(buildInternalReview(qa),'INTERNAL-review-'+base+'.html');
+  if(qa.blocking.length){
+    showToast(`Client document BLOCKED — ${qa.blocking.length} failure(s). See the internal review file; resolve or retire each, then download again.`, true);
+    return;
+  }
+  saveHtml(buildCampaignDoc(),'campaign-'+base+'.html');
+  showToast('Client campaign document + internal review downloaded.'+(qa.warnings.length?` ${qa.warnings.length} style warning(s) noted in the internal file.`:''), false, true);
+  return;
+}
+function _legacyDownloadCampaignDoc(){
   if(OFFLINE||!PK.audit){ showToast('Generate the package first',true); return; }
   const html=buildCampaignDoc();
   const a=document.createElement('a');
@@ -2978,7 +3076,7 @@ function buildDeployPackage(){
       post_type:(t.kind==='landing'||t.kind==='service'||t.kind==='pillar')?'page':'post',
       kind:t.kind, focus_keyword:t.keyword||'', location:t.town||null,
       approved, status:approved?'schedule':'draft', schedule:when,
-      qa:qaScan(t.body) };
+      qa:(q=>[...q.blocking,...q.warnings])(qaScan(t.body)) };
   });
   (PK.topics||[]).filter(t=>t.kind==='gbp_post'&&t.body).forEach(t=>manual.push({ title:'GBP post: '+t.title, action:t.body, kind:'gbp_post' }));
   ((PK.directive&&PK.directive.items)||[]).filter(i=>i.in_plan&&i.status==='todo'&&!i.fix_kind).forEach(i=>
@@ -3004,6 +3102,9 @@ function downloadDeployPackage(){
   const written=(PK.fixes||[]).filter(f=>(f.after||f.schema)&&f.status!=='suggested'&&f.status!=='dismissed').length;
   if(sug&&!written){ showToast(`${sug} technical fixes are staged but not written yet — click “Approve & write all” in Section 4, then download again.`, true); jumpToEngine('fixes'); return; }
   if(sug) showToast(`Heads up: ${sug} staged fixes are still unwritten and won't be in this file.`, true);
+  // Rule 6.3: a deploy file with blocking QA failures must not ship either.
+  const aqa=assembleQA();
+  if(aqa.blocking.length){ showToast(`Deploy file BLOCKED — ${aqa.blocking.length} QA failure(s). Download the campaign doc to get the internal review list.`, true); return; }
   const pkg=buildDeployPackage();
   const n=pkg.seo_meta.length+pkg.schema.length+pkg.og_tags.length+pkg.content.length+pkg.redirects.rules.length;
   if(!n&&!pkg.site_files.robots_txt&&!pkg.site_files.llms_txt){ showToast('Nothing deployable yet — generate/approve fixes and drafts first',true); return; }
