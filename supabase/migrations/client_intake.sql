@@ -1,0 +1,13 @@
+-- ════════════════════════════════════════════════════════════════════════════
+--  client_intake.sql
+--  Structured business facts per client — the ONLY source generated content is
+--  allowed to state as fact (resolves the [CLIENT TO CONFIRM] tokens), and the
+--  data source for the Citation Pack (one-click local-listing payloads).
+--
+--  Shape (all optional, console-edited):
+--    { phone, email, street, city, state, zip, hours, categories,
+--      facebook, instagram, linkedin, gbp }
+--
+--  Additive + idempotent.
+-- ════════════════════════════════════════════════════════════════════════════
+alter table clients add column if not exists intake jsonb;

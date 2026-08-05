@@ -690,7 +690,7 @@ footer .fbadges{display:flex;gap:18px}
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.4.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V3.5.0</div>
   </div>
 </div>
 
@@ -732,7 +732,7 @@ footer .fbadges{display:flex;gap:18px}
       </div>
       <div class="groups" id="groups-grid"></div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.4.0</span>
+        <span>44i, Inc. · Internal Ops Console · V3.5.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -786,7 +786,7 @@ footer .fbadges{display:flex;gap:18px}
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V3.4.0</span>
+        <span>44i, Inc. · Internal Ops Console · V3.5.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -830,6 +830,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
     <div class="acp" id="access-panel"></div>
     <div class="datasrc" id="datasrc"></div>
+    <div class="datasrc" id="bizfacts"></div>
 
     <div class="section-h"><h2>1 · Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
     <div class="tradearea" id="tradearea"></div>
@@ -882,7 +883,7 @@ footer .fbadges{display:flex;gap:18px}
     <div class="engines" id="engines"></div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V3.4.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V3.5.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1887,7 +1888,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=planLabel(c.tier)+' plan';
 
-  renderAccessPanel(); renderDataSources(); renderTradeArea(); renderScorecard(); renderInsights(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
+  renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
 }
@@ -2809,6 +2810,123 @@ async function generatePackage(){
     }
   }catch(e){ console.error(e); showToast('Audit error — see console', true); c.pkg_status='none'; renderPackage(); }
   finally{ const b=document.querySelector('#v-package .run'); if(b){ b.disabled=false; b.textContent='Generate package →'; } }
+}
+// ── BUSINESS FACTS (intake) + CITATION PACK ───────────────────────────────────
+// The intake record is the only source content may state as fact, and it
+// powers the one-click Citation Pack for the Local Listing Optimization
+// package: canonical NAP payloads per directory + a BrightLocal/Whitespark-
+// compatible CSV. Submission itself stays human (directories verify by
+// email/SMS/postcard and prohibit bots) — the pack makes it copy-paste-fast.
+const INTAKE_FIELDS=[['phone','Phone'],['email','Email'],['street','Street address'],['city','City'],['state','State'],['zip','ZIP'],
+  ['hours','Hours (e.g. Mo-Fr 8:00-17:00)'],['categories','Categories (comma-separated)'],
+  ['facebook','Facebook URL'],['instagram','Instagram URL'],['linkedin','LinkedIn URL'],['gbp','Google Business Profile URL']];
+const DIRECTORIES=[
+  ['Google Business Profile','https://business.google.com/create','Owner verification required (postcard/phone/video) — schedule with the client'],
+  ['Bing Places','https://www.bingplaces.com/','Fastest path: “Import from Google Business Profile”'],
+  ['Apple Business Connect','https://businessconnect.apple.com/','Apple ID needed; feeds Apple Maps + Siri'],
+  ['Yelp for Business','https://biz.yelp.com/signup','Phone verification'],
+  ['Facebook Business Page','https://www.facebook.com/pages/create','Also powers Instagram location'],
+  ['Nextdoor for Business','https://business.nextdoor.com/','Strong local trust signal'],
+  ['Better Business Bureau','https://www.bbb.org/get-listed','Free listing; accreditation optional/paid'],
+  ['YellowPages','https://accounts.yellowpages.com/register','Email verification'],
+  ['Foursquare for Business','https://business.foursquare.com/','Feeds many map/AI data consumers'],
+  ['Angi','https://office.angi.com/registration','Service businesses'],
+  ['Alignable','https://www.alignable.com/','Local B2B network'],
+  ['Manta','https://www.manta.com/claim','Email verification'],
+  ['Hotfrog','https://www.hotfrog.com/','Simple form'],
+  ['MerchantCircle','https://www.merchantcircle.com/signup','Simple form'],
+  ['Brownbook','https://www.brownbook.net/business/add','Simple form'],
+  ['EZlocal','https://ezlocal.com/free-listing','Simple form'],
+  ['Local Chamber of Commerce','','Find the client’s chamber — highest-trust local citation available'],
+];
+async function renderBizFacts(){
+  const el=document.getElementById('bizfacts'); if(!el) return;
+  if(OFFLINE||!activeClient){ el.innerHTML=''; return; }
+  if(activeClient._intake===undefined){
+    try{ const {data,error}=await sb.from('clients').select('intake').eq('id',activeClient.id).single();
+      activeClient._intake=(!error&&data&&data.intake)||{}; }catch(_){ activeClient._intake={}; }
+  }
+  const iv=activeClient._intake||{};
+  el.innerHTML=`<div class="ds-row">
+    <div style="flex-basis:100%;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)">Business facts (intake) — the only source content may state as fact · powers the citation pack</div>
+    ${INTAKE_FIELDS.map(([k,l])=>`<div class="ds-field"><label>${l}</label><input id="bf-${k}" value="${esc(iv[k]||'')}"></div>`).join('')}
+    <button class="ds-save" onclick="saveBizFacts()">Save facts</button>
+    <button class="ds-save" style="background:var(--blue)" onclick="downloadCitationPack()">📇 Citation pack</button>
+    <button class="ds-save" style="background:#6FA53C" onclick="downloadCitationCSV()">⬇ Citations CSV</button>
+  </div>`;
+}
+async function saveBizFacts(){
+  const iv={}; INTAKE_FIELDS.forEach(([k])=>{ const e=document.getElementById('bf-'+k); if(e) iv[k]=e.value.trim(); });
+  activeClient._intake=iv;
+  const {error}=await sb.from('clients').update({intake:iv}).eq('id',activeClient.id);
+  showToast(error?('Save failed: '+error.message+' — run client_intake.sql in the SQL editor'):'Business facts saved ✓',!!error,!error);
+}
+function intakeMissing(){ const iv=(activeClient&&activeClient._intake)||{}; return ['phone','street','city','state','zip'].filter(k=>!iv[k]); }
+function citationPayload(){
+  const c=activeClient||{}, iv=c._intake||{}, biz=((PK.raw||{}).business)||{};
+  const svc=(biz.services||[]).join(', ');
+  const towns=(((PK.raw||{}).tradeArea)||{}).secondary||[];
+  const descLong=`${c.name||''} provides ${svc||biz.type||'local services'} in ${iv.city||c.market||''}${towns.length?` and the surrounding area including ${towns.slice(0,4).map(t=>String(t).split(',')[0]).join(', ')}`:''}. Call ${iv.phone||'[CLIENT TO CONFIRM: phone]'} or visit ${c.url||''} to get started.`;
+  return { name:c.name||'', url:'https://'+String(c.url||'').replace(/^https?:\/\//,''), phone:iv.phone||'', email:iv.email||'',
+    street:iv.street||'', city:iv.city||'', state:iv.state||'', zip:iv.zip||'', hours:iv.hours||'',
+    categories:iv.categories||biz.type||'', facebook:iv.facebook||'', instagram:iv.instagram||'', linkedin:iv.linkedin||'', gbp:iv.gbp||'',
+    descLong, descShort:descLong.length>250?descLong.slice(0,247)+'…':descLong };
+}
+function downloadCitationPack(){
+  if(OFFLINE||!activeClient){ showToast('Open a client first',true); return; }
+  const miss=intakeMissing();
+  if(miss.length){ showToast('Complete the business facts first — missing: '+miss.join(', '),true); return; }
+  const p=citationPayload();
+  const lg=(((PK.raw||{}).backlinks)||{}).gap||[];
+  const nap=`${p.name}\n${p.street}\n${p.city}, ${p.state} ${p.zip}\n${p.phone}\n${p.url}`;
+  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Citation pack — ${esc(p.name)}</title>
+<style>body{font-family:Arial,Helvetica,sans-serif;max-width:860px;margin:30px auto;padding:0 20px;color:#111;line-height:1.5}
+h1{font-size:22px}h2{font-size:15px;margin:26px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+table{width:100%;border-collapse:collapse;font-size:12.5px}td,th{padding:6px 8px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+pre{background:#f6f7f8;border:1px solid #e3e5e7;border-radius:6px;padding:12px;font-size:13px;white-space:pre-wrap}
+.note{color:#666;font-size:12px}</style></head><body>
+<h1>Citation pack — ${esc(p.name)}</h1>
+<p class="note">Local Listing Optimization deliverable. Work the checklist top to bottom. <b>Copy the NAP block EXACTLY</b> — identical formatting on every directory is the whole point. Check off each listing and note the login used.</p>
+<h2>Canonical NAP — copy exactly</h2><pre>${esc(nap)}</pre>
+<h2>Field values</h2>
+<table>
+<tr><th>Field</th><th>Value</th></tr>
+<tr><td>Business name</td><td>${esc(p.name)}</td></tr>
+<tr><td>Address</td><td>${esc(p.street)}, ${esc(p.city)}, ${esc(p.state)} ${esc(p.zip)}</td></tr>
+<tr><td>Phone</td><td>${esc(p.phone)}</td></tr>
+<tr><td>Website</td><td>${esc(p.url)}</td></tr>
+<tr><td>Email</td><td>${esc(p.email||'—')}</td></tr>
+<tr><td>Hours</td><td>${esc(p.hours||'—')}</td></tr>
+<tr><td>Categories</td><td>${esc(p.categories||'—')}</td></tr>
+<tr><td>Description (long — GBP limit 750)</td><td>${esc(p.descLong)}</td></tr>
+<tr><td>Description (short — 250)</td><td>${esc(p.descShort)}</td></tr>
+<tr><td>Social</td><td>${esc([p.facebook,p.instagram,p.linkedin].filter(Boolean).join(' · ')||'—')}</td></tr>
+</table>
+<h2>Submission checklist — core directories</h2>
+<table><tr><th></th><th>Directory</th><th>Where</th><th>Notes</th></tr>
+${DIRECTORIES.map(([n,u,note])=>`<tr><td>☐</td><td><b>${esc(n)}</b></td><td>${u?`<a href="${u}">${esc(u.replace(/^https:\/\//,''))}</a>`:'—'}</td><td>${esc(note)}</td></tr>`).join('')}</table>
+${lg.length?`<h2>Client-specific targets — sites already linking to competitors</h2>
+<table><tr><th></th><th>Domain</th><th>DR</th><th>Links to competitors</th></tr>
+${lg.map(g=>`<tr><td>☐</td><td><b>${esc(g.domain)}</b></td><td>${g.dr??'—'}</td><td>${g.links_competitors}</td></tr>`).join('')}</table>
+<p class="note">From the backlink gap analysis: these link to local rivals but not to ${esc(p.name)} — pursue a listing, membership or mention on each.</p>`:''}
+<p class="note">Tip: for bulk submission, import the Citations CSV into BrightLocal or Whitespark — they hand-submit at scale. Google Business Profile always needs the owner for verification.</p>
+</body></html>`;
+  saveHtml(html,'citation-pack-'+String(activeClient.url||'client').replace(/^https?:\/\//,'').replace(/[^a-z0-9.-]/gi,'_')+'.html');
+  showToast('Citation pack downloaded — checklist + copy-exact payloads.', false, true);
+}
+function downloadCitationCSV(){
+  if(OFFLINE||!activeClient){ showToast('Open a client first',true); return; }
+  const miss=intakeMissing();
+  if(miss.length){ showToast('Complete the business facts first — missing: '+miss.join(', '),true); return; }
+  const p=citationPayload();
+  const q=v=>'"'+String(v||'').replace(/"/g,'""')+'"';
+  const csv=['Business Name,Address Line 1,City,State,Zip,Country,Phone,Website,Email,Categories,Business Description,Opening Hours,Facebook,Instagram,LinkedIn',
+    [p.name,p.street,p.city,p.state,p.zip,'USA',p.phone,p.url,p.email,p.categories,p.descShort,p.hours,p.facebook,p.instagram,p.linkedin].map(q).join(',')].join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='citations-'+String(activeClient.url||'client').replace(/^https?:\/\//,'').replace(/[^a-z0-9.-]/gi,'_')+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  showToast('Citations CSV downloaded — import into BrightLocal/Whitespark for bulk submission.', false, true);
 }
 // ── KEYWORD IDENTITY (mirror of run-audit rule 6.2) + ASSEMBLY QA ─────────────
 const KW_FILL=new Set(['and','the','a','an','in','for','of','services','service','solutions','company','provider','llc','inc']);
