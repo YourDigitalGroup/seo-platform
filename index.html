@@ -338,6 +338,11 @@ button{cursor:pointer;font-family:inherit}
 .apc{border:1px solid var(--line);border-radius:var(--r-sm);padding:14px 16px;position:relative}
 .apc.on.gsc{background:var(--gsc-l);border-color:rgba(66,133,244,.2)} .apc.on.gbp{background:var(--gbp-l);border-color:rgba(52,168,83,.2)}
 .apc.on.wp{background:var(--wp-l);border-color:rgba(33,117,155,.2)} .apc.on.ga4{background:var(--ga4-l);border-color:rgba(232,113,10,.2)}
+/* dark mode: the light brand tints would swallow the light text — use translucent brand tints on the dark card instead */
+body[data-theme="dark"] .apc.on.gsc{background:rgba(66,133,244,.14);border-color:rgba(66,133,244,.38)}
+body[data-theme="dark"] .apc.on.gbp{background:rgba(52,168,83,.14);border-color:rgba(52,168,83,.38)}
+body[data-theme="dark"] .apc.on.wp{background:rgba(75,155,215,.12);border-color:rgba(75,155,215,.38)}
+body[data-theme="dark"] .apc.on.ga4{background:rgba(232,113,10,.13);border-color:rgba(232,113,10,.38)}
 .apc.off{background:var(--mist)}
 .apc-status{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;margin-bottom:3px}
 .apc.on .apc-status{color:var(--grow-d)} .apc.off .apc-status{color:var(--muted)}
@@ -853,7 +858,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.0.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.0.1</div>
   </div>
   </div>
 </div>
@@ -934,7 +939,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.0.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.0.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -982,7 +987,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.0.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.0.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1131,7 +1136,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.0.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.0.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
