@@ -402,8 +402,20 @@ Deno.serve(async (req) => {
     // ── 7. SITE COVERAGE: CRAWL (UPGRADE #1) or FALLBACK FETCH ─────────────────
     // Always fetch homepage + an about page for E-E-A-T / NAP body-text signals
     // (the crawl API returns page metrics, not the prose we scan for those).
-    const aboutGuess = clientTopPages.map((p: any) => p.url).find((u: string) => /about|team|staff|bio|story/i.test(u));
-    const [homePage, aboutPage] = await Promise.all([ fetchPage(home), aboutGuess ? fetchPage(aboutGuess) : Promise.resolve(null) ]);
+    let aboutGuess = clientTopPages.map((p: any) => p.url).find((u: string) => /about|team|staff|bio|story/i.test(u));
+    const aboutFromAhrefs = !!aboutGuess; // a ranked page really exists — safe to credit on its own
+    const [homePage, aboutPage0] = await Promise.all([ fetchPage(home), aboutGuess ? fetchPage(aboutGuess) : Promise.resolve(null) ]);
+    let aboutPage = aboutPage0;
+    // A freshly published About page takes weeks to reach Ahrefs' top pages —
+    // probe the common paths directly so E-E-A-T credit lands the day it ships.
+    // Probed pages only count via their actual text/schema (soft-404 safe).
+    if (!aboutPage?.html) {
+      const base = home.replace(/\/+$/, "");
+      const cands = await Promise.all(["/about-us", "/about", "/our-team", "/our-story"]
+        .map((p) => fetchPage(base + p).then((r) => ({ u: base + p, r })).catch(() => ({ u: "", r: null as any }))));
+      const hit = cands.find((c) => c.r?.html);
+      if (hit) { aboutPage = hit.r; aboutGuess = hit.u; }
+    }
 
     // Resolve a crawl project: stored id first, else auto-discover by domain.
     let crawlProjectId: number | null = client.ahrefs_site_audit_project_id ? Number(client.ahrefs_site_audit_project_id) : null;
@@ -483,7 +495,7 @@ Deno.serve(async (req) => {
     const eeat = { ...(aboutPage?.eeat || {}), ...(homePage?.eeat || {}),
       hasPerson: !!(homePage?.eeat?.hasPerson || aboutPage?.eeat?.hasPerson || allSchema.has("Person")),
       hasReviews: !!(homePage?.eeat?.hasReviews || aboutPage?.eeat?.hasReviews || allSchema.has("AggregateRating")),
-      hasAbout: !!(homePage?.eeat?.hasAbout || aboutPage?.eeat?.hasAbout || aboutGuess),
+      hasAbout: !!(homePage?.eeat?.hasAbout || aboutPage?.eeat?.hasAbout || aboutFromAhrefs),
       hasCredentials: !!(homePage?.eeat?.hasCredentials || aboutPage?.eeat?.hasCredentials) };
 
     // ── 8. SITE PROBES — robots, sitemap, redirects, 404s, security, trust,
