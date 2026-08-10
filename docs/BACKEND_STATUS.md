@@ -4,6 +4,22 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-10 — V5.2.0: site-build punch list + fixes-tab self-heal
+
+REDEPLOY run-audit (relink hardening). Console ships via FTP on merge.
+
+- **Site-build punch list**: campaign doc gains §7 — every failed/warned
+  check NOT covered by a written fix or this cycle's content, with pillar,
+  evidence, and the audit's own remediation text: the designer/developer
+  work order for the remaining ✕/! marks. The deploy file mirrors the same
+  items into manual_tasks (kind:"punchlist") so the WP/Fourge import report
+  hands over the identical list.
+- **Fixes-tab self-heal**: re-audit runs against a STALE run-audit
+  deployment stranded the fix queue on an older audit (console loads fixes
+  by latest audit_id → tab showed empty). loadLiveAudit now falls back to
+  the newest prior audit that owns fixes; run-audit's audit_only relink and
+  verification sweep now cover ALL prior audits, healing broken chains.
+
 ## 2026-08-10 — Connector v1.4.0: second-pass auto-fix (checklist-driven)
 
 Re-zip + update on sites. Maps the audit checklist to automatic remediation:
