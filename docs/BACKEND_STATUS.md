@@ -4,6 +4,29 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-10 — V5.1.0 re-audit, audit history, WP key field
+
+Redeploy `run-audit`. No migration required (uses existing `audits`,
+`audit_checks`, `clients.wp_api_key`).
+
+- **Audit-only re-runs** (run-audit): `{ client_id, audit_only: true }`
+  re-measures and rescores the site WITHOUT rebuilding the campaign — no new
+  fixes staged, no content topics, no package regeneration. The existing fix
+  queue is carried forward to the fresh audit (so the console keeps showing
+  it), the verification loop still flips pushed fixes to `verified`, and the
+  response reports `progress` (previous score, delta, fixed/regressed counts).
+  The latest package is re-pointed at the new audit; report/topics untouched.
+- **Console ↻ Re-run audit** (tab ②): one click after deploying to log the
+  movement; toast shows the new score, the delta, and verified checks.
+- **Audit History** (tab ②): every audit run is charted (score 0–100 over
+  time, dashed target-90 line) with a newest-first table — date, score, Δ,
+  pillar grades, DR, keywords, organic traffic. Data was always stored
+  (each run inserts an `audits` row); the console now shows it.
+- **Platform Access WP key field**: the WordPress card now has the paste
+  field for the connector plugin's API key the instructions referenced —
+  saves `clients.wp_api_key` + `wp_connected`, shows `····last4` once saved,
+  with Replace. `publish-wp` needs this key to push anything.
+
 ## 2026-08-04 — V2.0.0 hardening (delivery-QA critique implemented)
 
 Code gates, not prompt requests (a filter can't be talked out of rejecting
