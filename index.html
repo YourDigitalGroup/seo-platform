@@ -877,7 +877,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.2.3</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.2.4</div>
   </div>
   </div>
 </div>
@@ -958,7 +958,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.2.3</span>
+        <span>44i, Inc. · Internal Ops Console · V5.2.4</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1006,7 +1006,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.2.3</span>
+        <span>44i, Inc. · Internal Ops Console · V5.2.4</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1160,7 +1160,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.2.3 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.2.4 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2550,7 +2550,8 @@ async function reRunAudit(){
       await loadLiveAudit(); renderPackage();
       showToast(`Audit re-run — score ${data.score}/100 (${delta})`+
         (pr.fixed?` · ${pr.fixed} check${pr.fixed>1?'s':''} fixed ✓`:'')+
-        (pr.regressed?` · ${pr.regressed} regressed ⚠`:''), false, true);
+        (pr.regressed?` · ${pr.regressed} regressed ⚠`:'')+
+        (data.engine_version?` · engine v${data.engine_version}`:' · ⚠ OLD AUDIT ENGINE — redeploy run-audit in Supabase'), false, true);
     }
   }catch(e){ console.error(e); showToast('Re-audit error — see console', true); }
   finally{ const b=document.getElementById('reaudit-btn'); if(b){ b.disabled=false; b.innerHTML='↻ Re-run audit'; } }
