@@ -21,12 +21,33 @@ WordPress site automatically — without ever touching the site's appearance.
   rules). Re-importing the same file updates rather than duplicates
   (external-id + hash idempotency).
 
+- **v1.2 — AI auto-fix**: with an Anthropic API key saved, fills **missing**
+  SEO titles, meta descriptions, and image alt text. Never overwrites.
+- **v1.3 — Site-wide schema engine**: correct JSON-LD on **every** page,
+  built from real data only — `WebSite` (+SearchAction), `LocalBusiness`
+  (NAP, hours, service area, GBP/social sameAs — from the deploy package's
+  approved business facts), `WebPage`, `BreadcrumbList`, and `BlogPosting`
+  with a real author `Person` (E-E-A-T). Types the platform already imported
+  for a page — or that Yoast/Rank Math print — are skipped, never duplicated.
+  Plus `geo.placename`/`geo.region` meta on every page.
+- **v1.3 — Media-library alt text**: the AI auto-fix now also fills missing
+  `_wp_attachment_image_alt` on library images (20 per run, filename fallback
+  when the AI is unavailable), covering theme/builder-placed images.
+- **v1.3 — Import guardrails**: body `<h1>` in imported content is demoted to
+  `<h2>` (the theme's title is the page's one H1 — two H1s fail the audit),
+  and `Content-Security-Policy` is never auto-applied (a wrong CSP breaks
+  rendering and tanks PageSpeed) — it lands in the manual follow-up list.
+- **v1.3 — Outbound HTTP unblock**: defines `WP_HTTP_BLOCK_EXTERNAL = false`
+  (when wp-config.php hasn't already set it) so the AI auto-fix can reach
+  `api.anthropic.com` on 44i-hosted sites that block outbound HTTP by default.
+
 ## What it cannot do (by design)
 - No theme, template, CSS, layout, menu, widget, or settings changes.
 - Unapproved content is never published — it arrives as drafts; only content
   explicitly approved in the platform gets a publish schedule.
-- Visible/technical fixes (H1, page copy, internal links, image alt) are **not**
-  auto-deployed — the platform refuses them and they stay manual.
+- Visible/technical fixes (H1, page copy, internal links) are **not**
+  auto-deployed — the platform refuses them and they stay manual. (Missing
+  image alts are the exception: the AI auto-fix fills those, invisibly.)
 - Google Business Profile posts stay manual (listed in the import report).
 
 The same deploy-package file format is consumed by the Fourge CMS importer —

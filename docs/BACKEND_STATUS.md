@@ -4,6 +4,34 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-10 — Connector v1.3.0 + V5.1.1 (schema everywhere, E-E-A-T, local, media alts)
+
+Re-zip the connector (v1.3.0) and update it on client sites. Console V5.1.1
+adds the `business` section to the deploy file (from approved intake + audit
+trade area) — older deploy files still import fine, they just don't feed the
+schema engine.
+
+- **Site-wide schema engine** (connector, `wp_head` @21): correct JSON-LD on
+  EVERY page from real data only — WebSite(+SearchAction), LocalBusiness
+  (NAP/hours/areaServed/sameAs/hasMap from package business facts; minimal
+  Organization when absent), WebPage, BreadcrumbList (post ancestors), and
+  BlogPosting with real author Person → worksFor org (E-E-A-T). Types already
+  imported for the page — or printed by Yoast/Rank Math — are skipped, never
+  duplicated. `geo.placename`/`geo.region` meta on every page.
+- **Media-library alt sweep** (AI auto-fix step 3): fills missing
+  `_wp_attachment_image_alt` (20/run, never overwrites) with deterministic
+  filename fallback — covers theme/builder-placed images that in-content
+  alt fixes can't reach.
+- **Regression guardrails** (why a deployed package could LOWER the score):
+  imported body `<h1>` demoted to `<h2>` (theme title is the page's one H1 —
+  imports were creating double-H1 pages, failing the single-H1 check on every
+  new page), and `Content-Security-Policy` is never auto-applied (a wrong CSP
+  breaks rendering + PageSpeed) — moved to the manual follow-up list.
+- **Outbound HTTP unblock**: connector defines `WP_HTTP_BLOCK_EXTERNAL=false`
+  when wp-config hasn't (44i hosting blocks outbound HTTP by default; the AI
+  auto-fix needs api.anthropic.com). Scott had hand-patched this on a live
+  site; now in the repo.
+
 ## 2026-08-10 — V5.1.0 re-audit, audit history, WP key field
 
 Redeploy `run-audit`. No migration required (uses existing `audits`,

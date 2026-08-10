@@ -877,7 +877,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.1.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.1.1</div>
   </div>
   </div>
 </div>
@@ -958,7 +958,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.1.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.1.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1006,7 +1006,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.1.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.1.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1160,7 +1160,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.1.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.1.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3818,9 +3818,17 @@ function buildDeployPackage(){
   (PK.topics||[]).filter(t=>t.kind==='gbp_post'&&t.body).forEach(t=>manual.push({ title:'GBP post: '+t.title, action:t.body, kind:'gbp_post' }));
   ((PK.directive&&PK.directive.items)||[]).filter(i=>i.in_plan&&i.status==='todo'&&!i.fix_kind).forEach(i=>
     manual.push({ title:i.title, action:i.action, kind:'directive' }));
+  // Approved business facts (intake = the approved source) + audit trade area →
+  // the connector's site-wide LocalBusiness/E-E-A-T schema engine (v1.3+).
+  const iv=(activeClient&&activeClient._intake)||{}, BZ=(PK.raw&&PK.raw.business)||{}, TA=(PK.raw&&PK.raw.tradeArea)||{};
+  const business={ name:c.name||'', url:site, type:BZ.type||'', services:BZ.services||[],
+    phone:iv.phone||'', email:iv.email||'', street:iv.street||'', city:iv.city||'', state:iv.state||'', zip:iv.zip||'',
+    hours:iv.hours||'', categories:iv.categories||'', description:iv.description||'',
+    sameas:[iv.facebook,iv.instagram,iv.linkedin].filter(Boolean), gbp_url:iv.gbp||'',
+    service_area:{ primary:TA.primary||c.market||'', secondary:TA.secondary||[] } };
   return {
     format:'44i-deploy-package', format_version:1, generated_at:new Date().toISOString(),
-    site, client:{ name:c.name||'', market:c.market||'', tier:c.tier||'' },
+    site, client:{ name:c.name||'', market:c.market||'', tier:c.tier||'' }, business,
     source:{ package_id:PK.package_id||null, audit_id:PK.audit?PK.audit.id:null,
       audit_score:(PK.raw&&PK.raw.scores&&PK.raw.scores.auditScore)??null },
     seo_meta:Object.values(metaBy),

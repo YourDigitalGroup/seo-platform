@@ -2,16 +2,21 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.2.1
+ * Version: 1.3.0
  * Author: 44i Digital
  * License: GPL-2.0+
  */
 
 if (!defined('ABSPATH')) exit;
 
+// 44i hosting blocks outbound HTTP by default, which breaks the AI auto-fix
+// (api.anthropic.com). wp-config.php loads before plugins, so this only takes
+// effect when the constant isn't already defined there.
+if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
+
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.2.1');
+define('SEOP_VERSION', '1.3.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -25,6 +30,9 @@ define('SEOP_OPT_REDIRECTS', 'seoplatform_redirects');      // [{from,to,code}]
 define('SEOP_OPT_HEADERS',   'seoplatform_sec_headers');    // {Header-Name: value}
 define('SEOP_OPT_SITE_SCHEMA','seoplatform_site_schema');   // JSON-LD strings for the front page
 define('SEOP_OPT_LAST_IMPORT','seoplatform_last_import');   // report of the last package import
+// v1.3: approved business facts from the deploy package (NAP, hours, socials,
+// service area) — powers the site-wide LocalBusiness/E-E-A-T schema engine.
+define('SEOP_OPT_BUSINESS',  'seoplatform_business');
 
 /* Generate a per-site API key on activation. */
 register_activation_hook(__FILE__, function () {
@@ -74,6 +82,7 @@ function seop_status() {
         'connector_version' => SEOP_VERSION,
         'wp_version' => get_bloginfo('version'),
         'seo_plugin' => seop_seo_plugin(),
+        'business_loaded' => (bool) (seop_business()['name'] ?? ''),
         'site' => home_url(),
         'last_import' => get_option(SEOP_OPT_LAST_IMPORT) ?: null,
     ];
@@ -132,6 +141,10 @@ function seop_write_meta($post_id, $title, $desc, $canonical) {
 function seop_upsert_content($p) {
     $title   = isset($p['title']) ? sanitize_text_field($p['title']) : '';
     $content = isset($p['content']) ? wp_kses_post($p['content']) : '';
+    // The theme renders the post title as the page's H1. An H1 inside the body
+    // makes two, which fails the audit's single-H1 check on every imported
+    // page — demote body H1s to H2 so imports can't regress the on-page score.
+    $content = preg_replace('/<(\/?)h1\b/i', '<$1h2', $content);
     $excerpt = isset($p['excerpt']) ? sanitize_text_field($p['excerpt']) : '';
     $type    = (isset($p['post_type']) && $p['post_type'] === 'page') ? 'page' : 'post';
     $status  = isset($p['status']) && in_array($p['status'], ['publish', 'draft', 'future'], true) ? $p['status'] : 'draft';
@@ -237,6 +250,147 @@ add_action('wp_head', function () {
     if ($og) echo "\n" . $og . "\n"; // sanitized to <meta> tags only at import time
 }, 20);
 
+/* ── v1.3: site-wide schema engine ────────────────────────────────────────────
+ * Correct JSON-LD on EVERY page, built from real data only: the approved
+ * business facts delivered by the deploy package, the page's own SEO meta,
+ * and WordPress itself (authors, dates, page hierarchy). Covers the audit's
+ * schema pillar (WebSite, LocalBusiness/Organization, WebPage, BreadcrumbList,
+ * BlogPosting), E-E-A-T (author Person, publisher, dates, contact point) and
+ * local (NAP address, geo region meta, service area, GBP/social sameAs).
+ * Nothing is ever invented — fields the package didn't deliver are omitted.
+ * Types already present (imported platform schema for the page, or printed by
+ * Yoast/Rank Math) are skipped, never duplicated. */
+function seop_business() { $b = get_option(SEOP_OPT_BUSINESS); return is_array($b) ? $b : []; }
+
+/* Schema @types already emitted for this request by other sources. */
+function seop_head_types() {
+    $types = [];
+    $scan = function ($blob) use (&$types) {
+        if (is_string($blob) && preg_match_all('/"@type"\s*:\s*"([A-Za-z]+)"/', $blob, $m)) {
+            foreach ($m[1] as $t) $types[$t] = true;
+        }
+    };
+    if (is_front_page()) foreach ((array) get_option(SEOP_OPT_SITE_SCHEMA, []) as $blob) $scan($blob);
+    if (is_singular()) {
+        $pid = get_queried_object_id();
+        $scan(get_post_meta($pid, '_seoplatform_schema', true));
+        foreach ((array) get_post_meta($pid, '_seoplatform_schema_list', true) as $blob) $scan($blob);
+    }
+    if (seop_seo_plugin() !== 'none') { $types['WebSite'] = true; $types['BreadcrumbList'] = true; } // Yoast/Rank Math print their own
+    return $types;
+}
+
+function seop_breadcrumb_node($pid) {
+    $items = [['@type' => 'ListItem', 'position' => 1, 'name' => 'Home', 'item' => home_url('/')]];
+    $pos = 2;
+    $p = get_post($pid);
+    if ($p && $p->post_type === 'post') {
+        $blog = (int) get_option('page_for_posts');
+        if ($blog) $items[] = ['@type' => 'ListItem', 'position' => $pos++, 'name' => get_the_title($blog), 'item' => get_permalink($blog)];
+    } elseif ($p) {
+        foreach (array_reverse(get_post_ancestors($pid)) as $aid) {
+            $items[] = ['@type' => 'ListItem', 'position' => $pos++, 'name' => get_the_title($aid), 'item' => get_permalink($aid)];
+        }
+    }
+    $items[] = ['@type' => 'ListItem', 'position' => $pos, 'name' => get_the_title($pid), 'item' => get_permalink($pid)];
+    return ['@type' => 'BreadcrumbList', '@id' => get_permalink($pid) . '#breadcrumb', 'itemListElement' => $items];
+}
+
+add_action('wp_head', function () {
+    if (is_admin() || is_feed() || is_404() || is_search()) return;
+    $b = seop_business(); $have = seop_head_types();
+    $home = home_url('/'); $orgId = $home . '#org'; $siteId = $home . '#website';
+    $graph = [];
+
+    // WebSite (+ SearchAction) — site identity on every page; helps AEO answers cite the site.
+    if (empty($have['WebSite'])) {
+        $graph[] = ['@type' => 'WebSite', '@id' => $siteId, 'url' => $home, 'name' => get_bloginfo('name'),
+            'publisher' => ['@id' => $orgId], 'inLanguage' => get_bloginfo('language'),
+            'potentialAction' => ['@type' => 'SearchAction',
+                'target' => ['@type' => 'EntryPoint', 'urlTemplate' => $home . '?s={search_term_string}'],
+                'query-input' => 'required name=search_term_string']];
+    }
+
+    // LocalBusiness (with delivered facts) or a minimal Organization (without).
+    if (empty($have['LocalBusiness']) && empty($have['Organization'])) {
+        $hasFacts = ($b['name'] ?? '') !== '';
+        $node = ['@type' => $hasFacts ? 'LocalBusiness' : 'Organization', '@id' => $orgId,
+            'name' => $hasFacts ? $b['name'] : get_bloginfo('name'), 'url' => $home];
+        $logoId = (int) get_theme_mod('custom_logo');
+        $logo = $logoId ? wp_get_attachment_url($logoId) : get_site_icon_url();
+        if ($logo) { $node['logo'] = $logo; $node['image'] = $logo; }
+        if ($hasFacts) {
+            if ($b['description'] ?? '') $node['description'] = $b['description'];
+            if ($b['phone'] ?? '') {
+                $node['telephone'] = $b['phone'];
+                $node['contactPoint'] = ['@type' => 'ContactPoint', 'telephone' => $b['phone'], 'contactType' => 'customer service'];
+            }
+            if ($b['email'] ?? '') $node['email'] = $b['email'];
+            if (($b['street'] ?? '') || ($b['city'] ?? '')) {
+                $addr = ['@type' => 'PostalAddress', 'addressCountry' => 'US'];
+                if ($b['street'] ?? '') $addr['streetAddress'] = $b['street'];
+                if ($b['city'] ?? '')   $addr['addressLocality'] = $b['city'];
+                if ($b['state'] ?? '')  $addr['addressRegion'] = $b['state'];
+                if ($b['zip'] ?? '')    $addr['postalCode'] = $b['zip'];
+                $node['address'] = $addr;
+            }
+            if ($b['hours'] ?? '') {
+                $node['openingHours'] = array_values(array_filter(array_map('trim', preg_split('/[;,]/', $b['hours']))));
+            }
+            $same = array_values(array_filter((array) ($b['sameas'] ?? [])));
+            if ($b['gbp_url'] ?? '') { $node['hasMap'] = $b['gbp_url']; $same[] = $b['gbp_url']; }
+            if ($same) $node['sameAs'] = $same;
+            $area = [];
+            $sa = (array) ($b['service_area'] ?? []);
+            if ($sa['primary'] ?? '') $area[] = ['@type' => 'City', 'name' => $sa['primary']];
+            foreach ((array) ($sa['secondary'] ?? []) as $town) if ($town) $area[] = ['@type' => 'City', 'name' => $town];
+            if ($area) $node['areaServed'] = $area;
+        }
+        $graph[] = $node;
+    }
+
+    if (is_singular()) {
+        $pid = get_queried_object_id(); $p = get_post($pid); $url = get_permalink($pid);
+        list($t, $d) = seop_existing_meta($pid);
+        if (empty($have['WebPage']) && empty($have['AboutPage']) && empty($have['ContactPage']) && empty($have['FAQPage'])) {
+            $graph[] = ['@type' => 'WebPage', '@id' => $url . '#webpage', 'url' => $url,
+                'name' => $t ?: get_the_title($pid),
+                'description' => $d ?: wp_strip_all_tags(get_the_excerpt($pid)),
+                'isPartOf' => ['@id' => $siteId], 'about' => ['@id' => $orgId],
+                'datePublished' => get_the_date('c', $pid), 'dateModified' => get_the_modified_date('c', $pid),
+                'inLanguage' => get_bloginfo('language')];
+        }
+        if (empty($have['BreadcrumbList']) && !is_front_page()) $graph[] = seop_breadcrumb_node($pid);
+        // Posts: BlogPosting with a real author Person — the E-E-A-T backbone.
+        if ($p && $p->post_type === 'post' && empty($have['BlogPosting']) && empty($have['Article'])) {
+            $aid = (int) $p->post_author;
+            $node = ['@type' => 'BlogPosting', '@id' => $url . '#article',
+                'headline' => mb_substr(get_the_title($pid), 0, 110),
+                'author' => ['@type' => 'Person',
+                    'name' => get_the_author_meta('display_name', $aid) ?: get_bloginfo('name'),
+                    'url' => get_author_posts_url($aid),
+                    'worksFor' => ['@id' => $orgId]],
+                'publisher' => ['@id' => $orgId],
+                'datePublished' => get_the_date('c', $pid), 'dateModified' => get_the_modified_date('c', $pid),
+                'mainEntityOfPage' => $url, 'inLanguage' => get_bloginfo('language')];
+            $img = get_the_post_thumbnail_url($pid, 'full'); if ($img) $node['image'] = $img;
+            $kw = get_post_meta($pid, '_seoplatform_focus_keyword', true); if ($kw) $node['keywords'] = $kw;
+            $graph[] = $node;
+        }
+    }
+
+    if ($graph) {
+        echo "\n<script type=\"application/ld+json\">"
+            . wp_json_encode(['@context' => 'https://schema.org', '@graph' => $graph], JSON_UNESCAPED_SLASHES)
+            . "</script>\n";
+    }
+    // Local geo hints on every page — harmless meta that reinforces the service area.
+    if (($b['city'] ?? '') !== '') {
+        echo '<meta name="geo.placename" content="' . esc_attr($b['city']) . '">' . "\n";
+        if (($b['state'] ?? '') !== '') echo '<meta name="geo.region" content="US-' . esc_attr(strtoupper(substr(trim($b['state']), 0, 2))) . '">' . "\n";
+    }
+}, 21);
+
 /* ── Site-wide appliers from the deploy package ── */
 // robots.txt (only when WP serves it, i.e. no physical file exists)
 add_filter('robots_txt', function ($output) {
@@ -335,8 +489,24 @@ function seop_apply_package($pkg) {
     if (!empty($pkg['redirects']['raw']) && !$rules) $r['manual'][] = 'Redirects: the package includes server rules (.htaccess/nginx) that need to be applied at the server level.';
     if (!empty($pkg['security_headers']['raw'])) {
         $headers = seop_parse_header_lines($pkg['security_headers']['raw']);
+        // A wrong Content-Security-Policy can block the site's own scripts/styles,
+        // break rendering, and tank PageSpeed — never auto-apply it; the safe
+        // headers (HSTS, X-Content-Type-Options, Referrer-Policy, …) still go on.
+        if (isset($headers['Content-Security-Policy'])) {
+            unset($headers['Content-Security-Policy']);
+            $r['manual'][] = 'Content-Security-Policy: test on staging and apply at the server level — auto-applying a CSP can break page rendering.';
+        }
         if ($headers) { update_option(SEOP_OPT_HEADERS, $headers); $ok(count($headers) . ' security header(s) (sent by WordPress)'); }
         else $skip('Security headers', 'no parseable header lines');
+    }
+    // v1.3: approved business facts → powers site-wide LocalBusiness/E-E-A-T schema.
+    if (!empty($pkg['business']) && is_array($pkg['business'])) {
+        $clean = function ($v) use (&$clean) {
+            if (is_array($v)) return array_map($clean, $v);
+            return sanitize_text_field((string) $v);
+        };
+        update_option(SEOP_OPT_BUSINESS, array_map($clean, $pkg['business']));
+        $ok('Business profile (name, NAP, hours, service area — powers site-wide schema)');
     }
     $scheduled = 0; $drafted = 0;
     foreach ((array) ($pkg['content'] ?? []) as $cItem) {
@@ -399,9 +569,19 @@ function seop_existing_meta($post_id) {
     if (!$d && $plugin === 'rankmath') $d = get_post_meta($post_id, 'rank_math_description', true);
     return [$t, $d];
 }
-function seop_ai_autofix($meta_cap = 10, $alt_cap = 8) {
+/* Deterministic alt from a filename: "kitchen-remodel_sioux-falls-2-300x200.jpg"
+ * → "Kitchen remodel sioux falls". Used when the AI reply misses an item. */
+function seop_alt_from_filename($file) {
+    $s = preg_replace('/\.[a-z0-9]+$/i', '', basename((string) $file));
+    $s = preg_replace('/-?\d+x\d+$|-scaled$|-copy(-\d+)?$|-e\d{10,}/i', '', $s);
+    $s = trim(preg_replace('/[-_]+/', ' ', $s));
+    $s = trim(preg_replace('/\s*\d+\s*$/', '', $s));
+    if ($s === '' || preg_match('/^(img|image|dsc|photo|screenshot|untitled)[\s\d]*$/i', $s)) return '';
+    return ucfirst(strtolower($s));
+}
+function seop_ai_autofix($meta_cap = 10, $alt_cap = 8, $media_cap = 20) {
     if (!get_option(SEOP_OPT_AI_KEY)) return new WP_Error('seop_ai', 'Add an Anthropic API key on the SEO Platform settings page first.');
-    $report = ['ok' => true, 'ran_at' => current_time('mysql'), 'metas' => [], 'alts' => [], 'skipped' => []];
+    $report = ['ok' => true, 'ran_at' => current_time('mysql'), 'metas' => [], 'alts' => [], 'media_alts' => 0, 'skipped' => []];
     $site = get_bloginfo('name');
     $posts = get_posts(['post_type' => ['post', 'page'], 'post_status' => 'publish', 'numberposts' => 200, 'orderby' => 'modified', 'order' => 'DESC']);
 
@@ -455,6 +635,47 @@ function seop_ai_autofix($meta_cap = 10, $alt_cap = 8) {
         }
         update_post_meta($p->ID, '_seoplatform_alts_done', 1);
         $done++;
+    }
+
+    // 3) v1.3: MEDIA LIBRARY alt text. In-page alts (step 2) don't help images
+    //    placed by themes/builders from the library — the attachment's own
+    //    _wp_attachment_image_alt does. Fill missing ones, never overwrite.
+    $atts = get_posts(['post_type' => 'attachment', 'post_mime_type' => 'image', 'post_status' => 'inherit',
+        'numberposts' => $media_cap * 3, 'orderby' => 'date', 'order' => 'DESC',
+        'meta_query' => [['key' => '_wp_attachment_image_alt', 'compare' => 'NOT EXISTS']]]);
+    // Empty-string alts count as missing too; meta_query NOT EXISTS misses those.
+    $atts = array_merge($atts, get_posts(['post_type' => 'attachment', 'post_mime_type' => 'image', 'post_status' => 'inherit',
+        'numberposts' => $media_cap, 'meta_query' => [['key' => '_wp_attachment_image_alt', 'value' => '']]]));
+    $todo = [];
+    foreach ($atts as $a) {
+        if (count($todo) >= $media_cap) break;
+        if (get_post_meta($a->ID, '_wp_attachment_image_alt', true)) continue;
+        if (isset($todo[$a->ID])) continue;
+        $todo[$a->ID] = $a;
+    }
+    if ($todo) {
+        $lines = []; $ids = array_keys($todo); $i = 1;
+        foreach ($todo as $a) {
+            $ctx = $a->post_title && strtolower($a->post_title) !== strtolower(pathinfo(get_attached_file($a->ID) ?: '', PATHINFO_FILENAME)) ? ' — title: ' . $a->post_title : '';
+            $parent = $a->post_parent ? get_the_title($a->post_parent) : '';
+            $lines[] = $i++ . '. ' . basename(get_attached_file($a->ID) ?: ($a->post_title ?: 'image')) . $ctx . ($parent ? ' — used on: ' . $parent : '');
+        }
+        $out = seop_claude(
+            'You write concise, descriptive image alt text, max 12 words each. No quotes, no "image of". Return a numbered list only, one item per input line, same order.',
+            'Site: ' . get_bloginfo('name') . ". Media library images (filename — context):\n" . implode("\n", $lines), 800
+        );
+        $alts = [];
+        if (!is_wp_error($out)) {
+            foreach (preg_split('/\r?\n/', $out) as $line) {
+                if (preg_match('/^\s*(\d+)[.)]\s*(.+)$/', $line, $m)) $alts[(int) $m[1] - 1] = sanitize_text_field($m[2]);
+            }
+        } else {
+            $report['skipped'][] = 'media alts — ' . $out->get_error_message() . ' (using filename fallback)';
+        }
+        foreach ($ids as $idx => $aid) {
+            $alt = $alts[$idx] ?? seop_alt_from_filename(get_attached_file($aid) ?: '');
+            if ($alt !== '') { update_post_meta($aid, '_wp_attachment_image_alt', $alt); $report['media_alts']++; }
+        }
     }
 
     update_option(SEOP_OPT_AI_REPORT, $report);
@@ -527,7 +748,7 @@ function seop_settings_page() {
     }
 
     echo '<h2>AI auto-fix</h2>';
-    echo '<p>With an Anthropic API key saved, the connector fills in <strong>missing</strong> SEO titles, meta descriptions, and image alt text across the site — on demand, on a weekly schedule, or triggered by the platform. It never overwrites values that already exist. Use a dedicated key with a spend limit; anyone with admin access to this site can read stored keys.</p>';
+    echo '<p>With an Anthropic API key saved, the connector fills in <strong>missing</strong> SEO titles, meta descriptions, and image alt text — in page content <em>and</em> across the media library — on demand, on a weekly schedule, or triggered by the platform. It never overwrites values that already exist. Use a dedicated key with a spend limit; anyone with admin access to this site can read stored keys.</p>';
     $hasAiKey = (bool) get_option(SEOP_OPT_AI_KEY);
     echo '<form method="post">' . wp_nonce_field('seop_ai', '_wpnonce', true, false);
     echo '<table class="form-table">';
@@ -536,14 +757,14 @@ function seop_settings_page() {
     echo '</table><p><button class="button" name="seop_ai_save" value="1">Save AI settings</button></p></form>';
     if ($hasAiKey) {
         echo '<form method="post">' . wp_nonce_field('seop_ai_go', '_wpnonce', true, false);
-        echo '<p><button class="button button-primary" name="seop_ai_run" value="1">Run AI auto-fix now</button> <em>Fills up to 10 pages of missing metas + 8 pages of missing alts per run.</em></p></form>';
+        echo '<p><button class="button button-primary" name="seop_ai_run" value="1">Run AI auto-fix now</button> <em>Fills up to 10 pages of missing metas, 8 pages of in-content alts, and 20 media-library alts per run.</em></p></form>';
     }
     $lastAi = $aiReport && !is_wp_error($aiReport) ? $aiReport : get_option(SEOP_OPT_AI_REPORT);
     if ($aiReport && is_wp_error($aiReport)) {
         echo '<div class="notice notice-error"><p>' . esc_html($aiReport->get_error_message()) . '</p></div>';
     }
     if (is_array($lastAi) && !empty($lastAi['ran_at'])) {
-        echo '<p><strong>Last AI run:</strong> ' . esc_html($lastAi['ran_at']) . ' — ' . count($lastAi['metas'] ?? []) . ' pages got metas, ' . count($lastAi['alts'] ?? []) . ' pages got alts' . (!empty($lastAi['skipped']) ? ', ' . count($lastAi['skipped']) . ' skipped' : '') . '.</p>';
+        echo '<p><strong>Last AI run:</strong> ' . esc_html($lastAi['ran_at']) . ' — ' . count($lastAi['metas'] ?? []) . ' pages got metas, ' . count($lastAi['alts'] ?? []) . ' pages got alts, ' . (int) ($lastAi['media_alts'] ?? 0) . ' media-library alts filled' . (!empty($lastAi['skipped']) ? ', ' . count($lastAi['skipped']) . ' skipped' : '') . '.</p>';
         if (!empty($lastAi['skipped'])) {
             echo '<ul style="list-style:disc;margin-left:20px">';
             foreach ($lastAi['skipped'] as $line) echo '<li>' . esc_html($line) . '</li>';
@@ -556,6 +777,8 @@ function seop_settings_page() {
     echo '<tr><th>API key</th><td><code>' . esc_html($key) . '</code></td></tr>';
     echo '<tr><th>Active SEO plugin</th><td><code>' . esc_html(seop_seo_plugin()) . '</code></td></tr>';
     echo '<tr><th>Connector version</th><td><code>' . esc_html(SEOP_VERSION) . '</code></td></tr>';
+    $biz = seop_business();
+    echo '<tr><th>Business profile</th><td>' . (($biz['name'] ?? '') ? '<code>' . esc_html($biz['name']) . '</code> — site-wide LocalBusiness/E-E-A-T schema active' : '<em>not loaded — import a deploy package that includes business facts (44i platform V5.1.1+)</em>') . '</td></tr>';
     echo '</table>';
     echo '<form method="post">' . wp_nonce_field('seop_regen', '_wpnonce', true, false);
     echo '<p><button class="button" name="seop_regen" value="1">Regenerate API key</button></p></form>';
