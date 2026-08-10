@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.3.0";
+const ENGINE_VERSION = "5.3.1";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -413,15 +413,17 @@ Deno.serve(async (req) => {
     let aboutPage = aboutPage0;
     // A freshly published About page takes weeks to reach Ahrefs' top pages —
     // probe the common paths directly so E-E-A-T credit lands the day it ships.
-    // Probed pages only count via their actual text/schema (soft-404 safe).
-    if (!aboutPage?.html) {
+    // fetchPage returns metrics (ok/status/words/eeat), NOT raw html — success
+    // is `ok`, and a real page has words (guards thin soft-404s). Probed pages
+    // only count via their actual text/schema signals.
+    if (!aboutPage?.ok) {
       const base = home.replace(/\/+$/, "");
       const cands = await Promise.all(["/about-us", "/about", "/our-team", "/our-story"]
         .map((p) => fetchPage(base + p).then((r) => ({ u: base + p, r })).catch(() => ({ u: "", r: null as any }))));
-      const hit = cands.find((c) => c.r?.html);
+      const hit = cands.find((c) => c.r?.ok && (c.r?.words ?? 0) > 30);
       if (hit) { aboutPage = hit.r; aboutGuess = hit.u; }
     }
-    note.push(aboutPage?.html ? `E-E-A-T source: about page read at ${aboutGuess}.` : (aboutGuess ? `E-E-A-T: about URL ${aboutGuess} known from rankings but did not fetch.` : "E-E-A-T: no about page found (Ahrefs + direct probes) — story/credentials graded from the homepage only."));
+    note.push(aboutPage?.ok ? `E-E-A-T source: about page read at ${aboutGuess}.` : (aboutGuess ? `E-E-A-T: about URL ${aboutGuess} known from rankings but did not fetch.` : "E-E-A-T: no about page found (Ahrefs + direct probes) — story/credentials graded from the homepage only."));
 
     // Resolve a crawl project: stored id first, else auto-discover by domain.
     let crawlProjectId: number | null = client.ahrefs_site_audit_project_id ? Number(client.ahrefs_site_audit_project_id) : null;
