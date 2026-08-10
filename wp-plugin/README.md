@@ -41,6 +41,24 @@ WordPress site automatically — without ever touching the site's appearance.
   (when wp-config.php hasn't already set it) so the AI auto-fix can reach
   `api.anthropic.com` on 44i-hosted sites that block outbound HTTP by default.
 
+- **v1.4 — Second-pass auto-fix (the "make it all automatic" release)**:
+  - Default **security headers** (HSTS on SSL, X-Content-Type-Options,
+    X-Frame-Options, Referrer-Policy) always sent; package values override.
+    CSP still never auto-applies.
+  - AI rewrites **weak** titles/metas (outside the audit's 20–65 / 70–165
+    ranges), not just missing ones. In-range values are never touched.
+  - **Internal links**: the first plain-text mention of an imported page's
+    focus keyword on another published page gets linked to it (never inside
+    existing links, headings, buttons, or shortcodes; 10 per run; idempotent).
+  - **FAQPage schema** auto-built from a page's own question-formatted
+    headings (≥2 questions with real answers) — no invented Q&A, ever.
+  - **llms.txt fallback** auto-generated from business facts + published
+    pages when no package file exists.
+  - **Privacy Policy page** created from WordPress's core template when the
+    site has none (review text; link it in the footer).
+  - **AggregateRating** rendered only when the package delivers real rating
+    data (`business.rating_value`/`rating_count`) — never fabricated.
+
 ## What it cannot do (by design)
 - No theme, template, CSS, layout, menu, widget, or settings changes.
 - Unapproved content is never published — it arrives as drafts; only content

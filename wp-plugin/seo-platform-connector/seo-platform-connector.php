@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.3.1
+ * Version: 1.4.0
  * Author: 44i Digital
  * License: GPL-2.0+
  */
@@ -16,7 +16,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.3.1');
+define('SEOP_VERSION', '1.4.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -275,6 +275,35 @@ add_action('wp_head', function () {
  * Yoast/Rank Math) are skipped, never duplicated. */
 function seop_business() { $b = get_option(SEOP_OPT_BUSINESS); return is_array($b) ? $b : []; }
 
+/* v1.4: llms.txt fallback — assembled from real site data only (business facts
+ * + published pages), so AI crawlers get a map even before a package ships one. */
+function seop_llms_fallback() {
+    $cached = get_transient('seop_llms_fallback');
+    if ($cached !== false) return $cached;
+    $b = seop_business();
+    $name = ($b['name'] ?? '') ?: get_bloginfo('name');
+    if (!$name) return '';
+    $out = "# {$name}\n";
+    $desc = ($b['description'] ?? '') ?: get_bloginfo('description');
+    if ($desc) $out .= "\n> {$desc}\n";
+    if (!empty($b['services'])) $out .= "\nServices: " . implode(', ', (array) $b['services']) . "\n";
+    $sa = (array) ($b['service_area'] ?? []);
+    $towns = array_filter(array_merge([$sa['primary'] ?? ''], (array) ($sa['secondary'] ?? [])));
+    if ($towns) $out .= "Service area: " . implode(', ', $towns) . "\n";
+    if ($b['phone'] ?? '') $out .= "Contact: " . $b['phone'] . (($b['email'] ?? '') ? ' · ' . $b['email'] : '') . "\n";
+    $out .= "\n## Key pages\n";
+    foreach (get_posts(['post_type' => 'page', 'post_status' => 'publish', 'numberposts' => 20, 'orderby' => 'menu_order', 'order' => 'ASC']) as $pg) {
+        $out .= "- [" . $pg->post_title . "](" . get_permalink($pg) . ")\n";
+    }
+    $posts = get_posts(['post_type' => 'post', 'post_status' => 'publish', 'numberposts' => 10]);
+    if ($posts) {
+        $out .= "\n## Recent articles\n";
+        foreach ($posts as $pg) $out .= "- [" . $pg->post_title . "](" . get_permalink($pg) . ")\n";
+    }
+    set_transient('seop_llms_fallback', $out, DAY_IN_SECONDS);
+    return $out;
+}
+
 /* Schema @types already emitted for this request by other sources. */
 function seop_head_types() {
     $types = [];
@@ -358,6 +387,12 @@ add_action('wp_head', function () {
             if ($sa['primary'] ?? '') $area[] = ['@type' => 'City', 'name' => $sa['primary']];
             foreach ((array) ($sa['secondary'] ?? []) as $town) if ($town) $area[] = ['@type' => 'City', 'name' => $town];
             if ($area) $node['areaServed'] = $area;
+            // Only from REAL rating data delivered by the platform (e.g. GBP) —
+            // an invented AggregateRating is an FTC problem, so absent = omitted.
+            if (($b['rating_value'] ?? '') && ($b['rating_count'] ?? '')) {
+                $node['aggregateRating'] = ['@type' => 'AggregateRating',
+                    'ratingValue' => $b['rating_value'], 'reviewCount' => $b['rating_count']];
+            }
         }
         $graph[] = $node;
     }
@@ -374,6 +409,23 @@ add_action('wp_head', function () {
                 'inLanguage' => get_bloginfo('language')];
         }
         if (empty($have['BreadcrumbList']) && !is_front_page()) $graph[] = seop_breadcrumb_node($pid);
+        // v1.4: FAQPage from the page's OWN question headings — an <h2>/<h3>
+        // ending in "?" plus the copy that follows it. Real content only;
+        // pages without Q&A material simply get no FAQPage node.
+        if (empty($have['FAQPage']) && $p) {
+            $faq = [];
+            if (preg_match_all('/<h([23])[^>]*>([^<]*\?)\s*<\/h\1>(.*?)(?=<h[1-6][^>]*>|$)/is', $p->post_content, $qm, PREG_SET_ORDER)) {
+                foreach (array_slice($qm, 0, 10) as $m) {
+                    $q = trim(wp_strip_all_tags($m[2]));
+                    $a = trim(mb_substr(preg_replace('/\s+/', ' ', wp_strip_all_tags($m[3])), 0, 500));
+                    if ($q !== '' && mb_strlen($a) >= 40) {
+                        $faq[] = ['@type' => 'Question', 'name' => $q,
+                            'acceptedAnswer' => ['@type' => 'Answer', 'text' => $a]];
+                    }
+                }
+            }
+            if (count($faq) >= 2) $graph[] = ['@type' => 'FAQPage', '@id' => $url . '#faq', 'mainEntity' => $faq];
+        }
         // Posts: BlogPosting with a real author Person — the E-E-A-T backbone.
         if ($p && $p->post_type === 'post' && empty($have['BlogPosting']) && empty($have['Article'])) {
             $aid = (int) $p->post_author;
@@ -416,6 +468,7 @@ add_action('template_redirect', function () {
     $uri = isset($_SERVER['REQUEST_URI']) ? wp_parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) : '';
     if ($uri === '/llms.txt') {
         $body = get_option(SEOP_OPT_LLMS);
+        if (!$body) $body = seop_llms_fallback(); // v1.4: auto-generate from real site data
         if ($body) { header('Content-Type: text/plain; charset=utf-8'); echo $body; exit; }
     }
     $rules = get_option(SEOP_OPT_REDIRECTS, []);
@@ -432,8 +485,19 @@ add_action('template_redirect', function () {
 }, 1);
 
 // Security headers (applies when PHP serves the page; server-level rules still win)
+// v1.4: the four safe headers are on BY DEFAULT — the audit fails sites without
+// them and they carry no rendering risk (unlike CSP, which stays manual-only).
+// Package-imported values override the defaults per header.
+function seop_default_headers() {
+    $h = ['X-Content-Type-Options' => 'nosniff',
+          'X-Frame-Options' => 'SAMEORIGIN',
+          'Referrer-Policy' => 'strict-origin-when-cross-origin'];
+    if (is_ssl()) $h['Strict-Transport-Security'] = 'max-age=31536000';
+    return $h;
+}
 add_action('send_headers', function () {
-    foreach ((array) get_option(SEOP_OPT_HEADERS, []) as $name => $value) {
+    $headers = array_merge(seop_default_headers(), (array) get_option(SEOP_OPT_HEADERS, []));
+    foreach ($headers as $name => $value) {
         if (preg_match('/^[A-Za-z0-9-]+$/', $name) && is_string($value) && !headers_sent()) {
             header($name . ': ' . preg_replace('/[\r\n]/', '', $value));
         }
@@ -594,18 +658,64 @@ function seop_alt_from_filename($file) {
     if ($s === '' || preg_match('/^(img|image|dsc|photo|screenshot|untitled)[\s\d]*$/i', $s)) return '';
     return ucfirst(strtolower($s));
 }
+/* v1.4: link the first plain-text mention of a keyword to its target page.
+ * Walks the HTML token-by-token so it never touches existing anchors,
+ * headings, shortcodes, or tag attributes. Returns new content or null. */
+function seop_link_keyword($content, $kw, $url) {
+    if (stripos($content, 'href="' . $url) !== false) return null; // already links there
+    $parts = preg_split('/(<[^>]+>|\[[^\]]+\])/', $content, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $inA = 0; $inH = 0; $inBtn = 0; $scStack = [];
+    $rx = '/\b(' . preg_quote($kw, '/') . ')\b/i';
+    foreach ($parts as $i => $seg) {
+        if ($seg === '' ) continue;
+        if ($seg[0] === '<') {
+            if (preg_match('/^<a\b/i', $seg)) $inA++;
+            elseif (preg_match('/^<\/a>/i', $seg)) $inA = max(0, $inA - 1);
+            elseif (preg_match('/^<h[1-6]\b/i', $seg)) $inH++;
+            elseif (preg_match('/^<\/h[1-6]>/i', $seg)) $inH = max(0, $inH - 1);
+            elseif (preg_match('/^<button\b/i', $seg)) $inBtn++;
+            elseif (preg_match('/^<\/button>/i', $seg)) $inBtn = max(0, $inBtn - 1);
+            continue;
+        }
+        if ($seg[0] === '[') {
+            // Shortcode wrappers ([button]…[/button]) must not gain links inside.
+            // Conservative: while ANY shortcode is open, don't link — a
+            // self-closing one ([gallery]) just costs missed opportunities.
+            if (preg_match('/^\[\/([a-zA-Z0-9_-]+)\]/', $seg, $m)) {
+                if (end($scStack) === strtolower($m[1])) array_pop($scStack);
+            } elseif (preg_match('/^\[([a-zA-Z0-9_-]+)/', $seg, $m)) {
+                $scStack[] = strtolower($m[1]);
+            }
+            continue;
+        }
+        if ($inA || $inH || $inBtn || $scStack) continue;
+        if (preg_match($rx, $seg)) {
+            $parts[$i] = preg_replace($rx, '<a href="' . esc_url($url) . '">$1</a>', $seg, 1);
+            return implode('', $parts);
+        }
+    }
+    return null;
+}
 function seop_ai_autofix($meta_cap = 10, $alt_cap = 8, $media_cap = 20) {
     if (!get_option(SEOP_OPT_AI_KEY)) return new WP_Error('seop_ai', 'Add an Anthropic API key on the SEO Platform settings page first.');
     $report = ['ok' => true, 'ran_at' => current_time('mysql'), 'metas' => [], 'alts' => [], 'media_alts' => 0, 'skipped' => []];
     $site = get_bloginfo('name');
     $posts = get_posts(['post_type' => ['post', 'page'], 'post_status' => 'publish', 'numberposts' => 200, 'orderby' => 'modified', 'order' => 'DESC']);
 
-    // 1) Missing SEO titles / meta descriptions (fill only what's absent).
+    // 1) Missing OR WEAK SEO titles / meta descriptions. v1.4: the audit warns
+    //    on out-of-range lengths (title 20–65, meta 70–165), so weak values get
+    //    rewritten too — good values are still never touched, and Yoast/RM
+    //    template values (%%…%%) are left alone (their length can't be judged).
+    $weak = function ($v, $min, $max) {
+        return $v !== '' && strpos($v, '%%') === false && (mb_strlen($v) < $min || mb_strlen($v) > $max);
+    };
     $done = 0;
     foreach ($posts as $p) {
         if ($done >= $meta_cap) break;
         list($t, $d) = seop_existing_meta($p->ID);
-        if ($t && $d) continue;
+        $needT = !$t || $weak($t, 20, 65);
+        $needD = !$d || $weak($d, 70, 165);
+        if (!$needT && !$needD) continue;
         $excerpt = mb_substr(wp_strip_all_tags($p->post_content), 0, 1200);
         $out = seop_claude(
             'You write SEO meta for web pages. Return ONLY compact JSON, no markdown: {"title":"50-60 char SEO title","description":"150-160 char meta description with a call to action"}.',
@@ -614,8 +724,8 @@ function seop_ai_autofix($meta_cap = 10, $alt_cap = 8, $media_cap = 20) {
         if (is_wp_error($out)) { $report['skipped'][] = $p->post_title . ' — ' . $out->get_error_message(); continue; }
         $j = json_decode(trim(preg_replace('/```json|```/', '', $out)), true);
         if (!is_array($j)) { $report['skipped'][] = $p->post_title . ' — unparseable AI reply'; continue; }
-        seop_write_meta($p->ID, $t ? null : ($j['title'] ?? null), $d ? null : ($j['description'] ?? null), null);
-        $report['metas'][] = $p->post_title;
+        seop_write_meta($p->ID, $needT ? ($j['title'] ?? null) : null, $needD ? ($j['description'] ?? null) : null, null);
+        $report['metas'][] = $p->post_title . (($t || $d) ? ' (weak → rewritten)' : '');
         $done++;
     }
 
@@ -693,6 +803,47 @@ function seop_ai_autofix($meta_cap = 10, $alt_cap = 8, $media_cap = 20) {
         }
     }
 
+    // 4) v1.4: INTERNAL LINKS. Every platform-imported page carries its focus
+    //    keyword — link the first plain-text mention of that keyword on other
+    //    published pages to it (one link per donor page, 10 per run, never
+    //    inside existing links/headings, idempotent).
+    $report['links'] = [];
+    $targets = get_posts(['post_type' => ['post', 'page'], 'post_status' => 'publish', 'numberposts' => 30,
+        'meta_key' => '_seoplatform_focus_keyword']);
+    $linked = 0;
+    foreach ($targets as $tp) {
+        if ($linked >= 10) break;
+        $kw = trim((string) get_post_meta($tp->ID, '_seoplatform_focus_keyword', true));
+        if (mb_strlen($kw) < 6) continue; // too short to link safely
+        $turl = get_permalink($tp->ID);
+        foreach ($posts as $donor) {
+            if ($linked >= 10) break;
+            if ($donor->ID === $tp->ID) continue;
+            $new = seop_link_keyword($donor->post_content, $kw, $turl);
+            if ($new !== null) {
+                wp_update_post(['ID' => $donor->ID, 'post_content' => $new]);
+                $report['links'][] = '"' . $donor->post_title . '" → "' . $tp->post_title . '" (' . $kw . ')';
+                $linked++;
+                break; // one inbound link per target per run is plenty
+            }
+        }
+    }
+
+    // 5) v1.4: PRIVACY POLICY. The audit's E-E-A-T pillar fails sites without
+    //    a linked privacy/legal page. Create WordPress's own core privacy
+    //    template if the site has none (standard WP boilerplate, not invented
+    //    facts) and register it so themes that show the privacy link pick it up.
+    if (!get_option('wp_page_for_privacy_policy')) {
+        $tpl = class_exists('WP_Privacy_Policy_Content') && method_exists('WP_Privacy_Policy_Content', 'get_default_content')
+            ? WP_Privacy_Policy_Content::get_default_content() : '';
+        $pid = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish',
+            'post_title' => 'Privacy Policy', 'post_name' => 'privacy-policy', 'post_content' => $tpl]);
+        if ($pid && !is_wp_error($pid)) {
+            update_option('wp_page_for_privacy_policy', $pid);
+            $report['privacy'] = 'Privacy Policy page created (WP core template) — review the text and make sure your footer/menu links it.';
+        }
+    }
+
     update_option(SEOP_OPT_AI_REPORT, $report);
     return $report;
 }
@@ -763,7 +914,7 @@ function seop_settings_page() {
     }
 
     echo '<h2>AI auto-fix</h2>';
-    echo '<p>With an Anthropic API key saved, the connector fills in <strong>missing</strong> SEO titles, meta descriptions, and image alt text — in page content <em>and</em> across the media library — on demand, on a weekly schedule, or triggered by the platform. It never overwrites values that already exist. Use a dedicated key with a spend limit; anyone with admin access to this site can read stored keys.</p>';
+    echo '<p>With an Anthropic API key saved, the connector fixes what the audit grades: missing <strong>and weak</strong> SEO titles/descriptions, image alt text (page content <em>and</em> the media library), internal links to the campaign\'s target pages, and a Privacy Policy page if the site has none. Default security headers, FAQ schema from existing Q&amp;A headings, and an llms.txt fallback are always on — on demand, on a weekly schedule, or triggered by the platform. It never overwrites values that already exist. Use a dedicated key with a spend limit; anyone with admin access to this site can read stored keys.</p>';
     $hasAiKey = (bool) get_option(SEOP_OPT_AI_KEY);
     echo '<form method="post">' . wp_nonce_field('seop_ai', '_wpnonce', true, false);
     echo '<table class="form-table">';
@@ -772,14 +923,14 @@ function seop_settings_page() {
     echo '</table><p><button class="button" name="seop_ai_save" value="1">Save AI settings</button></p></form>';
     if ($hasAiKey) {
         echo '<form method="post">' . wp_nonce_field('seop_ai_go', '_wpnonce', true, false);
-        echo '<p><button class="button button-primary" name="seop_ai_run" value="1">Run AI auto-fix now</button> <em>Fills up to 10 pages of missing metas, 8 pages of in-content alts, and 20 media-library alts per run.</em></p></form>';
+        echo '<p><button class="button button-primary" name="seop_ai_run" value="1">Run AI auto-fix now</button> <em>Per run: 10 pages of metas (missing/weak), 8 pages of in-content alts, 20 media-library alts, 10 internal links.</em></p></form>';
     }
     $lastAi = $aiReport && !is_wp_error($aiReport) ? $aiReport : get_option(SEOP_OPT_AI_REPORT);
     if ($aiReport && is_wp_error($aiReport)) {
         echo '<div class="notice notice-error"><p>' . esc_html($aiReport->get_error_message()) . '</p></div>';
     }
     if (is_array($lastAi) && !empty($lastAi['ran_at'])) {
-        echo '<p><strong>Last AI run:</strong> ' . esc_html($lastAi['ran_at']) . ' — ' . count($lastAi['metas'] ?? []) . ' pages got metas, ' . count($lastAi['alts'] ?? []) . ' pages got alts, ' . (int) ($lastAi['media_alts'] ?? 0) . ' media-library alts filled' . (!empty($lastAi['skipped']) ? ', ' . count($lastAi['skipped']) . ' skipped' : '') . '.</p>';
+        echo '<p><strong>Last AI run:</strong> ' . esc_html($lastAi['ran_at']) . ' — ' . count($lastAi['metas'] ?? []) . ' pages got metas, ' . count($lastAi['alts'] ?? []) . ' pages got alts, ' . (int) ($lastAi['media_alts'] ?? 0) . ' media-library alts, ' . count($lastAi['links'] ?? []) . ' internal links' . (!empty($lastAi['skipped']) ? ', ' . count($lastAi['skipped']) . ' skipped' : '') . '.</p>';
         if (!empty($lastAi['skipped'])) {
             echo '<ul style="list-style:disc;margin-left:20px">';
             foreach ($lastAi['skipped'] as $line) echo '<li>' . esc_html($line) . '</li>';

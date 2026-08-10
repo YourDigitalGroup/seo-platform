@@ -4,6 +4,28 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-10 — Connector v1.4.0: second-pass auto-fix (checklist-driven)
+
+Re-zip + update on sites. Maps the audit checklist to automatic remediation:
+
+- Security headers: the four safe ones (HSTS/nosniff/X-Frame-Options/
+  Referrer-Policy) sent by default; package values override; CSP still manual.
+- Weak titles/metas (audit warns at <20/>65 and <70/>165) now AI-rewritten,
+  not just missing ones; Yoast/RM %%templates%% left alone.
+- Internal links: first plain-text mention of an imported page's focus
+  keyword gets linked (token-walker skips anchors/headings/buttons/
+  shortcodes; 10/run; idempotent) — feeds the internal-linking check.
+- FAQPage schema from the page's own question headings (≥2 real Q&As).
+- llms.txt fallback generated from business facts + published pages.
+- Privacy Policy page from WP's core template when none exists (E-E-A-T
+  privacy-link check); footer link stays a theme/menu task.
+- AggregateRating only from real delivered rating data — never fabricated.
+
+NOT auto-fixable (and why): about/team story, credentials, on-site review
+content (inventing them breaks the FTC/provenance wall — the content engine
+handles these with human approval); performance (server/theme work); crawl
+coverage (console config); local-pack/local rankings (outcomes, not levers).
+
 ## 2026-08-10 — V5.1.3 + connector v1.3.1: campaign-paced scheduling, no demotions
 
 Approved content was already scheduled (weekly from next Monday) and
