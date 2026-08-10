@@ -18,6 +18,13 @@ This adds: `fixes.audit_id/status/context/revision/updated_at` (+ relaxes
 `fixes.package_id` to nullable), `content_topics.location`, and
 `packages.report_html/report_built_at/report_meta`.
 
+## 1a. WordPress connector key column  (Supabase → SQL Editor)
+
+Paste the full contents of `supabase/migrations/wp_connector.sql` and Run —
+it is one idempotent line (`alter table clients add column if not exists
+wp_api_key text;`). Without it, saving the WP API key in Platform Access
+fails with "Could not save the key", and `publish-wp` cannot push anything.
+
 ## 1b. Service catalog + contract model  (Supabase → SQL Editor)
 
 Paste the full contents of `supabase/migrations/service_catalog.sql` and Run
