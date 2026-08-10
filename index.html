@@ -877,7 +877,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.1.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.1.2</div>
   </div>
   </div>
 </div>
@@ -958,7 +958,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.1.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.1.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1006,7 +1006,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.1.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.1.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1160,7 +1160,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.1.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.1.2 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3533,7 +3533,9 @@ function assembleQA(){
   const tier=(activeClient&&activeClient.tier)||activeTier||'pro';
   const totals={}; planServices(tier).forEach(s=>{ if(s.kind&&s.cadence==='fixed_quantity'&&s.total!=null) totals[s.kind]=s.total; });
   const counts={}; topics.forEach(t=>{ counts[t.kind]=(counts[t.kind]||0)+1; });
-  Object.entries(totals).forEach(([k,cap])=>{ if((counts[k]||0)>cap) blocking.push(`Plan allocation exceeded: ${counts[k]} ${k} page(s) against a contract total of ${cap}`); });
+  // Allocation overage FLAGS but never blocks: extra pieces are a scope/upsell
+  // conversation, not broken or non-compliant work — the strategist decides.
+  Object.entries(totals).forEach(([k,cap])=>{ if((counts[k]||0)>cap) warnings.push(`Plan allocation exceeded: ${counts[k]} ${k} page(s) against a contract total of ${cap} — trim the extras or upsell; shipping is not blocked`); });
   return {blocking, warnings};
 }
 // The internal artifact (rule 6.4): reviewer-facing, never the client's file.
@@ -3850,6 +3852,7 @@ function downloadDeployPackage(){
   // Rule 6.3: a deploy file with blocking QA failures must not ship either.
   const aqa=assembleQA();
   if(aqa.blocking.length){ showToast(`Deploy file BLOCKED — ${aqa.blocking.length} QA failure(s). Download the campaign doc to get the internal review list.`, true); return; }
+  if(aqa.warnings.length) showToast(`Heads up: ${aqa.warnings.length} QA flag(s) — ${aqa.warnings[0]}${aqa.warnings.length>1?' (+ more in the internal review)':''}`, true);
   const pkg=buildDeployPackage();
   const n=pkg.seo_meta.length+pkg.schema.length+pkg.og_tags.length+pkg.content.length+pkg.redirects.rules.length;
   if(!n&&!pkg.site_files.robots_txt&&!pkg.site_files.llms_txt){ showToast('Nothing deployable yet — generate/approve fixes and drafts first',true); return; }
