@@ -877,7 +877,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.1.3</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.1.4</div>
   </div>
   </div>
 </div>
@@ -958,7 +958,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.1.3</span>
+        <span>44i, Inc. · Internal Ops Console · V5.1.4</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1006,7 +1006,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.1.3</span>
+        <span>44i, Inc. · Internal Ops Console · V5.1.4</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1160,7 +1160,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.1.3 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.1.4 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2460,7 +2460,16 @@ async function saveWpKey(){
   if(!key){ showToast('Paste the API key from the connector plugin first',true); return; }
   if(!OFFLINE){
     const {error}=await sb.from('clients').update({wp_api_key:key, wp_connected:true}).eq('id',activeClient.id);
-    if(error){ console.error(error); showToast('Could not save the key',true); return; }
+    if(error){
+      console.error('saveWpKey',error);
+      // The one known cause: the live DB never ran wp_connector.sql, so
+      // clients.wp_api_key doesn't exist (PostgREST: PGRST204 / "column").
+      const msg=String(error.message||'');
+      if(/wp_api_key|column|schema cache|PGRST204/i.test(msg))
+        showToast('Could not save — the database is missing the wp_api_key column. Run supabase/migrations/wp_connector.sql in the Supabase SQL editor, then try again.',true);
+      else showToast('Could not save the key: '+(msg||'see console'),true);
+      return;
+    }
   }
   activeClient.wp_api_key=key; activeClient.wp=true; _wpKeyEdit=false;
   const gc=groupClients.find(x=>x.id===activeClient.id); if(gc){ gc.wp_api_key=key; gc.wp=true; }
