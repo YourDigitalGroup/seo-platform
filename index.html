@@ -877,7 +877,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.1.2</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.1.3</div>
   </div>
   </div>
 </div>
@@ -958,7 +958,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.1.2</span>
+        <span>44i, Inc. · Internal Ops Console · V5.1.3</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1006,7 +1006,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.1.2</span>
+        <span>44i, Inc. · Internal Ops Console · V5.1.3</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1160,7 +1160,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.1.2 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.1.3 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3804,11 +3804,20 @@ function buildDeployPackage(){
   });
   // Content: approved drafts get real publish schedules (weekly, next Monday
   // 9am onward); unapproved travel as CMS drafts. GBP posts are manual.
+  // Publish pacing follows the CAMPAIGN CYCLE: approved pieces spread across
+  // what's left of the current cycle month — weekly at most, tighter (min 2
+  // days apart) when several pieces must land inside it — starting next
+  // Monday 9am. Unapproved pieces travel as CMS drafts and never auto-publish.
   const start=new Date(); start.setDate(start.getDate()+(((8-start.getDay())%7)||7)); start.setHours(9,0,0,0);
+  const deployable=(PK.topics||[]).filter(t=>t.body&&t.kind!=='gbp_post');
+  const approvedN=deployable.filter(t=>t.status==='approved').length;
+  const cycleEnd=new Date(start.getFullYear(), start.getMonth()+1, 0, 9, 0, 0);
+  const DAY=24*3600*1000;
+  const step=approvedN>1?Math.min(7*DAY, Math.max(2*DAY, Math.floor((cycleEnd.getTime()-start.getTime())/(approvedN-1)))):0;
   let si=0;
-  const content=(PK.topics||[]).filter(t=>t.body&&t.kind!=='gbp_post').map(t=>{
+  const content=deployable.map(t=>{
     const approved=t.status==='approved';
-    const when=approved?new Date(start.getTime()+(si++)*7*24*3600*1000).toISOString():null;
+    const when=approved?new Date(start.getTime()+(si++)*step).toISOString():null;
     const d=splitDraft(t.body);
     return { external_id:t._id||null, title:d.h1||t.title, body_html:md2html(d.body),
       slug:d.slug, seo_title:d.seo_title, seo_description:d.seo_desc,
