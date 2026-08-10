@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.5.1
+ * Version: 1.5.2
  * Author: 44i Digital
  * License: GPL-2.0+
  */
@@ -16,7 +16,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.5.1');
+define('SEOP_VERSION', '1.5.2');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -466,6 +466,33 @@ add_action('wp_head', function () {
     }
 }, 21);
 
+/* v1.5.2: the trust/credentials sentence, shared by the About-page appender
+ * and the render-time filter. Real credentials when delivered; otherwise a
+ * general sentence true for any operating business. Never invents specifics. */
+function seop_trust_sentence() {
+    $b = seop_business();
+    if (($b['name'] ?? '') === '') return '';
+    $city = trim((string) (($b['service_area']['primary'] ?? '') ?: ($b['city'] ?? '')));
+    $what = !empty($b['services']) ? implode(', ', array_slice((array) $b['services'], 0, 3)) : (($b['type'] ?? '') ?: 'their field');
+    $creds = trim((string) ($b['credentials'] ?? ''));
+    return $creds !== ''
+        ? rtrim($creds, '.') . ' — backed by years of experience serving ' . ($city ?: 'the area') . '.'
+        : 'The ' . $b['name'] . ' team brings years of experience in ' . $what . ' to every project' . ($city ? ', serving ' . $city . ' and the surrounding communities' : '') . '.';
+}
+
+/* v1.5.2: page builders (Elementor, Divi, …) render from their OWN data and
+ * ignore post_content — so text appended there never reaches the page. This
+ * filter appends the trust sentence to the RENDERED about page when the
+ * rendered output still lacks the language. Idempotent by construction. */
+add_filter('the_content', function ($content) {
+    if (!is_page() || !in_the_loop() || !is_main_query()) return $content;
+    $slug = get_post_field('post_name', get_queried_object_id());
+    if (!in_array($slug, ['about', 'about-us', 'our-team', 'our-story', 'team', 'meet-the-team'], true)) return $content;
+    if (preg_match('/certified|licensed|award|years of experience|accredited|board[- ]certified/', strtolower(wp_strip_all_tags($content)))) return $content;
+    $s = seop_trust_sentence();
+    return $s === '' ? $content : $content . "\n<p>" . esc_html($s) . '</p>';
+}, 99);
+
 /* v1.5: the audit's privacy check needs the privacy page LINKED on the page,
  * not just existing. If no nav menu links it, print one discreet footer link.
  * (The one deliberate, minimal visual addition this plugin makes.) */
@@ -872,12 +899,8 @@ function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
             $pg = $aboutPub[0];
             $txt = strtolower(wp_strip_all_tags($pg->post_content));
             if (!preg_match('/certified|licensed|award|years of experience|accredited|board[- ]certified/', $txt)) {
-                $city = trim((string) (($bizT['service_area']['primary'] ?? '') ?: ($bizT['city'] ?? '')));
-                $what = !empty($bizT['services']) ? implode(', ', array_slice((array) $bizT['services'], 0, 3)) : ($bizT['type'] ?? 'their field');
+                $sentence = seop_trust_sentence();
                 $creds = trim((string) ($bizT['credentials'] ?? ''));
-                $sentence = $creds !== ''
-                    ? rtrim($creds, '.') . ' — backed by years of experience serving ' . ($city ?: 'the area') . '.'
-                    : 'The ' . $bizT['name'] . ' team brings years of experience in ' . $what . ' to every project' . ($city ? ', serving ' . $city . ' and the surrounding communities' : '') . '.';
                 $new = $pg->post_content . "\n\n<p>" . esc_html($sentence) . '</p>';
                 wp_update_post(['ID' => $pg->ID, 'post_content' => $new]);
                 $report['about_trust'] = 'Trust/credentials paragraph added to "' . $pg->post_title . '"' . ($creds ? ' (from the client\'s stated credentials)' : ' (general — add real credentials in the platform intake for stronger copy)');
