@@ -4,6 +4,29 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-10 — Connector v1.5.0 + V5.2.1: E-E-A-T raisers, whole-site AI scope
+
+Re-zip connector; console ships on merge. Why E-E-A-T stayed low: the audit
+reads Person/AggregateRating schema off the HOME/ABOUT pages (the engine only
+put Person on blog posts) and scans page TEXT for story/credentials language.
+
+- **Intake gains E-E-A-T fields** (console): owner (public name), credentials
+  (real licenses/certs/awards/years), Google rating value + review count —
+  approve-to-save keeps provenance. Deploy `business` block carries them.
+- **Person schema site-wide** (connector): a real named owner Person node on
+  every page (jobTitle Owner, worksFor org, sameAs socials) — flips
+  eeat_person. AggregateRating from the real GBP rating — flips eeat_reviews.
+- **About Us auto-draft** (AI auto-fix step 5b): when no about-ish page
+  exists, drafts one from approved facts only (unknowns become
+  [CLIENT TO CONFIRM]); lands as a DRAFT for human publish — flips
+  eeat_about + eeat_credentials once live.
+- **Footer privacy link** (connector): when no nav menu links the privacy
+  page, prints one discreet footer link — flips eeat_privacy. The one
+  deliberate minimal visual addition; menu-aware to avoid duplicates.
+- **Whole-site AI scope**: auto-fix now covers ALL public post types (CPTs:
+  services, team, portfolio…), 500 newest items, 20 metas/run (was
+  posts+pages only, 200 items, 10/run).
+
 ## 2026-08-10 — V5.2.0: site-build punch list + fixes-tab self-heal
 
 REDEPLOY run-audit (relink hardening). Console ships via FTP on merge.

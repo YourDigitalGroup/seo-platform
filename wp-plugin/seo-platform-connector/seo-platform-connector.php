@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.4.0
+ * Version: 1.5.0
  * Author: 44i Digital
  * License: GPL-2.0+
  */
@@ -16,7 +16,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.4.0');
+define('SEOP_VERSION', '1.5.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -396,6 +396,16 @@ add_action('wp_head', function () {
         }
         $graph[] = $node;
     }
+    // v1.5: a real named person on EVERY page — the audit's E-E-A-T pillar
+    // reads Person schema off the home/about pages, where BlogPosting authors
+    // never appear. Only from the approved intake's owner field, never invented.
+    if (($b['owner'] ?? '') !== '' && empty($have['Person'])) {
+        $person = ['@type' => 'Person', '@id' => $home . '#owner', 'name' => $b['owner'],
+            'jobTitle' => 'Owner', 'worksFor' => ['@id' => $orgId]];
+        $same = array_values(array_filter((array) ($b['sameas'] ?? [])));
+        if ($same) $person['sameAs'] = $same;
+        $graph[] = $person;
+    }
 
     if (is_singular()) {
         $pid = get_queried_object_id(); $p = get_post($pid); $url = get_permalink($pid);
@@ -455,6 +465,21 @@ add_action('wp_head', function () {
         if (($b['state'] ?? '') !== '') echo '<meta name="geo.region" content="US-' . esc_attr(strtoupper(substr(trim($b['state']), 0, 2))) . '">' . "\n";
     }
 }, 21);
+
+/* v1.5: the audit's privacy check needs the privacy page LINKED on the page,
+ * not just existing. If no nav menu links it, print one discreet footer link.
+ * (The one deliberate, minimal visual addition this plugin makes.) */
+add_action('wp_footer', function () {
+    $pid = (int) get_option('wp_page_for_privacy_policy');
+    if (!$pid || get_post_status($pid) !== 'publish') return;
+    foreach (wp_get_nav_menus() as $menu) {
+        foreach (wp_get_nav_menu_items($menu) ?: [] as $item) {
+            if ((int) $item->object_id === $pid) return; // theme already links it
+        }
+    }
+    echo '<p style="text-align:center;font-size:12px;opacity:.75;margin:14px 0"><a href="'
+        . esc_url(get_permalink($pid)) . '">Privacy Policy</a></p>' . "\n";
+});
 
 /* ── Site-wide appliers from the deploy package ── */
 // robots.txt (only when WP serves it, i.e. no physical file exists)
@@ -696,11 +721,15 @@ function seop_link_keyword($content, $kw, $url) {
     }
     return null;
 }
-function seop_ai_autofix($meta_cap = 10, $alt_cap = 8, $media_cap = 20) {
+function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
     if (!get_option(SEOP_OPT_AI_KEY)) return new WP_Error('seop_ai', 'Add an Anthropic API key on the SEO Platform settings page first.');
     $report = ['ok' => true, 'ran_at' => current_time('mysql'), 'metas' => [], 'alts' => [], 'media_alts' => 0, 'skipped' => []];
     $site = get_bloginfo('name');
-    $posts = get_posts(['post_type' => ['post', 'page'], 'post_status' => 'publish', 'numberposts' => 200, 'orderby' => 'modified', 'order' => 'DESC']);
+    // v1.5: the WHOLE site, not just posts/pages — themes and builders put real
+    // content in custom post types (services, team, portfolio, …) and those
+    // pages are audited like any other.
+    $ptypes = array_values(array_diff(get_post_types(['public' => true]), ['attachment']));
+    $posts = get_posts(['post_type' => $ptypes, 'post_status' => 'publish', 'numberposts' => 500, 'orderby' => 'modified', 'order' => 'DESC']);
 
     // 1) Missing OR WEAK SEO titles / meta descriptions. v1.4: the audit warns
     //    on out-of-range lengths (title 20–65, meta 70–165), so weak values get
@@ -829,6 +858,42 @@ function seop_ai_autofix($meta_cap = 10, $alt_cap = 8, $media_cap = 20) {
         }
     }
 
+    // 5b) v1.5: ABOUT PAGE. Two E-E-A-T checks read TEXT off the home/about
+    //     pages: the about/team story and credentials language. If the site
+    //     has no about-ish page at all, draft one from the approved business
+    //     facts — unknown facts become [CLIENT TO CONFIRM: …], never invented.
+    //     Lands as a DRAFT: a human fills the gaps and publishes.
+    $biz = seop_business();
+    if (($biz['name'] ?? '') !== '') {
+        $aboutExists = get_posts(['post_type' => 'page', 'post_status' => ['publish', 'draft', 'future', 'pending'],
+            'post_name__in' => ['about', 'about-us', 'our-team', 'our-story', 'team', 'meet-the-team'], 'numberposts' => 1]);
+        if (!$aboutExists) {
+            $facts = [];
+            foreach (['name' => 'Business', 'type' => 'What they do', 'description' => 'Description',
+                      'owner' => 'Owner (real person)', 'credentials' => 'Credentials (real — licenses/certs/awards/years)',
+                      'city' => 'City', 'state' => 'State', 'phone' => 'Phone', 'hours' => 'Hours'] as $k => $lab) {
+                if (($biz[$k] ?? '') !== '') $facts[] = $lab . ': ' . (is_array($biz[$k]) ? implode(', ', $biz[$k]) : $biz[$k]);
+            }
+            if (!empty($biz['services'])) $facts[] = 'Services: ' . implode(', ', (array) $biz['services']);
+            $sa = (array) ($biz['service_area'] ?? []);
+            $towns = array_filter(array_merge([$sa['primary'] ?? ''], (array) ($sa['secondary'] ?? [])));
+            if ($towns) $facts[] = 'Service area: ' . implode(', ', $towns);
+            $out = seop_claude(
+                'You write About Us pages for local businesses. HARD RULES: use ONLY the facts provided — never invent people, years, certifications, awards, or testimonials. Where an important fact is missing (founding year, team members), write [CLIENT TO CONFIRM: what is needed]. No quotes from customers. Return clean HTML using <h2>/<h3>/<p> only (no <h1> — the page title is the H1). 250-400 words: who they are, what they do, the service area, why they can be trusted (credentials ONLY if provided), and how to get in touch.',
+                "Facts:\n" . implode("\n", $facts), 900
+            );
+            if (!is_wp_error($out) && trim($out) !== '') {
+                $pid = wp_insert_post(['post_type' => 'page', 'post_status' => 'draft',
+                    'post_title' => 'About Us', 'post_name' => 'about-us',
+                    'post_content' => wp_kses_post(preg_replace('/<(\/?)h1\b/i', '<$1h2', $out))]);
+                if ($pid && !is_wp_error($pid)) {
+                    seop_write_meta($pid, 'About Us | ' . mb_substr($biz['name'], 0, 48), '', null);
+                    $report['about'] = 'About Us page drafted from approved business facts — review it, fill any [CLIENT TO CONFIRM] gaps, and publish to lift the E-E-A-T grade.';
+                }
+            }
+        }
+    }
+
     // 5) v1.4: PRIVACY POLICY. The audit's E-E-A-T pillar fails sites without
     //    a linked privacy/legal page. Create WordPress's own core privacy
     //    template if the site has none (standard WP boilerplate, not invented
@@ -923,14 +988,14 @@ function seop_settings_page() {
     echo '</table><p><button class="button" name="seop_ai_save" value="1">Save AI settings</button></p></form>';
     if ($hasAiKey) {
         echo '<form method="post">' . wp_nonce_field('seop_ai_go', '_wpnonce', true, false);
-        echo '<p><button class="button button-primary" name="seop_ai_run" value="1">Run AI auto-fix now</button> <em>Per run: 10 pages of metas (missing/weak), 8 pages of in-content alts, 20 media-library alts, 10 internal links.</em></p></form>';
+        echo '<p><button class="button button-primary" name="seop_ai_run" value="1">Run AI auto-fix now</button> <em>Per run: 20 pages of metas (missing/weak) across ALL public post types, 8 pages of in-content alts, 20 media-library alts, 10 internal links — plus an About Us draft and Privacy Policy page when the site lacks them.</em></p></form>';
     }
     $lastAi = $aiReport && !is_wp_error($aiReport) ? $aiReport : get_option(SEOP_OPT_AI_REPORT);
     if ($aiReport && is_wp_error($aiReport)) {
         echo '<div class="notice notice-error"><p>' . esc_html($aiReport->get_error_message()) . '</p></div>';
     }
     if (is_array($lastAi) && !empty($lastAi['ran_at'])) {
-        echo '<p><strong>Last AI run:</strong> ' . esc_html($lastAi['ran_at']) . ' — ' . count($lastAi['metas'] ?? []) . ' pages got metas, ' . count($lastAi['alts'] ?? []) . ' pages got alts, ' . (int) ($lastAi['media_alts'] ?? 0) . ' media-library alts, ' . count($lastAi['links'] ?? []) . ' internal links' . (!empty($lastAi['skipped']) ? ', ' . count($lastAi['skipped']) . ' skipped' : '') . '.</p>';
+        echo '<p><strong>Last AI run:</strong> ' . esc_html($lastAi['ran_at']) . ' — ' . count($lastAi['metas'] ?? []) . ' pages got metas, ' . count($lastAi['alts'] ?? []) . ' pages got alts, ' . (int) ($lastAi['media_alts'] ?? 0) . ' media-library alts, ' . count($lastAi['links'] ?? []) . ' internal links' . (!empty($lastAi['about']) ? ' · About Us drafted' : '') . (!empty($lastAi['skipped']) ? ', ' . count($lastAi['skipped']) . ' skipped' : '') . '.</p>';
         if (!empty($lastAi['skipped'])) {
             echo '<ul style="list-style:disc;margin-left:20px">';
             foreach ($lastAi['skipped'] as $line) echo '<li>' . esc_html($line) . '</li>';

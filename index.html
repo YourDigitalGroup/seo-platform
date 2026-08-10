@@ -877,7 +877,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.2.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.2.1</div>
   </div>
   </div>
 </div>
@@ -958,7 +958,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.2.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.2.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1006,7 +1006,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.2.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.2.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1160,7 +1160,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.2.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.2.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3406,6 +3406,9 @@ async function generatePackage(){
 // email/SMS/postcard and prohibit bots) — the pack makes it copy-paste-fast.
 const INTAKE_FIELDS=[['phone','Phone'],['email','Email'],['street','Street address'],['city','City'],['state','State'],['zip','ZIP'],
   ['hours','Hours (e.g. Mo-Fr 8:00-17:00)'],['categories','Categories (comma-separated)'],
+  ['owner','Owner / lead contact (public name — powers Person schema)'],
+  ['credentials','Credentials — real licenses, certifications, awards, years in business'],
+  ['gbp_rating','Google rating value (e.g. 4.8 — from their GBP)'],['gbp_reviews','Google review count'],
   ['facebook','Facebook URL'],['instagram','Instagram URL'],['linkedin','LinkedIn URL'],['gbp','Google Business Profile URL'],
   ['description','Business description — services, specialties, who they serve (feeds the audit + topic suggestions)']];
 const DIRECTORIES=[
@@ -3884,6 +3887,8 @@ function buildDeployPackage(){
     phone:iv.phone||'', email:iv.email||'', street:iv.street||'', city:iv.city||'', state:iv.state||'', zip:iv.zip||'',
     hours:iv.hours||'', categories:iv.categories||'', description:iv.description||'',
     sameas:[iv.facebook,iv.instagram,iv.linkedin].filter(Boolean), gbp_url:iv.gbp||'',
+    owner:iv.owner||'', credentials:iv.credentials||'',
+    rating_value:iv.gbp_rating||'', rating_count:iv.gbp_reviews||'',
     service_area:{ primary:TA.primary||c.market||'', secondary:TA.secondary||[] } };
   return {
     format:'44i-deploy-package', format_version:1, generated_at:new Date().toISOString(),
