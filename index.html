@@ -352,6 +352,25 @@ body[data-theme="dark"] .apc.on.ga4{background:rgba(232,113,10,.13);border-color
 .apc.on .apc-btn{color:var(--grow-d);border-color:var(--grow-d)} .apc.off .apc-btn{color:var(--blue);border-color:var(--blue)}
 .apc-pull{display:block;width:100%;box-sizing:border-box;margin-top:10px;font-size:11px;font-weight:700;padding:7px 10px;border-radius:8px;border:none;background:#1A3C5E;color:#fff;cursor:pointer;transition:background .12s}
 .apc-pull:hover{background:#142f4a}
+.apc-key{display:flex;gap:6px;align-items:center;margin-top:10px}
+.apc-key input{flex:1;min-width:0;font-size:11px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--s-card,#fff);color:inherit;font-family:inherit}
+.apc-key-on{flex:1;font-size:11px;font-weight:700;color:var(--grow-d)}
+.apc-key-btn{font-size:11px;font-weight:700;padding:6px 10px;border-radius:7px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer}
+.apc-key-btn.save{background:#1A3C5E;border-color:#1A3C5E;color:#fff}
+.reaudit-btn{font-size:11.5px;font-weight:700;padding:5px 12px;border-radius:999px;border:1px solid var(--blue,#4B9BD7);background:none;color:var(--blue,#4B9BD7);cursor:pointer;transition:.12s}
+.reaudit-btn:hover{background:var(--blue,#4B9BD7);color:#fff} .reaudit-btn:disabled{opacity:.55;cursor:default}
+.audithist{border:1px solid var(--line);border-radius:var(--r-sm);padding:14px 16px;background:var(--s-card,#fff)}
+.ah-empty{font-size:12px;color:var(--muted);padding:6px 2px}
+.ah-chart{width:100%;height:auto;display:block;margin-bottom:8px}
+.ah-grid{stroke:var(--line);stroke-width:1} .ah-target{stroke:var(--muted);stroke-width:1;stroke-dasharray:4 4;opacity:.7}
+.ah-line{fill:none;stroke:var(--blue,#4B9BD7);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.ah-dot{fill:var(--blue,#4B9BD7);stroke:var(--s-card,#fff);stroke-width:2}
+.ah-ax,.ah-tl{font-size:9.5px;fill:var(--muted);font-family:inherit} .ah-vl{font-size:11px;font-weight:800;fill:var(--ink,currentColor);font-family:inherit}
+.ah-table{width:100%;border-collapse:collapse;font-size:12px}
+.ah-table th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line)}
+.ah-table td{padding:7px 8px;border-bottom:1px solid var(--line)} .ah-table tr:last-child td{border-bottom:none}
+.ah-sub{font-size:10px;color:var(--muted)} .ah-gr{letter-spacing:.25em;font-weight:700;color:var(--muted)}
+.ah-up{color:var(--grow-d);font-weight:800} .ah-dn{color:var(--high);font-weight:800}
 
 .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
 .card{background:var(--mist);border-radius:var(--r-sm);padding:15px 16px}
@@ -858,7 +877,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.0.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.1.0</div>
   </div>
   </div>
 </div>
@@ -939,7 +958,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.0.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.1.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -987,7 +1006,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.0.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.1.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1057,12 +1076,17 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
           <li>The big number is the site's <b>audit score out of 100</b>; the campaign drives it to 90+.</li>
           <li><b>The Directive</b> is the work order. <i>In production</i> = being written for you now (tabs ③ and ④). <i>Scheduled</i> = a later month. <i>Available on…</i> = needs a plan upgrade — mention it to the account manager.</li>
           <li>Competitors and the content-gap list are editable — tick any gap keyword worth writing and it joins the Content tab queue.</li>
+          <li>Deployed the fixes? Click <b>↻ Re-run audit</b> — it re-measures and rescores the site without rebuilding the package, and <b>Audit History</b> below keeps every run so you can watch the score climb.</li>
         </ol>
       </div>
-      <div class="section-h"><h2>Audit &amp; Intelligence</h2><div class="ln"></div><span class="tag" id="domtag">—</span></div>
+      <div class="section-h"><h2>Audit &amp; Intelligence</h2><div class="ln"></div>
+        <button class="reaudit-btn" id="reaudit-btn" onclick="reRunAudit()" title="Re-measure and re-score the site without touching the package — no new fixes staged, no content rebuilt. Use it after deploying to see the movement.">↻ Re-run audit</button>
+        <span class="tag" id="domtag">—</span></div>
       <div class="tradearea" id="tradearea"></div>
       <div class="scorecard" id="scorecard"></div>
       <div class="insights" id="insights"></div>
+      <div class="section-h"><h2>Audit History</h2><div class="ln"></div><span class="tag" id="hist-tag">every run stored · score over time</span></div>
+      <div class="audithist" id="audit-history"></div>
       <div class="section-h"><h2>Plan Directive</h2><div class="ln"></div><span class="tag" id="dir-tag">plan-scoped work order</span></div>
       <div class="directive" id="directive"></div>
       <div class="checklist" id="checklist"></div>
@@ -1136,7 +1160,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.0.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.1.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1359,6 +1383,7 @@ function mapClient(r){
     audit_score: la && la.score!=null ? la.score : null,
     tier:r.tier, status:r.status, strategist_id:r.strategist_id,
     gsc:r.gsc_connected, gbp:r.gbp_connected, wp:r.wp_connected, ga4:r.ga4_connected,
+    wp_api_key:r.wp_api_key||null,
     last_audit: r.last_audit_at ? r.last_audit_at.slice(0,10) : null,
     engagement_start_date: r.engagement_start_date || null,
     contract_length_months: r.contract_length_months || 6,
@@ -1710,8 +1735,9 @@ let PK={competitors:[], comp_pages:[], gaps:[], topics:[], fixes:[], metrics:[],
 
 // Load the latest live audit for the active client and map it into PK
 async function loadLiveAudit(){
-  PK={competitors:[], comp_pages:[], gaps:[], topics:[], fixes:[], metrics:[], severity:[], diag:null, audit:null};
+  PK={competitors:[], comp_pages:[], gaps:[], topics:[], fixes:[], metrics:[], severity:[], diag:null, audit:null, history:[]};
   if(OFFLINE || !activeClient) return;
+  await loadAuditHistory();
   const { data: aud } = await sb.from('audits').select('*')
     .eq('client_id', activeClient.id).order('run_at',{ascending:false}).limit(1).maybeSingle();
   if(!aud) return;  // no audit yet → placeholder state
@@ -2235,7 +2261,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=planLabel(c.tier)+' plan';
 
-  renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
+  renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderAuditHistory(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
   updatePTabBadges();
@@ -2409,10 +2435,36 @@ function renderAccessPanel(){
     const on=!!c[p.key];
     const pull = (p.key==='gsc' && !OFFLINE)
       ? `<button class="apc-pull" onclick="pullGSC()">Pull Search Console data →</button>` : '';
+    const key = p.key==='wp' ? wpKeyRow(c) : '';
     return `<div class="apc ${on?'on':'off'} ${p.key}"><div class="apc-status">${on?'✓ Connected':'✗ Not connected'}</div>
       <div class="apc-name">${p.name}</div><div class="apc-desc">${on?p.on_desc:p.off_desc}</div>
-      <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button>${pull}</div>`;
+      <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button>${key}${pull}</div>`;
   }).join('');
+}
+// The connector plugin (tab ④) issues a per-site API key; publish-wp can't push
+// anything until that key is saved here. This row is where it gets pasted.
+let _wpKeyEdit=false;
+function wpKeyRow(c){
+  if(c.wp_api_key && !_wpKeyEdit){
+    return `<div class="apc-key"><span class="apc-key-on">🔑 API key on file ····${esc(String(c.wp_api_key).slice(-4))}</span>
+      <button class="apc-key-btn" onclick="_wpKeyEdit=true;renderAccessPanel()">Replace</button></div>`;
+  }
+  return `<div class="apc-key"><input id="wp-key-in" type="password" placeholder="Paste API key from Settings → SEO Platform"
+      autocomplete="off" onkeydown="if(event.key==='Enter')saveWpKey()">
+    <button class="apc-key-btn save" onclick="saveWpKey()">Save key</button>
+    ${c.wp_api_key?`<button class="apc-key-btn" onclick="_wpKeyEdit=false;renderAccessPanel()">Keep current</button>`:''}</div>`;
+}
+async function saveWpKey(){
+  if(!activeClient) return;
+  const el=document.getElementById('wp-key-in'), key=(el&&el.value||'').trim();
+  if(!key){ showToast('Paste the API key from the connector plugin first',true); return; }
+  if(!OFFLINE){
+    const {error}=await sb.from('clients').update({wp_api_key:key, wp_connected:true}).eq('id',activeClient.id);
+    if(error){ console.error(error); showToast('Could not save the key',true); return; }
+  }
+  activeClient.wp_api_key=key; activeClient.wp=true; _wpKeyEdit=false;
+  const gc=groupClients.find(x=>x.id===activeClient.id); if(gc){ gc.wp_api_key=key; gc.wp=true; }
+  renderAccessPanel(); showToast('WordPress connected — key saved, publishing enabled', false, true);
 }
 
 // Pull live Google Search Console data for the active client (service-account auth)
@@ -2443,6 +2495,88 @@ function togglePlatform(k){
     const gc=groupClients.find(c=>c.id===activeClient.id); if(gc) gc[k]=activeClient[k];
   }
   renderAccessPanel(); const p=PLATFORMS.find(p=>p.key===k); showToast(activeClient[k]?`${p.name} connected`:`${p.name} disconnected`);
+}
+
+// ── re-audit (audit_only) + audit history ──
+// Re-measures and rescores the live site WITHOUT rebuilding the campaign:
+// run-audit's audit_only mode stages no fixes, creates no topics, and leaves
+// the package alone — it just writes a fresh audits row (history) and carries
+// the existing fix queue forward, verifying anything that now passes.
+async function reRunAudit(){
+  const c=activeClient; if(!c) return;
+  if(!c.url){ showToast('Set the client URL on tab ① first',true); return; }
+  const btn=document.getElementById('reaudit-btn');
+  if(OFFLINE){ showToast('Live mode only — re-audit re-scores the real site',true); return; }
+  if(btn){ btn.disabled=true; btn.textContent='Re-auditing…'; }
+  showToast('Re-running audit — measuring the live site; package, fixes and content untouched…');
+  try{
+    const { data, error } = await sb.functions.invoke('run-audit', { body:{ client_id:c.id, audit_only:true } });
+    if(error || (data&&data.error)){
+      let body=null; try{ body=await error?.context?.json(); }catch(_){}
+      console.error('run-audit(audit_only)', error, data||body);
+      showToast('Re-audit failed: '+((data&&data.error)||(body&&body.error)||error?.message||'see console'), true);
+    } else {
+      c.last_audit=new Date().toISOString().slice(0,10);
+      const gc=groupClients.find(x=>x.id===c.id); if(gc) gc.last_audit=c.last_audit;
+      const pr=data.progress||{};
+      const delta=pr.delta==null?'first scored run':(pr.delta>=0?`Δ +${pr.delta}`:`Δ ${pr.delta}`);
+      await loadLiveAudit(); renderPackage();
+      showToast(`Audit re-run — score ${data.score}/100 (${delta})`+
+        (pr.fixed?` · ${pr.fixed} check${pr.fixed>1?'s':''} fixed ✓`:'')+
+        (pr.regressed?` · ${pr.regressed} regressed ⚠`:''), false, true);
+    }
+  }catch(e){ console.error(e); showToast('Re-audit error — see console', true); }
+  finally{ const b=document.getElementById('reaudit-btn'); if(b){ b.disabled=false; b.innerHTML='↻ Re-run audit'; } }
+}
+async function loadAuditHistory(){
+  PK.history=[];
+  if(OFFLINE||!activeClient) return;
+  // score lives in audits.score (directive_engine.sql); older rows carry it in raw only
+  const {data,error}=await sb.from('audits')
+    .select('id, run_at, score, rawscore:raw->scores->>auditScore, grade_technical, grade_performance, grade_onpage, grade_schema, grade_aeo, grade_eeat, grade_local, domain_rating, org_keywords, org_traffic')
+    .eq('client_id',activeClient.id).order('run_at',{ascending:true}).limit(120);
+  if(error){ console.error('audit history',error); return; }
+  PK.history=(data||[]).map(a=>({ id:a.id, at:a.run_at,
+    score:a.score!=null?Number(a.score):(a.rawscore!=null?Number(a.rawscore):null),
+    grades:[a.grade_technical,a.grade_performance,a.grade_onpage,a.grade_schema,a.grade_aeo,a.grade_eeat,a.grade_local].map(g=>g||'·'),
+    dr:a.domain_rating, kw:a.org_keywords, traffic:a.org_traffic }));
+}
+function renderAuditHistory(){
+  const el=document.getElementById('audit-history'); if(!el) return;
+  const tag=document.getElementById('hist-tag');
+  if(OFFLINE){ el.innerHTML='<div class="ah-empty">Live mode stores every audit run and charts the score here.</div>'; return; }
+  const H=(PK.history||[]).filter(h=>h.score!=null&&h.at);
+  if(!H.length){ el.innerHTML='<div class="ah-empty">No scored audits yet — history builds automatically on every run. Deploy the package, then use ↻ Re-run audit to log the movement.</div>'; if(tag)tag.textContent='every run stored · score over time'; return; }
+  if(tag) tag.textContent=`${H.length} run${H.length>1?'s':''} stored · latest ${H[H.length-1].score}/100`;
+  // ── score trend: single series on a 0–100 scale, dashed line at target 90 ──
+  const W=760,HT=150,P={t:16,r:18,b:20,l:32}, iw=W-P.l-P.r, ih=HT-P.t-P.b;
+  const t0=new Date(H[0].at).getTime(), t1=new Date(H[H.length-1].at).getTime(), span=Math.max(1,t1-t0);
+  const X=h=>H.length===1?P.l+iw/2:P.l+iw*(new Date(h.at).getTime()-t0)/span;
+  const Y=v=>P.t+ih*(1-Math.max(0,Math.min(100,v))/100);
+  const grid=[0,50,100].map(v=>`<line class="ah-grid" x1="${P.l}" x2="${W-P.r}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="ah-ax" x="${P.l-6}" y="${(Y(v)+3.5).toFixed(1)}" text-anchor="end">${v}</text>`).join('');
+  const target=`<line class="ah-target" x1="${P.l}" x2="${W-P.r}" y1="${Y(90).toFixed(1)}" y2="${Y(90).toFixed(1)}"/><text class="ah-tl" x="${P.l+4}" y="${(Y(90)-4).toFixed(1)}" text-anchor="start">target 90</text>`;
+  const pts=H.map(h=>`${X(h).toFixed(1)},${Y(h.score).toFixed(1)}`).join(' ');
+  const dots=H.map((h,i)=>{
+    const lbl=(i===H.length-1||i===0)?`<text class="ah-vl" x="${X(h).toFixed(1)}" y="${(Y(h.score)-9).toFixed(1)}" text-anchor="middle">${h.score}</text>`:'';
+    return `${lbl}<circle class="ah-dot" cx="${X(h).toFixed(1)}" cy="${Y(h.score).toFixed(1)}" r="4"><title>${new Date(h.at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})} — audit score ${h.score}/100</title></circle>`;
+  }).join('');
+  const line=H.length>1?`<polyline class="ah-line" points="${pts}"/>`:'';
+  const chart=`<svg class="ah-chart" viewBox="0 0 ${W} ${HT}" role="img" aria-label="Audit score over time, latest ${H[H.length-1].score} of 100">${grid}${target}${line}${dots}</svg>`;
+  // ── the table IS the accessible/data view: newest first, delta vs the run before ──
+  const rows=H.slice().reverse().map((h,ri)=>{
+    const i=H.length-1-ri, prev=i>0?H[i-1].score:null;
+    const d=prev==null?null:h.score-prev;
+    const dc=d==null?'':(d>0?'ah-up':d<0?'ah-dn':'');
+    const ds=d==null?'—':(d>0?`+${d}`:String(d));
+    return `<tr><td>${new Date(h.at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}</td>
+      <td><b>${h.score}</b><span class="ah-sub">/100</span></td><td class="${dc}">${ds}</td>
+      <td class="ah-gr">${h.grades.join(' ')}</td>
+      <td>${h.dr??'—'}</td><td>${h.kw==null?'—':Number(h.kw).toLocaleString()}</td><td>${h.traffic==null?'—':Number(h.traffic).toLocaleString()}</td></tr>`;
+  }).join('');
+  el.innerHTML=`${chart}
+    <table class="ah-table"><thead><tr><th>Audit date</th><th>Score</th><th>Δ</th>
+      <th title="Technical · Performance · On-page · Schema · AEO · E-E-A-T · Local">Grades T·P·O·S·A·E·L</th>
+      <th>DR</th><th>Keywords</th><th>Organic traffic</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 // ── audit renderers ──

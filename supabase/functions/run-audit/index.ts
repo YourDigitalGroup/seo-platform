@@ -47,7 +47,9 @@
 //  NAP body-text signals), and Google Search Console (real clicks/positions).
 //
 //  Deploy: Edge Functions → run-audit → redeploy.  Secret: AHREFS_API_KEY.
-//  Input: { "client_id": "<uuid>" }.  No migration required.
+//  Input: { "client_id": "<uuid>", "audit_only": false }.  No migration required.
+//  audit_only=true re-measures + rescores only: no new fixes/topics/package;
+//  the existing fix queue is carried to the new audit and verification runs.
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -146,8 +148,15 @@ Deno.serve(async (req) => {
   const note: string[] = [];   // human-readable notes about which sources were used
 
   try {
-    const { client_id } = await req.json().catch(() => ({}));
+    const { client_id, audit_only } = await req.json().catch(() => ({}));
     if (!client_id) return json({ error: "client_id is required" }, 400);
+    // audit_only: re-measure the site and score it against the checklist WITHOUT
+    // rebuilding the campaign — no new fixes staged, no content topics created,
+    // no package regenerated. The existing fix queue is carried forward to the
+    // new audit so the console keeps showing it, and the verification loop still
+    // flips pushed fixes to "verified" and reports the score delta.
+    const auditOnly = audit_only === true;
+    if (auditOnly) note.push("Audit-only re-run: scores refreshed, existing package/fixes/content untouched.");
     const AHREFS_KEY = Deno.env.get("AHREFS_API_KEY");
     if (!AHREFS_KEY) return json({ error: "AHREFS_API_KEY is not set" }, 500);
     const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
@@ -959,6 +968,7 @@ Deno.serve(async (req) => {
     const planFix = (kind: string, target_page: string, before_text: string, extra: Record<string, unknown> = {}) =>
       plan.push({ audit_id, kind, target_page, before_text, status: "suggested", context: { business_name: businessName, city: businessCity, target_keyword: kwByUrl[target_page] || primaryKw, ...extra } });
 
+    if (!auditOnly) {
     okPages.slice(0, FIX_PAGE_CAP).forEach((p: any) => {
       if (!p.title || p.titleLen < 20 || p.titleLen > 65) planFix("title_tag", p.url, p.title || "");
       if (!p.metaDesc || p.metaLen < 70 || p.metaLen > 165) planFix("meta_description", p.url, p.metaDesc || "");
@@ -986,6 +996,7 @@ Deno.serve(async (req) => {
     if (!allSchema.has("WebSite")) planFix("website_schema", home, "No WebSite schema");
     if (!favicon) planFix("favicon", home, "No favicon detected");
     planFix("gbp_post", home, "New Business Profile post for this cycle");
+    } // end !auditOnly fix planning
     if (plan.length) {
       const { data: planRows } = await supa.from("fixes").insert(plan).select("id");
       (planRows || []).forEach((r: any) => fixIds.push(r.id));
@@ -1012,7 +1023,18 @@ Deno.serve(async (req) => {
     // (that's what used to kill content generation): fall back to updating the
     // client's latest package, or plain-inserting a fresh one.
     const pkgRow = { client_id: client.id, audit_id, status: "ready", findings_count: FN.length, competitors_count: competitors.length };
-    let { data: pkg, error: pErr } = await supa.from("packages").upsert(pkgRow, { onConflict: "client_id,cycle_month" }).select("id").single();
+    let pkg: any = null, pErr: any = null;
+    if (auditOnly) {
+      // Re-audit: keep the existing package (topics, drafts, report) and just
+      // point it at the fresh audit so the console shows new scores alongside
+      // the unchanged campaign. No package → nothing to relink, and that's fine.
+      const { data: existing } = await supa.from("packages").select("id").eq("client_id", client.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (existing?.id) {
+        const { error: uErr } = await supa.from("packages").update({ audit_id, findings_count: FN.length, competitors_count: competitors.length }).eq("id", existing.id);
+        if (uErr) errors.push(`packages relink: ${uErr.message}`); else pkg = existing;
+      }
+    } else {
+    ({ data: pkg, error: pErr } = await supa.from("packages").upsert(pkgRow, { onConflict: "client_id,cycle_month" }).select("id").single());
     if (pErr) {
       errors.push(`packages upsert: ${pErr.message} — run packages_unique_key.sql; using fallback`);
       const { data: existing } = await supa.from("packages").select("id").eq("client_id", client.id).order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -1025,8 +1047,9 @@ Deno.serve(async (req) => {
         if (!iErr) pkg = ins; else errors.push(`packages insert: ${iErr.message}`);
       }
     }
+    } // end package write (full run)
     const package_id = pkg?.id ?? null;
-    if (!package_id) note.push("NO PACKAGE ROW — content topics cannot queue. Fix the packages table errors above.");
+    if (!package_id && !auditOnly) note.push("NO PACKAGE ROW — content topics cannot queue. Fix the packages table errors above.");
 
     // ── 15. RECOMMENDED CONTENT (auto-created topics → drafted automatically) ──
     // Geo-bound to the trade area: a service/landing page per core money keyword
@@ -1038,7 +1061,7 @@ Deno.serve(async (req) => {
     const topicsCreated: { kind: string; keyword: string; town: string | null }[] = [];
     const rejectedKw: { keyword: string; reason: string }[] = [];
     const recon = { kept: 0, retired: [] as { title: string; reason: string }[] };
-    if (package_id) {
+    if (package_id && !auditOnly) {
       const titleCase = (s: string) => String(s || "").replace(/\b\w/g, (c) => c.toUpperCase());
       const MODEL: Record<string, string> = { gbp_post: "haiku-4-5", blog: "sonnet-4-6", pillar: "opus-4-8", landing: "sonnet-4-6", service: "sonnet-4-6", faq: "haiku-4-5" };
       // prioritized keyword pools drawn from the live audit
@@ -1254,7 +1277,19 @@ Deno.serve(async (req) => {
       const { data: tmpl } = await supa.from("service_templates").select("name").eq("tier", tier).eq("active", true);
       if (tmpl && tmpl.length) tierServices = new Set(tmpl.map((t: any) => String(t.name)));
     }
-    const stagedKinds = new Set(plan.map((f: any) => f.kind));
+    let stagedKinds = new Set(plan.map((f: any) => f.kind));
+    let prevAuditId: string | null = null;
+    if (auditOnly) {
+      // the fix queue lives on the previous audit — carry its kinds so the
+      // directive still shows that work as staged, and remember the id so the
+      // queue itself can be relinked to this audit after verification runs
+      const { data: prevA } = await supa.from("audits").select("id").eq("client_id", client.id).neq("id", audit_id).order("run_at", { ascending: false }).limit(1).maybeSingle();
+      prevAuditId = prevA?.id ?? null;
+      if (prevAuditId) {
+        const { data: exFixes } = await supa.from("fixes").select("kind, status").eq("audit_id", prevAuditId);
+        stagedKinds = new Set((exFixes || []).filter((f: any) => f.status !== "dismissed").map((f: any) => f.kind));
+      }
+    }
     const items: any[] = [];
     // One directive row per remediation: several checks can share a fix kind
     // (e.g. LocalBusiness schema appears under both schema and local pillars) —
@@ -1318,6 +1353,14 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Audit-only: carry the whole fix queue forward to the fresh audit so the
+    // console (which loads fixes by audit_id) keeps showing it — after the
+    // verification loop above has flipped pushed→verified on the old rows.
+    if (auditOnly && prevAuditId) {
+      const { error: mvErr } = await supa.from("fixes").update({ audit_id }).eq("audit_id", prevAuditId);
+      if (mvErr) errors.push(`fixes relink: ${mvErr.message}`);
+    }
+
     const open = items.filter((i) => i.status !== "done");
     const upsell = open.filter((i) => !i.in_plan);
     const directive = {
@@ -1342,7 +1385,8 @@ Deno.serve(async (req) => {
     await supa.from("audits").update({ raw: { ...auditRow.raw, directive, keyword_gate: rejectedKw, reconciliation: recon } }).eq("id", audit_id);
 
     return json({ ok: true, audit_id, package_id, cycle: cycleMonth, campaign_driven: campaignDriven, grades, grade_performance,
-      score: auditScore,
+      score: auditScore, audit_only: auditOnly,
+      progress: { previous_score: progress.previous_score, delta: progress.delta, fixed: (progress.fixed || []).length, regressed: (progress.regressed || []).length },
       checklist: { pass: clPass, warn: clWarn, fail: clFail, total: CL.length },
       directive: { items: items.length, open: open.length, in_plan_open: open.filter((i) => i.in_plan).length, upsell: upsell.length, completion_pct: directive.progress.completion_pct },
       business: { type: businessType, services },
