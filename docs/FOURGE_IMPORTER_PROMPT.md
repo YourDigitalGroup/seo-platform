@@ -38,6 +38,15 @@ the agency uploads ONE file regardless of which CMS the client runs.
   "client": { "name": "…", "market": "…", "tier": "starter|builder|pro" },
   "source": { "package_id": "uuid", "audit_id": "uuid", "audit_score": 62 },
 
+  // 0) V5.1.1+: approved business facts (from the platform's intake — the only
+  //    approved fact source). OPTIONAL — older files omit it; import what's
+  //    present, invent nothing. Powers site-wide LocalBusiness/E-E-A-T schema.
+  "business": { "name": "…", "url": "…", "type": "…", "services": ["…"],
+    "phone": "…", "email": "…", "street": "…", "city": "…", "state": "…", "zip": "…",
+    "hours": "Mo-Fr 8:00-17:00", "categories": "…", "description": "…",
+    "sameas": ["https://facebook.com/…"], "gbp_url": "…",
+    "service_area": { "primary": "Sioux Falls, SD", "secondary": ["Brandon, SD"] } },
+
   // 1) Page-level SEO meta. target = full URL of an existing page.
   "seo_meta": [
     { "target": "https://site.com/", "seo_title": "…", "seo_description": "…", "canonical": "https://site.com/" }
