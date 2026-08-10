@@ -1278,15 +1278,16 @@ Deno.serve(async (req) => {
       if (tmpl && tmpl.length) tierServices = new Set(tmpl.map((t: any) => String(t.name)));
     }
     let stagedKinds = new Set(plan.map((f: any) => f.kind));
-    let prevAuditId: string | null = null;
+    let priorAuditIds: string[] = [];
     if (auditOnly) {
-      // the fix queue lives on the previous audit — carry its kinds so the
-      // directive still shows that work as staged, and remember the id so the
-      // queue itself can be relinked to this audit after verification runs
-      const { data: prevA } = await supa.from("audits").select("id").eq("client_id", client.id).neq("id", audit_id).order("run_at", { ascending: false }).limit(1).maybeSingle();
-      prevAuditId = prevA?.id ?? null;
-      if (prevAuditId) {
-        const { data: exFixes } = await supa.from("fixes").select("kind, status").eq("audit_id", prevAuditId);
+      // The fix queue lives on SOME earlier audit — not necessarily the
+      // immediately-previous one (a re-run against an older deployed function
+      // breaks the hand-forward chain). Gather ALL prior audits so the queue
+      // is found wherever it is, and relinked to this audit after verification.
+      const { data: priorA } = await supa.from("audits").select("id").eq("client_id", client.id).neq("id", audit_id);
+      priorAuditIds = (priorA || []).map((a: any) => a.id);
+      if (priorAuditIds.length) {
+        const { data: exFixes } = await supa.from("fixes").select("kind, status").in("audit_id", priorAuditIds);
         stagedKinds = new Set((exFixes || []).filter((f: any) => f.status !== "dismissed").map((f: any) => f.kind));
       }
     }
@@ -1345,8 +1346,9 @@ Deno.serve(async (req) => {
         progress = { previous_score: prevScore, delta: prevScore != null ? auditScore - prevScore : null, fixed, regressed };
         const verifiedKinds = [...new Set(CL.filter((c: any) => c.status === "pass" && c.fix_kind && (prevBy[c.id] === "fail" || prevBy[c.id] === "warn")).map((c: any) => c.fix_kind))];
         if (verifiedKinds.length && prev?.id) {
+          const verifyScope = priorAuditIds.length ? priorAuditIds : [prev.id];
           await supa.from("fixes").update({ status: "verified", updated_at: new Date().toISOString() })
-            .eq("audit_id", prev.id).eq("status", "pushed").in("kind", verifiedKinds as string[]);
+            .in("audit_id", verifyScope).eq("status", "pushed").in("kind", verifiedKinds as string[]);
         }
         if (fixed.length) note.push(`Verification: ${fixed.length} checks flipped to pass since the last audit.`);
         if (regressed.length) note.push(`REGRESSION: ${regressed.length} previously-passing checks now fail.`);
@@ -1356,8 +1358,9 @@ Deno.serve(async (req) => {
     // Audit-only: carry the whole fix queue forward to the fresh audit so the
     // console (which loads fixes by audit_id) keeps showing it — after the
     // verification loop above has flipped pushed→verified on the old rows.
-    if (auditOnly && prevAuditId) {
-      const { error: mvErr } = await supa.from("fixes").update({ audit_id }).eq("audit_id", prevAuditId);
+    // Sweeps ALL prior audits, so a chain broken by an older deployment heals.
+    if (auditOnly && priorAuditIds.length) {
+      const { error: mvErr } = await supa.from("fixes").update({ audit_id }).in("audit_id", priorAuditIds);
       if (mvErr) errors.push(`fixes relink: ${mvErr.message}`);
     }
 
