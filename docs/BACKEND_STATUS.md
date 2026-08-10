@@ -4,6 +4,17 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-10 — Connector v1.5.1: About pages always carry trust language
+
+Re-zip + update. The audit scans the about page for literal trust words
+(certified/licensed/award/accredited/"years of experience"). The AI auto-fix
+now guarantees them: an EXISTING published About page lacking the language
+gets one appended paragraph — the client's real credentials from intake when
+present, otherwise a general true-for-any-operating-business sentence
+("brings years of experience in <services>, serving <city>…"). New About
+drafts include the trust sentence from birth (prompt requirement). Never
+invents specific certifications, licenses, numbers, or awards.
+
 ## 2026-08-10 — Connector v1.5.0 + V5.2.1: E-E-A-T raisers, whole-site AI scope
 
 Re-zip connector; console ships on merge. Why E-E-A-T stayed low: the audit

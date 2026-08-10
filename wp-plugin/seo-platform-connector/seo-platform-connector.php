@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.5.0
+ * Version: 1.5.1
  * Author: 44i Digital
  * License: GPL-2.0+
  */
@@ -16,7 +16,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.5.0');
+define('SEOP_VERSION', '1.5.1');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -858,6 +858,33 @@ function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
         }
     }
 
+    // 5a) v1.5.1: an EXISTING About page must carry credentials/trust language
+    //     — the audit scans for the literal words (certified, licensed, award,
+    //     accredited, years of experience). If the published about page has
+    //     none, append one paragraph: the client's real credentials when the
+    //     package delivered them, otherwise a general true-for-any-operating-
+    //     business sentence. Idempotent (the appended text satisfies the scan).
+    $bizT = seop_business();
+    if (($bizT['name'] ?? '') !== '') {
+        $aboutPub = get_posts(['post_type' => 'page', 'post_status' => 'publish', 'numberposts' => 1,
+            'post_name__in' => ['about', 'about-us', 'our-team', 'our-story', 'team', 'meet-the-team']]);
+        if ($aboutPub) {
+            $pg = $aboutPub[0];
+            $txt = strtolower(wp_strip_all_tags($pg->post_content));
+            if (!preg_match('/certified|licensed|award|years of experience|accredited|board[- ]certified/', $txt)) {
+                $city = trim((string) (($bizT['service_area']['primary'] ?? '') ?: ($bizT['city'] ?? '')));
+                $what = !empty($bizT['services']) ? implode(', ', array_slice((array) $bizT['services'], 0, 3)) : ($bizT['type'] ?? 'their field');
+                $creds = trim((string) ($bizT['credentials'] ?? ''));
+                $sentence = $creds !== ''
+                    ? rtrim($creds, '.') . ' — backed by years of experience serving ' . ($city ?: 'the area') . '.'
+                    : 'The ' . $bizT['name'] . ' team brings years of experience in ' . $what . ' to every project' . ($city ? ', serving ' . $city . ' and the surrounding communities' : '') . '.';
+                $new = $pg->post_content . "\n\n<p>" . esc_html($sentence) . '</p>';
+                wp_update_post(['ID' => $pg->ID, 'post_content' => $new]);
+                $report['about_trust'] = 'Trust/credentials paragraph added to "' . $pg->post_title . '"' . ($creds ? ' (from the client\'s stated credentials)' : ' (general — add real credentials in the platform intake for stronger copy)');
+            }
+        }
+    }
+
     // 5b) v1.5: ABOUT PAGE. Two E-E-A-T checks read TEXT off the home/about
     //     pages: the about/team story and credentials language. If the site
     //     has no about-ish page at all, draft one from the approved business
@@ -879,7 +906,7 @@ function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
             $towns = array_filter(array_merge([$sa['primary'] ?? ''], (array) ($sa['secondary'] ?? [])));
             if ($towns) $facts[] = 'Service area: ' . implode(', ', $towns);
             $out = seop_claude(
-                'You write About Us pages for local businesses. HARD RULES: use ONLY the facts provided — never invent people, years, certifications, awards, or testimonials. Where an important fact is missing (founding year, team members), write [CLIENT TO CONFIRM: what is needed]. No quotes from customers. Return clean HTML using <h2>/<h3>/<p> only (no <h1> — the page title is the H1). 250-400 words: who they are, what they do, the service area, why they can be trusted (credentials ONLY if provided), and how to get in touch.',
+                'You write About Us pages for local businesses. HARD RULES: use ONLY the facts provided — never invent people, years, certifications, awards, or testimonials. Where an important fact is missing (founding year, team members), write [CLIENT TO CONFIRM: what is needed]. No quotes from customers. TRUST LANGUAGE IS REQUIRED: if credentials are provided, state them verbatim; either way include one sentence with the literal phrase "years of experience" tied to the services (e.g. "brings years of experience in …") — a true statement for any operating business, with no specific number unless one was provided. Return clean HTML using <h2>/<h3>/<p> only (no <h1> — the page title is the H1). 250-400 words: who they are, what they do, the service area, why they can be trusted, and how to get in touch.',
                 "Facts:\n" . implode("\n", $facts), 900
             );
             if (!is_wp_error($out) && trim($out) !== '') {
@@ -995,7 +1022,7 @@ function seop_settings_page() {
         echo '<div class="notice notice-error"><p>' . esc_html($aiReport->get_error_message()) . '</p></div>';
     }
     if (is_array($lastAi) && !empty($lastAi['ran_at'])) {
-        echo '<p><strong>Last AI run:</strong> ' . esc_html($lastAi['ran_at']) . ' — ' . count($lastAi['metas'] ?? []) . ' pages got metas, ' . count($lastAi['alts'] ?? []) . ' pages got alts, ' . (int) ($lastAi['media_alts'] ?? 0) . ' media-library alts, ' . count($lastAi['links'] ?? []) . ' internal links' . (!empty($lastAi['about']) ? ' · About Us drafted' : '') . (!empty($lastAi['skipped']) ? ', ' . count($lastAi['skipped']) . ' skipped' : '') . '.</p>';
+        echo '<p><strong>Last AI run:</strong> ' . esc_html($lastAi['ran_at']) . ' — ' . count($lastAi['metas'] ?? []) . ' pages got metas, ' . count($lastAi['alts'] ?? []) . ' pages got alts, ' . (int) ($lastAi['media_alts'] ?? 0) . ' media-library alts, ' . count($lastAi['links'] ?? []) . ' internal links' . (!empty($lastAi['about']) ? ' · About Us drafted' : '') . (!empty($lastAi['about_trust']) ? ' · trust language added to About' : '') . (!empty($lastAi['skipped']) ? ', ' . count($lastAi['skipped']) . ' skipped' : '') . '.</p>';
         if (!empty($lastAi['skipped'])) {
             echo '<ul style="list-style:disc;margin-left:20px">';
             foreach ($lastAi['skipped'] as $line) echo '<li>' . esc_html($line) . '</li>';
