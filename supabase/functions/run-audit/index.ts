@@ -141,6 +141,10 @@ function answerSignals(html: string, types: string[]){ return { hasFAQSchema: ty
 function napSignals(html: string, types: string[]){ const text=html.replace(/<[^>]+>/g," "); const hasPhone=/(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(text); const hasAddressSchema=types.includes("PostalAddress")||types.includes("LocalBusiness"); const hasZip=/\b\d{5}(?:-\d{4})?\b/.test(html.replace(/<script[\s\S]*?<\/script>/gi," ")); return { hasPhone, hasAddress: hasAddressSchema||hasZip }; }
 function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase(); return { hasPerson: types.includes("Person"), hasReviews: types.includes("Review")||types.includes("AggregateRating"), hasAbout: /about (us|our)|our team|meet the|our story|founded/.test(text), hasCredentials: /certified|licensed|award|years of experience|accredited|board[- ]certified/.test(text) }; }
 
+// Bump on EVERY behavior change. Returned in the response + notes so a stale
+// Supabase deployment is diagnosable in seconds instead of by symptom.
+const ENGINE_VERSION = "5.3.0";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -156,6 +160,7 @@ Deno.serve(async (req) => {
     // new audit so the console keeps showing it, and the verification loop still
     // flips pushed fixes to "verified" and reports the score delta.
     const auditOnly = audit_only === true;
+    note.push(`Audit engine v${ENGINE_VERSION}.`);
     if (auditOnly) note.push("Audit-only re-run: scores refreshed, existing package/fixes/content untouched.");
     const AHREFS_KEY = Deno.env.get("AHREFS_API_KEY");
     if (!AHREFS_KEY) return json({ error: "AHREFS_API_KEY is not set" }, 500);
@@ -416,6 +421,7 @@ Deno.serve(async (req) => {
       const hit = cands.find((c) => c.r?.html);
       if (hit) { aboutPage = hit.r; aboutGuess = hit.u; }
     }
+    note.push(aboutPage?.html ? `E-E-A-T source: about page read at ${aboutGuess}.` : (aboutGuess ? `E-E-A-T: about URL ${aboutGuess} known from rankings but did not fetch.` : "E-E-A-T: no about page found (Ahrefs + direct probes) — story/credentials graded from the homepage only."));
 
     // Resolve a crawl project: stored id first, else auto-discover by domain.
     let crawlProjectId: number | null = client.ahrefs_site_audit_project_id ? Number(client.ahrefs_site_audit_project_id) : null;
@@ -1399,7 +1405,7 @@ Deno.serve(async (req) => {
     // Keep the directive readable even when packages.directive doesn't exist yet.
     await supa.from("audits").update({ raw: { ...auditRow.raw, directive, keyword_gate: rejectedKw, reconciliation: recon } }).eq("id", audit_id);
 
-    return json({ ok: true, audit_id, package_id, cycle: cycleMonth, campaign_driven: campaignDriven, grades, grade_performance,
+    return json({ ok: true, engine_version: ENGINE_VERSION, audit_id, package_id, cycle: cycleMonth, campaign_driven: campaignDriven, grades, grade_performance,
       score: auditScore, audit_only: auditOnly,
       progress: { previous_score: progress.previous_score, delta: progress.delta, fixed: (progress.fixed || []).length, regressed: (progress.regressed || []).length },
       checklist: { pass: clPass, warn: clWarn, fail: clFail, total: CL.length },
