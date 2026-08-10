@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.5.2
+ * Version: 1.5.3
  * Author: 44i Digital
  * License: GPL-2.0+
  */
@@ -16,7 +16,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.5.2');
+define('SEOP_VERSION', '1.5.3');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -465,6 +465,21 @@ add_action('wp_head', function () {
         if (($b['state'] ?? '') !== '') echo '<meta name="geo.region" content="US-' . esc_attr(strtoupper(substr(trim($b['state']), 0, 2))) . '">' . "\n";
     }
 }, 21);
+
+/* v1.5.3: drafts imported before the fence-stripping fix left artifacts like
+ * a paragraph of just “` in page content. Scrub at render time: remove
+ * paragraphs whose visible text is only quotes/backticks. Skips pages that
+ * legitimately use code blocks; touches nothing else. */
+add_filter('the_content', function ($c) {
+    if (strpos($c, '`') === false) return $c;
+    if (strpos($c, '<code') !== false || strpos($c, '<pre') !== false) return $c;
+    return preg_replace_callback('/<p\b[^>]*>([\s\S]*?)<\/p>\s*/i', function ($m) {
+        $txt = trim(html_entity_decode(wp_strip_all_tags($m[1]), ENT_QUOTES | ENT_HTML5));
+        $junk = $txt !== '' && strpos($txt, '`') !== false
+            && preg_match('/^[\s`"\'\x{201C}\x{201D}\x{2018}\x{2019}\x{2026}.,;:—–-]+$/u', $txt);
+        return $junk ? '' : $m[0];
+    }, $c);
+}, 98);
 
 /* v1.5.2: the trust/credentials sentence, shared by the About-page appender
  * and the render-time filter. Real credentials when delivered; otherwise a
