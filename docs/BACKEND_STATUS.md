@@ -4,6 +4,14 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-10 — V5.1.2 allocation overage flags instead of blocking
+
+Console only. The plan-allocation ceiling (more blogs/landing pages than the
+contract total) now lands in QA **warnings** — flagged in the deploy-file
+toast and the internal review, but shipping proceeds. Extra pieces are a
+scope/upsell conversation, not broken work. Fabrication/FTC checks, junk
+keywords, and intent collisions still block as before.
+
 ## 2026-08-10 — Connector v1.3.0 + V5.1.1 (schema everywhere, E-E-A-T, local, media alts)
 
 Re-zip the connector (v1.3.0) and update it on client sites. Console V5.1.1
