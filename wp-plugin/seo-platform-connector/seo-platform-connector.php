@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: 44i Digital
  * License: GPL-2.0+
  */
@@ -16,7 +16,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.3.0');
+define('SEOP_VERSION', '1.3.1');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -164,7 +164,19 @@ function seop_upsert_content($p) {
         $data['post_date']     = get_date_from_gmt($data['post_date_gmt']);
     }
     $existing = seop_find_by_external($external);
-    if ($existing) { $data['ID'] = $existing; $id = wp_update_post($data, true); }
+    if ($existing) {
+        // Never demote content a human already published or scheduled: a
+        // re-import whose console copy is still unapproved must not un-publish
+        // a live page, and a published page must not be re-queued as future.
+        $cur = get_post_status($existing);
+        if ($cur === 'publish' && $status !== 'publish') {
+            $status = 'publish'; unset($data['post_date_gmt'], $data['post_date']);
+        } elseif ($cur === 'future' && $status === 'draft') {
+            $status = 'future'; // keep its existing schedule
+        }
+        $data['post_status'] = $status;
+        $data['ID'] = $existing; $id = wp_update_post($data, true);
+    }
     else           { $id = wp_insert_post($data, true); }
     if (is_wp_error($id)) return $id;
     if ($external) update_post_meta($id, '_seoplatform_external_id', $external);
@@ -173,6 +185,7 @@ function seop_upsert_content($p) {
         seop_write_meta($id, $p['seo_title'] ?? null, $p['seo_description'] ?? null, null);
     }
     return ['ok' => true, 'post_id' => $id, 'status' => $status,
+        'scheduled_for' => get_post_status($id) === 'future' ? get_post_time('Y-m-d H:i', false, $id) : null,
         'edit_url' => admin_url('post.php?post=' . $id . '&action=edit'),
         'view_url' => get_permalink($id)];
 }
@@ -519,10 +532,12 @@ function seop_apply_package($pkg) {
             'seo_title' => $cItem['seo_title'] ?? '', 'seo_description' => $cItem['seo_description'] ?? '',
         ]);
         if (is_wp_error($res)) $skip('Content "' . ($cItem['title'] ?? '?') . '"', $res->get_error_message());
-        else { $status === 'future' ? $scheduled++ : $drafted++; }
+        elseif (($res['status'] ?? '') === 'future') { $scheduled++; $ok('Scheduled "' . ($cItem['title'] ?? '?') . '" → publishes ' . ($res['scheduled_for'] ?: 'per campaign')); }
+        elseif (($res['status'] ?? '') === 'publish') { $ok('"' . ($cItem['title'] ?? '?') . '" is already live — updated in place'); }
+        else $drafted++;
     }
-    if ($scheduled) $ok($scheduled . ' post(s)/page(s) scheduled');
-    if ($drafted)   $ok($drafted . ' draft(s) created for review');
+    if ($scheduled) $ok($scheduled . ' piece(s) scheduled on the campaign calendar (dates above)');
+    if ($drafted)   $ok($drafted . ' draft(s) created for review — drafts never auto-publish. (WordPress labels every draft “Publish immediately”; that\'s just the editor default. Approve the piece in the 44i platform and re-import, or hit Publish here.)');
     foreach ((array) ($pkg['manual_tasks'] ?? []) as $t) {
         $r['manual'][] = sanitize_text_field(($t['title'] ?? '') . ': ') . sanitize_textarea_field(mb_substr((string) ($t['action'] ?? ''), 0, 400));
     }

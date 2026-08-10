@@ -4,6 +4,22 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-10 — V5.1.3 + connector v1.3.1: campaign-paced scheduling, no demotions
+
+Approved content was already scheduled (weekly from next Monday) and
+unapproved content arrives as WP drafts — the editor's "Publish immediately"
+label on drafts is just the WP default, nothing auto-publishes. Changes:
+
+- **Cycle-aware pacing** (console): approved pieces now spread across what's
+  left of the current cycle month (min 2 days apart, max weekly) instead of
+  spilling weekly past the cycle.
+- **Dates in the import report** (connector): each scheduled piece is listed
+  as 'Scheduled "title" → publishes YYYY-MM-DD HH:MM', and the drafts line
+  explains the "Publish immediately" label so it stops reading as a bug.
+- **No-demotion guard** (connector): re-importing a package can no longer
+  un-publish a live post or re-queue a published post as future; a scheduled
+  post stays scheduled when its console copy is still unapproved.
+
 ## 2026-08-10 — V5.1.2 allocation overage flags instead of blocking
 
 Console only. The plan-allocation ceiling (more blogs/landing pages than the
