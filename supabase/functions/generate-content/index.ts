@@ -134,7 +134,11 @@ Deno.serve(async (req) => {
       return json({ error: "anthropic call failed", status: aRes.status, detail: t.slice(0, 500) }, 502);
     }
     const data = await aRes.json();
-    const body = (data.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n").trim();
+    // Models sometimes wrap the piece in markdown code fences (or leave stray
+    // fence lines mid-text) — backticks must never reach client-facing copy.
+    const body = (data.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n")
+      .replace(/^\s*```[a-z]*\s*\n/i, "").replace(/\n```\s*$/i, "")
+      .replace(/^\s*```[a-z]*\s*$/gim, "").trim();
     const usage = data.usage ?? null;
     if (!body) {
       await supa.from("content_topics").update({ status: "queued" }).eq("id", topic_id);
