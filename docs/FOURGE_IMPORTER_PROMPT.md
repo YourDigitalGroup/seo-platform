@@ -164,3 +164,36 @@ ships (`seop_ai_autofix()` is the reference):
 - Guardrails: JSON-parse defensively (strip code fences), sanitize all AI
   output before writing, count every failure in `skipped`, and keep the
   never-overwrite rule absolute — the AI only fills gaps.
+
+## Phase 3 — parity with WP connector v1.4 (always-on defaults)
+
+The WP connector now fixes several audit checks WITHOUT needing them in the
+package. Mirror these on Fourge (reference: v1.4.0 of the connector):
+
+- **Default security headers on every response** when the package supplied
+  none: `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, and
+  `Strict-Transport-Security: max-age=31536000` on HTTPS. Package values
+  override per header. NEVER auto-apply a `Content-Security-Policy` — a
+  wrong one breaks rendering; put it in the manual list.
+- **llms.txt fallback**: when the package shipped none, serve one generated
+  from the `business` block + the site's published pages (name, description,
+  services, service area, key-page list). Cache and regenerate daily.
+- **Site-wide schema engine** on every page, real data only, skipping types
+  already present: `WebSite` (+SearchAction), `LocalBusiness` from the
+  `business` block (NAP, hours, `areaServed`, `sameAs`, `hasMap`; minimal
+  `Organization` when no facts), `WebPage`, `BreadcrumbList` from the page
+  hierarchy, and `BlogPosting` with a real author `Person` on articles.
+  `FAQPage` auto-built from a page's own question-formatted headings
+  (≥2 real Q&As). `AggregateRating` ONLY from delivered
+  `business.rating_value`/`rating_count` — never fabricated.
+- **AI pass upgrades**: also rewrite WEAK metas (title outside 20–65 chars,
+  description outside 70–165), sweep the media/asset library for missing
+  image alts (filename fallback), and add internal links — first plain-text
+  mention of an imported page's focus keyword on another page links to it
+  (never inside existing links/headings/buttons; ~10 per run; idempotent).
+- **Canonical-host redirect**: if Fourge controls the vhost, 301 the www/
+  non-www variant to the canonical host; otherwise list it as manual.
+- Fourge-side site tasks the importer should surface in `manual` when
+  absent: favicon, analytics/GA4 tag, privacy-policy page linked in the
+  footer.
