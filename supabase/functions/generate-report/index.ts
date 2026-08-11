@@ -32,7 +32,7 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const REPORT_VERSION = "2.0.0";
+const REPORT_VERSION = "2.1.0";
 const MIN_WINDOW_DAYS = 28;   // lagging deltas need at least this much time
 const PCT_FLOOR = 30;         // no % change on a base smaller than this
 const NA_COVERAGE_MIN = 0.5;  // pillar shows "not assessed" below this check coverage
@@ -182,10 +182,25 @@ Deno.serve(async (req) => {
       const base = (baseline as any)[key] || null;
       const cov = coverageOf(currentAudit, pillar);
       const suppressed = cov < NA_COVERAGE_MIN;
+      const nowCl: any[] = (currentAudit.raw?.checklist || []).filter((c: any) => c.pillar === pillar);
+      // The forward line every grade carries: below A, the audit's own
+      // remediation text for the pillar's heaviest open checks; at A the job
+      // flips to defense — king of the hill, hold it or lose it.
+      let plan = "";
+      if (!suppressed && now) {
+        const open = nowCl.filter((c) => c.status === "fail" || c.status === "warn").sort((a, b) => (b.weight || 1) - (a.weight || 1));
+        if (now === "A") {
+          plan = open.length
+            ? `Defending the A: ${open[0].action || open[0].label} Every passing check is re-verified next cycle.`
+            : "Holding the top spot is a king-of-the-hill game: every check here passes today, so the work shifts to defense — fresh content on cadence, re-verification every cycle, and any regression treated as a same-cycle fix.";
+        } else {
+          const steps = open.slice(0, 2).map((c) => c.action || c.label).filter(Boolean);
+          if (steps.length) plan = `To raise this grade: ${steps.join(" ")}`;
+        }
+      }
       let regression = false, cause = "", remediation = "";
       if (!suppressed && now && prior && GRADE_ORD[now] < GRADE_ORD[prior]) {
         regression = true;
-        const nowCl: any[] = (currentAudit.raw?.checklist || []).filter((c: any) => c.pillar === pillar);
         const priorCl: Record<string, string> = {}; (lastPrior?.raw?.checklist || []).forEach((c: any) => { if (c.pillar === pillar) priorCl[c.id] = c.status; });
         const flipped = nowCl.filter((c) => (priorCl[c.id] === "pass") && (c.status === "fail" || c.status === "warn" || c.status === "na"));
         const dataFlips = flipped.filter((c) => dataDependent.has(c.id) || c.status === "na");
@@ -200,7 +215,7 @@ Deno.serve(async (req) => {
           remediation = "Treated as unverified movement; re-measured next cycle before any conclusion is drawn.";
         }
       }
-      return { key, pillar, label, now, prior, base, coverage: cov, suppressed, regression, cause, remediation };
+      return { key, pillar, label, now, prior, base, coverage: cov, suppressed, regression, cause, remediation, plan };
     });
 
     // ── 7. AEO measurement (the product we sell) ──────────────────────────────
@@ -496,12 +511,15 @@ function renderHTML(d: any): string {
   <section>
     <h2>7 · Pillar Grades <span class="tag tag-grade">proprietary rubric v1 · graded checklist pass-rate</span></h2>
     <p>Each grade is the weighted pass-rate of that pillar's audit checks (A ≥90 · B ≥78 · C ≥65 · D ≥50). Grades are computed once by the audit engine and reported here unchanged. A pillar whose checks mostly could not be measured this cycle shows "not assessed" instead of a grade from partial data.</p>
-    <table><thead><tr><th>Pillar</th><th>Baseline</th><th>Last cycle</th><th>Now</th><th>Notes</th></tr></thead><tbody>
+    <table><thead><tr><th>Pillar</th><th>Baseline</th><th>Last cycle</th><th>Now</th><th>Notes &amp; next moves</th></tr></thead><tbody>
       ${gradeRows.map((g: any) => {
         const cell = (v: string | null) => v ? `<span class="grade grade-${esc(v)}">${esc(v)}</span>` : `<span class="muted">—</span>`;
         const nowCell = g.suppressed ? `<span class="grade grade-NA">not assessed<br>(${Math.round(g.coverage * 100)}% coverage)</span>` : cell(g.now);
-        const note = g.regression ? `<strong>Moved down.</strong> ${esc(g.cause)} <em>${esc(g.remediation)}</em>` : (g.suppressed ? "Measurement coverage too low this cycle to grade honestly." : "");
-        return `<tr><td>${esc(g.label)}</td><td>${cell(g.base)}</td><td>${cell(g.prior)}</td><td>${nowCell}</td><td style="font-size:9.5pt;">${note}</td></tr>`;
+        const bits: string[] = [];
+        if (g.regression) bits.push(`<strong>Moved down.</strong> ${esc(g.cause)} <em>${esc(g.remediation)}</em>`);
+        if (g.suppressed) bits.push("Measurement coverage too low this cycle to grade honestly.");
+        if (g.plan) bits.push(esc(g.plan));
+        return `<tr><td>${esc(g.label)}</td><td>${cell(g.base)}</td><td>${cell(g.prior)}</td><td>${nowCell}</td><td style="font-size:9.5pt;">${bits.join("<br>")}</td></tr>`;
       }).join("")}
     </tbody></table>
   </section>`;
