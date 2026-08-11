@@ -877,7 +877,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.2.4</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.3.0</div>
   </div>
   </div>
 </div>
@@ -958,7 +958,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.2.4</span>
+        <span>44i, Inc. · Internal Ops Console · V5.3.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1006,7 +1006,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.2.4</span>
+        <span>44i, Inc. · Internal Ops Console · V5.3.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1160,7 +1160,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.2.4 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.3.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1793,10 +1793,10 @@ async function loadLiveAudit(){
   PK.diag={ h: top? top.title : 'Audit complete', p: aud.diagnosis||'',
             focus: top&&top.recommended_fix? 'Recommended: '+top.recommended_fix : '' };
   // Live content plan: load the auto-recommended topics + their latest drafts.
-  const { data: pkgRow } = await sb.from('packages').select('id, report_html, report_built_at').eq('audit_id', aud.id).maybeSingle();
+  const { data: pkgRow } = await sb.from('packages').select('id, report_html, report_built_at, report_meta').eq('audit_id', aud.id).maybeSingle();
   PK.package_id = pkgRow?.id || null;
   PK.report_html = pkgRow?.report_html || '';
-  PK.report_meta = pkgRow?.report_built_at ? { built_at: pkgRow.report_built_at } : null;
+  PK.report_meta = pkgRow?.report_built_at ? { built_at: pkgRow.report_built_at, ...(pkgRow.report_meta||{}) } : null;
   PK.topics=[];
   if(PK.package_id){
     const M2K={'sonnet-4-6':'sonnet','opus-4-8':'opus','haiku-4-5':'haiku'};
@@ -2796,8 +2796,15 @@ function renderReportBar(){
   const has = !!(PK.report_html && PK.report_html.length>500);
   const meta = PK.report_meta || {};
   const baseline = meta.baseline ? new Date(meta.baseline).toLocaleDateString() : null;
+  // A cached report predating the latest audit shows grades the current audit
+  // contradicts — the exact mismatch clients must never see. Flag it loudly.
+  const builtAt = meta.built_at || meta.generated_at || null;
+  const stale = has && builtAt && PK.audit && PK.audit.run_at && (new Date(builtAt) < new Date(PK.audit.run_at));
+  const review = meta.review_recommended ? ` · <b style="color:var(--high)">⚑ flagged for strategist review</b>` : '';
   const summary = has
-    ? `Client progress report ready · ${baseline?`baseline ${esc(baseline)} · `:'baseline cycle · '}${esc(num0((meta.deltas||{}).improvements))} improvements · ${esc(num0((meta.deltas||{}).newlyRanking))} new rankings`
+    ? (stale
+      ? `<b style="color:var(--high)">⚠ Report predates the latest audit — its grades no longer match. Click Rebuild before sending.</b>`
+      : `Client progress report ready · ${baseline?`baseline ${esc(baseline)} · `:'baseline cycle · '}${esc(num0((meta.deltas||{}).improvements))} improvements · ${esc(num0((meta.deltas||{}).newlyRanking))} new rankings${review}`)
     : 'Client progress report not built yet';
   const pg=activeClient?groupOf(activeClient):{color:'#4B9BD7'};
   el.innerHTML = `<div class="rep-wrap" style="--pc:${pg.color||'#4B9BD7'}">
@@ -2987,6 +2994,47 @@ function renderQueue(){
 //    picks what to queue. Fed by the owner's business description in intake.
 let _suggestions=[];
 const KIND_MODEL={gbp_post:'haiku-4-5',blog:'sonnet-4-6',pillar:'opus-4-8',landing:'sonnet-4-6',service:'sonnet-4-6',faq:'haiku-4-5'};
+// Fully-automatic allocation fill: when the audit couldn't fund every
+// contracted content slot from its live keyword pools, pull gate-checked
+// suggestions and queue them with NO human click. The human reviews drafts —
+// not plumbing. Returns how many topics were queued.
+async function autoFillTopics(){
+  if(OFFLINE||!activeClient||!PK.package_id) return 0;
+  const tier=(activeClient&&activeClient.tier)||activeTier||'pro';
+  const totals={};
+  planServices(tier).forEach(s=>{
+    if(!s.kind||s.kind==='gbp_post') return;
+    if(s.cadence==='fixed_quantity'&&s.total!=null) totals[s.kind]=(totals[s.kind]||0)+s.total;
+    else if(s.cadence==='recurring'&&(s.per||0)>0) totals[s.kind]=(totals[s.kind]||0)+s.per;
+  });
+  const counts={}; (PK.topics||[]).forEach(t=>{ counts[t.kind]=(counts[t.kind]||0)+1; });
+  const short={}; let need=0;
+  Object.entries(totals).forEach(([k,cap])=>{ const s=Math.max(0,cap-(counts[k]||0)); if(s>0){ short[k]=s; need+=s; } });
+  if(!need) return 0;
+  showToast(`Auto-filling ${need} open content slot${need>1?'s':''} from gate-checked suggestions…`);
+  try{
+    const {data,error}=await sb.functions.invoke('suggest-topics',{body:{client_id:activeClient.id}});
+    if(error||(data&&data.error)) throw new Error((data&&data.error)||error.message);
+    const sugg=(data&&data.suggestions)||[];
+    const tc=s=>String(s||'').replace(/\b\w/g,c=>c.toUpperCase());
+    const rows=[];
+    for(const s of sugg){
+      if(rows.length>=need) break;
+      const k=(short[s.kind]||0)>0?s.kind:Object.keys(short).find(x=>short[x]>0);
+      if(!k) break;
+      short[k]--;
+      rows.push({ package_id:PK.package_id, title:tc(s.keyword), target_keyword:s.keyword, kind:k,
+        model:KIND_MODEL[k]||'sonnet-4-6', status:'queued', source:'suggested-auto',
+        location:(activeClient&&activeClient.market)||null });
+    }
+    if(!rows.length){ showToast('No gate-passing suggestions available for the open slots — 💡 Suggest topics or add manually.',true); return 0; }
+    const {error:iErr}=await sb.from('content_topics').insert(rows);
+    if(iErr){ showToast('Topic auto-fill failed: '+iErr.message,true); return 0; }
+    await loadLiveAudit();
+    showToast(`${rows.length} topic${rows.length>1?'s':''} auto-queued to meet the ${planLabel(tier)} allocation.`, false, true);
+    return rows.length;
+  }catch(e){ console.warn('autoFillTopics',e); showToast('Topic auto-fill failed: '+e.message,true); return 0; }
+}
 async function suggestTopics(){
   if(OFFLINE||!activeClient){ showToast('Open a client first',true); return; }
   if(!PK.package_id){ showToast('Generate the package first — suggestions queue into it',true); return; }
@@ -3111,6 +3159,14 @@ async function liveGenerateDrafts(){
   try{ await loadCampaign(); renderRoadmap(); }catch(_){}
   const done=PK.topics.filter(t=>t.status==='drafted'||t.status==='approved').length;
   showToast(`${done} draft${done===1?'':'s'} ready for review`, false, true);
+  // QA auto-remediation: drafts that failed the compliance gates go straight
+  // back to the writer with their violations as removal instructions — no
+  // "Auto-fix flagged" click required. The human's job is approving drafts.
+  const flaggedN=PK.topics.filter(t=>t.body&&t._id&&qaScan(t.body).blocking.length).length;
+  if(flaggedN){
+    showToast(`${flaggedN} draft${flaggedN>1?'s':''} flagged by QA — auto-fixing now…`);
+    try{ await autoFixFlagged(); }catch(e){ console.warn('auto QA fix', e); }
+  }
 }
 // Auto-write every staged technical fix (Pro behavior). Calls generate-fixes
 // in parallel batches so a typical 15-fix package finishes quickly. Failures
@@ -3388,8 +3444,11 @@ async function generatePackage(){
       // AUTO-WRITE EVERYTHING (Pro behavior): kick off content drafts and fix
       // artifacts in parallel so the package opens fully drafted. Then build the
       // client progress report. Each step is non-blocking on the others' results.
+      // Auto-fill any contracted content slots the audit couldn't fund from
+      // its keyword pools — no "Suggest topics" click required.
+      const autoAdded = await autoFillTopics();
       const tasks = [];
-      if((n.content_topics||0) > 0) tasks.push(liveGenerateDrafts());
+      if((n.content_topics||0)+autoAdded > 0) tasks.push(liveGenerateDrafts());
       // v1.8.1+: run-audit dispatches fix-writing server-side; we just watch
       // for the results. Older deployed run-audit → console writes them itself.
       if(fixIds.length > 0 && !data.fixes_dispatched) tasks.push(liveGenerateFixes(fixIds));

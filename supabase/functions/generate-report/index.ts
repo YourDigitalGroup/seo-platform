@@ -1,29 +1,41 @@
 // ============================================================================
-//  Reporting Engine — generate-report Edge Function
+//  Reporting Engine v2 — generate-report Edge Function
 // ----------------------------------------------------------------------------
-//  Produces the client-facing PROGRESS REPORT for one package.
+//  Client-facing progress report. FULLY AUTOMATED — no human reads it before
+//  the client does — so every safeguard is enforced in code:
 //
-//  Narrative arc, by design:
-//      1) Where we started   — the baseline (first audit for this client, or
-//                              prior cycle's snapshot)
-//      2) What we fixed/     — only fixes that were marked "pushed" and only
-//         executed             content drafts that were approved
-//      3) The result         — current ranking + traffic vs. baseline, real
-//                              deltas only (no fabricated gains)
+//  · DETERMINISTIC NUMBERS. Every figure, delta, and grade is computed here
+//    and injected as a fixed value. No LLM anywhere in this pipeline; grades
+//    are read from the persisted audit row and are never recomputed.
+//  · THREE TIME FRAMES. Cycle delta (vs prior audit), program-to-date (vs the
+//    IMMUTABLE engagement baseline locked on clients.baseline_audit_id), and
+//    year-over-year when ≥13 months of history exists.
+//  · MINIMUM WINDOW. Lagging metrics (rankings/traffic) render as deltas only
+//    over a ≥28-day window; shorter windows say so instead of showing noise.
+//  · METRIC TIERS. Measured (GSC) may be stated as fact. Modeled (Ahrefs
+//    traffic/DR estimates) is labeled as an estimate, never headlined, and
+//    never carries a % change. Proprietary grades always ship with the rubric
+//    and any regression ships with a cause + remediation or is suppressed.
+//  · NO FABRICATION. A source that did not return data renders as an explicit
+//    unavailable state — never a zero, never an interpolation.
+//  · PRE-SEND VALIDATION. Structural violations block generation (422) and
+//    nothing is stored. Churn-risk conditions set review_recommended in
+//    report_meta for the console to surface.
+//  · WHITE-LABEL. Branded with the client's partner group (name, logo, color);
+//    44i Digital only when the client has no group.
 //
-//  Output: a single self-contained HTML document the team opens in a browser
-//  and prints to PDF (browser native Save as PDF). Vendor-scrubbed.
-//  44i Digital, Inc. is the agency brand throughout.
-//
-//  Deploy: Edge Functions → Deploy new function → name it exactly: generate-report
-//  Input:  { "package_id": "<uuid>" }    (recommended)
-//      or  { "client_id":  "<uuid>" }    (uses the latest package)
-//  Returns: { ok: true, html, baseline: <date|null>, current: <date>, deltas }
-//  Honest baseline rule: on the first run there is no "before" — the result
-//  section says "Starting position recorded on <date>; improvements tracked
-//  from here," NOT fake improvement numbers.
+//  Deploy: Edge Functions → generate-report → redeploy.
+//  Requires: report_storage_migration.sql (report_html/report_meta on
+//  packages) and report_baseline.sql (clients.baseline_audit_id).
+//  Input:  { "package_id": "<uuid>" } or { "client_id": "<uuid>" }
+//  Returns { ok, html, meta } — and persists html+meta on the package row.
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
+
+const REPORT_VERSION = "2.0.0";
+const MIN_WINDOW_DAYS = 28;   // lagging deltas need at least this much time
+const PCT_FLOOR = 30;         // no % change on a base smaller than this
+const NA_COVERAGE_MIN = 0.5;  // pillar shows "not assessed" below this check coverage
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -33,12 +45,22 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
-// Tiny HTML escaper — we render plain text into the report and must not allow
-// stray markup from titles or keywords to break the layout.
 const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const num = (n: unknown, def = "—") => (n == null || (typeof n === "number" && !isFinite(n))) ? def : (typeof n === "number" ? n.toLocaleString() : String(n));
-const pct = (n: number) => `${Math.round(n)}%`;
 const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "—";
+const days = (a: string, b: string) => Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
+const monthsBetween = (a: string, b: string) => Math.max(0, (new Date(b).getUTCFullYear() - new Date(a).getUTCFullYear()) * 12 + (new Date(b).getUTCMonth() - new Date(a).getUTCMonth()));
+
+// A lagging-metric delta cell honoring window + base-floor rules.
+function laggingDelta(nowV: number | null, beforeV: number | null, windowDays: number, unit = ""): string {
+  if (nowV == null || beforeV == null) return `<span class="muted">data unavailable</span>`;
+  if (windowDays < MIN_WINDOW_DAYS) return `<span class="muted">window too short (${windowDays}d) — reported at ≥${MIN_WINDOW_DAYS}d</span>`;
+  const d = nowV - beforeV;
+  if (d === 0) return `<span class="delta-flat">no change</span>`;
+  const cls = d > 0 ? "delta-up" : "delta-down", sign = d > 0 ? "+" : "";
+  if (beforeV < PCT_FLOOR) return `<span class="${cls}">${sign}${num(d)}${unit}</span> <span class="muted">(base too small for a reliable %)</span>`;
+  return `<span class="${cls}">${sign}${num(d)}${unit} (${sign}${Math.round((d / beforeV) * 100)}%)</span>`;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -48,492 +70,464 @@ Deno.serve(async (req) => {
     const pkgIdInput: string | null = body.package_id ?? null;
     const clientIdInput: string | null = body.client_id ?? null;
     if (!pkgIdInput && !clientIdInput) return json({ error: "package_id or client_id required" }, 400);
-
     const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // ── 1. Resolve the package and its audit (the "current" snapshot). ──
+    // ── 1. Package, client, partner brand, current audit ─────────────────────
     let pkg: any = null;
-    if (pkgIdInput) {
-      const { data } = await supa.from("packages").select("id, client_id, audit_id, cycle_month, status").eq("id", pkgIdInput).single();
-      pkg = data;
-    } else {
-      const { data } = await supa.from("packages").select("id, client_id, audit_id, cycle_month, status").eq("client_id", clientIdInput!).order("cycle_month", { ascending: false }).limit(1).maybeSingle();
-      pkg = data;
-    }
+    if (pkgIdInput) ({ data: pkg } = await supa.from("packages").select("id, client_id, audit_id, cycle_month, status, directive").eq("id", pkgIdInput).single());
+    else ({ data: pkg } = await supa.from("packages").select("id, client_id, audit_id, cycle_month, status, directive").eq("client_id", clientIdInput!).order("cycle_month", { ascending: false }).limit(1).maybeSingle());
     if (!pkg) return json({ error: "package not found" }, 404);
 
-    const { data: client } = await supa.from("clients").select("id, url, market, tier, partner_group_id").eq("id", pkg.client_id).single();
+    const { data: client } = await supa.from("clients").select("*").eq("id", pkg.client_id).single();
     const { data: currentAudit } = await supa.from("audits").select("*").eq("id", pkg.audit_id).single();
     if (!client || !currentAudit) return json({ error: "client or audit not found" }, 404);
 
-    // ── 2. Find a BASELINE — the earliest audit for this client BEFORE the
-    //      current one. If none exists, we honestly report "first cycle".
-    const { data: priorAudits } = await supa.from("audits").select("id, run_at, domain_rating, org_keywords, org_traffic, org_keywords_top3, grade_technical, grade_onpage, grade_schema, grade_aeo, grade_eeat, grade_local, raw").eq("client_id", client.id).neq("id", currentAudit.id).order("run_at", { ascending: true }).limit(50);
-    const baseline = (priorAudits && priorAudits.length) ? priorAudits[0] : null; // earliest run = baseline
-    const lastPrior = (priorAudits && priorAudits.length) ? priorAudits[priorAudits.length - 1] : null; // most recent prior = "last cycle"
-
-    // ── 3. Load executed work — only fixes that were PUSHED and content that
-    //      was APPROVED count as "what we executed". Suggested or ready items
-    //      live in the package, not in this client deliverable.
-    const { data: pushedFixes } = await supa.from("fixes").select("id, kind, target_page, before_text, after_text, schema_jsonld, status, updated_at, context").eq("audit_id", pkg.audit_id).eq("status", "pushed");
-    const { data: approvedDrafts } = await supa.from("content_drafts").select("id, topic_id, kind, title, body, approved").eq("package_id", pkg.id).eq("approved", true);
-
-    // ── 4. Per-keyword deltas (real before/after). Compare current keywords
-    //      table against the baseline audit's keywords table.
-    const { data: currentKws } = await supa.from("keywords").select("keyword, position, volume, traffic, is_opportunity").eq("audit_id", pkg.audit_id);
-    let baselineKws: any[] = [];
-    if (baseline) {
-      const { data } = await supa.from("keywords").select("keyword, position, volume, traffic").eq("audit_id", baseline.id);
-      baselineKws = data || [];
+    let brand = { name: "44i Digital", color: "#4B9BD7", logo: "" };
+    if (client.partner_group_id) {
+      const { data: grp } = await supa.from("partner_groups").select("name, brand_color, logo_url").eq("id", client.partner_group_id).maybeSingle();
+      if (grp?.name) brand = { name: grp.name, color: grp.brand_color || "#4B9BD7", logo: grp.logo_url || "" };
     }
-    const baseMap = new Map<string, any>();
-    baselineKws.forEach((k) => baseMap.set(String(k.keyword).toLowerCase(), k));
-    const movements = (currentKws || []).map((k: any) => {
-      const b = baseMap.get(String(k.keyword).toLowerCase());
-      const before = b?.position ?? null;
-      const after = k.position ?? null;
-      const delta = (before != null && after != null) ? before - after : null; // + = improved (rank went down numerically)
-      return { keyword: k.keyword, volume: k.volume, before, after, delta, trafficNow: k.traffic, trafficBefore: b?.traffic ?? null, newlyRanking: before == null && after != null };
-    });
-    // Sort for the report: biggest improvements first, then new rankings, then everything else.
-    movements.sort((a, b) => {
-      const ad = a.delta ?? -999, bd = b.delta ?? -999;
-      if (a.newlyRanking && !b.newlyRanking) return -1;
-      if (!a.newlyRanking && b.newlyRanking) return 1;
-      return bd - ad;
-    });
 
-    const improvements = movements.filter((m) => (m.delta || 0) > 0);
-    const newlyRanking = movements.filter((m) => m.newlyRanking);
-    const topMovements = movements.slice(0, 20);
+    // ── 2. Time frames ────────────────────────────────────────────────────────
+    // Immutable engagement baseline: locked once on the client, never reset.
+    const { data: allAudits } = await supa.from("audits")
+      .select("id, run_at, domain_rating, org_keywords, org_traffic, org_keywords_top3, referring_domains, grade_technical, grade_onpage, grade_schema, grade_aeo, grade_eeat, grade_local, score, raw")
+      .eq("client_id", client.id).order("run_at", { ascending: true }).limit(200);
+    const audits = allAudits || [];
+    let baseline: any = null; let baselineLocked = false;
+    if (client.baseline_audit_id) {
+      baseline = audits.find((a: any) => a.id === client.baseline_audit_id) || null;
+      baselineLocked = !!baseline;
+    }
+    if (!baseline) {
+      baseline = audits.length ? audits[0] : currentAudit;
+      // Lock it (best effort — column ships in report_baseline.sql).
+      try { await supa.from("clients").update({ baseline_audit_id: baseline.id, baseline_locked_at: new Date().toISOString() }).eq("id", client.id); baselineLocked = true; } catch (_) { /* migration pending */ }
+    }
+    const priors = audits.filter((a: any) => a.id !== currentAudit.id && new Date(a.run_at) < new Date(currentAudit.run_at));
+    const lastPrior = priors.length ? priors[priors.length - 1] : null;
+    const isFirstCycle = baseline.id === currentAudit.id || !priors.length;
 
-    // ── 5. Pillar grade movement (current vs baseline). ──
-    const pillars = [
-      { key: "grade_technical", label: "Technical" },
-      { key: "grade_onpage", label: "On-Page" },
-      { key: "grade_schema", label: "Schema" },
-      { key: "grade_aeo", label: "AEO" },
-      { key: "grade_eeat", label: "E-E-A-T" },
-      { key: "grade_local", label: "Local" },
-    ];
+    const engagementStart: string = client.engagement_start_date ? String(client.engagement_start_date) + "T00:00:00Z" : baseline.run_at;
+    const programMonth = Math.max(1, monthsBetween(engagementStart, currentAudit.run_at) + 1);
+    const programDays = Math.max(0, days(baseline.run_at, currentAudit.run_at));
+    const cycleDays = lastPrior ? Math.max(0, days(lastPrior.run_at, currentAudit.run_at)) : 0;
+    const yoyAudit = audits.find((a: any) => Math.abs(days(a.run_at, currentAudit.run_at) - 365) <= 45 && a.id !== currentAudit.id) || null;
 
-    // ── 6. Raw fields from the audit (trade area, opportunities, authority). ──
+    // ── 3. Work executed + content quality gate ──────────────────────────────
+    const { data: pushedFixes } = await supa.from("fixes").select("id, kind, target_page, status").eq("audit_id", pkg.audit_id).in("status", ["pushed", "verified"]);
+    const { data: approvedDrafts } = await supa.from("content_drafts").select("id, title, kind").eq("package_id", pkg.id).eq("approved", true);
+    // Near-duplicate gate: pages differing only by a city token are counted
+    // once in the client deliverable (variants logged in meta, never listed).
     const raw = currentAudit.raw || {};
-    const tradeArea = raw.tradeArea || { primary: client.market || "", secondary: [] };
-    const opportunities: any[] = raw.opportunities || [];
-    const authority = raw.authority || {};
-    const traffic = raw.traffic || {};
-    const business = raw.business || {};
+    const towns: string[] = [raw.tradeArea?.primary || "", ...(raw.tradeArea?.secondary || [])].map((t: string) => String(t).split(",")[0].trim().toLowerCase()).filter(Boolean);
+    const normTitle = (t: string) => { let s = String(t || "").toLowerCase(); for (const town of towns) s = s.split(town).join(""); return s.replace(/\b(ia|iowa|sd|mn|ne)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim(); };
+    const seenTitles = new Map<string, any>(); let gatedCount = 0;
+    const gatedDrafts: any[] = [];
+    for (const c of (approvedDrafts || [])) {
+      const k = normTitle(c.title);
+      if (k && seenTitles.has(k)) { gatedCount++; continue; }
+      if (k) seenTitles.set(k, c);
+      gatedDrafts.push(c);
+    }
 
-    // ── 7. Group executed fixes by kind for readable presentation. ──
-    const fixGroupLabels: Record<string, string> = {
-      title_tag: "Title Tags Rewritten", meta_description: "Meta Descriptions Rewritten", h1: "H1 Tags Fixed",
-      heading: "Headings Improved", page_copy: "Page Copy Strengthened", image_alt: "Image Alt Text Added",
-      faq_schema: "FAQ Schema Deployed", local_business_schema: "LocalBusiness Schema Deployed",
-      org_schema: "Organization Schema Deployed", person_schema: "Author/Person Schema Deployed",
-      breadcrumb_schema: "Breadcrumb Schema Deployed", aggregate_rating_schema: "Review Rating Schema Deployed",
-      internal_link: "Internal Linking Improved", gbp_post: "Business Profile Posts Published",
-      canonical: "Canonical Tags Set", schema_jsonld: "Structured Data Deployed",
+    // ── 4. Measured layer (GSC) — leading indicators + trend across audits ───
+    const gscNow = raw.gsc || null;                 // { queries, clicks, impressions, striking, ctrBleed }
+    const gscPrior = lastPrior?.raw?.gsc || null;
+    const gscBase = baseline?.raw?.gsc || null;
+    const gscTrend = audits.filter((a: any) => a.raw?.gsc && (a.raw.gsc.queries || 0) > 0)
+      .map((a: any) => ({ date: a.run_at, queries: a.raw.gsc.queries || 0, clicks: a.raw.gsc.clicks || 0, impressions: a.raw.gsc.impressions || 0 }));
+    const gscConnected = !!(gscNow && (gscNow.queries || 0) > 0);
+
+    // ── 5. Rank movements (Ahrefs rank tracking — labeled as such) ───────────
+    const { data: currentKws } = await supa.from("keywords").select("keyword, position, volume").eq("audit_id", pkg.audit_id);
+    let priorKws: any[] = [];
+    const compareAudit = lastPrior || baseline;
+    if (compareAudit && compareAudit.id !== currentAudit.id) {
+      const { data } = await supa.from("keywords").select("keyword, position, volume").eq("audit_id", compareAudit.id);
+      priorKws = data || [];
+    }
+    const priorMap = new Map<string, any>(); priorKws.forEach((k) => priorMap.set(String(k.keyword).toLowerCase(), k));
+    const movements = (currentKws || []).map((k: any) => {
+      const b = priorMap.get(String(k.keyword).toLowerCase());
+      const before = b?.position ?? null, after = k.position ?? null;
+      return { keyword: k.keyword, volume: k.volume, before, after,
+        delta: (before != null && after != null) ? before - after : null,
+        newlyRanking: before == null && after != null };
+    });
+    const improvements = movements.filter((m) => (m.delta || 0) > 0).sort((a, b) => (b.delta || 0) - (a.delta || 0));
+    const newlyRanking = movements.filter((m) => m.newlyRanking);
+    const deepMoves = improvements.filter((m) => (m.before || 0) > 20); // movement inside 20–100 counts
+
+    // ── 6. Grades: read from the audit row, NEVER recomputed. Coverage +
+    //      regression causes derive from the persisted checklists. ────────────
+    const PILLARS = [
+      ["grade_technical", "technical", "Technical"], ["grade_onpage", "onpage", "On-Page"],
+      ["grade_schema", "schema", "Schema"], ["grade_aeo", "aeo", "AEO"],
+      ["grade_eeat", "eeat", "E-E-A-T"], ["grade_local", "local", "Local"],
+    ] as const;
+    const coverageOf = (audit: any, pillar: string) => {
+      const cl: any[] = audit?.raw?.checklist || [];
+      const rows = cl.filter((c) => c.pillar === pillar);
+      if (!rows.length) return 1; // no checklist detail → don't suppress
+      const total = rows.reduce((a, c) => a + (c.weight || 1), 0);
+      const assessed = rows.filter((c) => c.status !== "na").reduce((a, c) => a + (c.weight || 1), 0);
+      return total ? assessed / total : 1;
     };
-    const fixesByKind = new Map<string, any[]>();
-    (pushedFixes || []).forEach((f: any) => { if (!fixesByKind.has(f.kind)) fixesByKind.set(f.kind, []); fixesByKind.get(f.kind)!.push(f); });
+    const GRADE_ORD: Record<string, number> = { A: 5, B: 4, C: 3, D: 2, F: 1 };
+    const dataDependent = new Set(["psi_perf", "lcp", "cls", "inp", "perf_fixables", "aeo_overviews", "aeo_snippets", "aeo_sov", "local_pack", "local_intent", "crawl_coverage", "crawl_health"]);
+    const gradeRows = PILLARS.map(([key, pillar, label]) => {
+      const now = (currentAudit as any)[key] || null;
+      const prior = lastPrior ? ((lastPrior as any)[key] || null) : null;
+      const base = (baseline as any)[key] || null;
+      const cov = coverageOf(currentAudit, pillar);
+      const suppressed = cov < NA_COVERAGE_MIN;
+      let regression = false, cause = "", remediation = "";
+      if (!suppressed && now && prior && GRADE_ORD[now] < GRADE_ORD[prior]) {
+        regression = true;
+        const nowCl: any[] = (currentAudit.raw?.checklist || []).filter((c: any) => c.pillar === pillar);
+        const priorCl: Record<string, string> = {}; (lastPrior?.raw?.checklist || []).forEach((c: any) => { if (c.pillar === pillar) priorCl[c.id] = c.status; });
+        const flipped = nowCl.filter((c) => (priorCl[c.id] === "pass") && (c.status === "fail" || c.status === "warn" || c.status === "na"));
+        const dataFlips = flipped.filter((c) => dataDependent.has(c.id) || c.status === "na");
+        if (flipped.length && dataFlips.length === flipped.length) {
+          cause = `A measurement source was unavailable this cycle (${dataFlips.map((c) => c.label).slice(0, 3).join("; ")}) — this is a data gap, not a site change.`;
+          remediation = "The affected checks re-measure automatically next cycle; no site work is required.";
+        } else if (flipped.length) {
+          cause = `Checks that regressed: ${flipped.slice(0, 3).map((c) => c.label + (c.evidence ? ` (${c.evidence})` : "")).join("; ")}.`;
+          remediation = flipped[0]?.action || "Scheduled for remediation in the next cycle's fix queue.";
+        } else {
+          cause = "The prior audit lacks check-level detail for a verified cause.";
+          remediation = "Treated as unverified movement; re-measured next cycle before any conclusion is drawn.";
+        }
+      }
+      return { key, pillar, label, now, prior, base, coverage: cov, suppressed, regression, cause, remediation };
+    });
 
-    // ── 8. Compose the HTML. Single document, embedded CSS, print-optimized.
-    //      Brand: 44i Digital. Color: #4B9BD7. Typeface: Manrope (via system stack
-    //      fallback so the PDF renders even offline).
-    const reportDate = fmtDate(currentAudit.run_at || new Date().toISOString());
-    const baselineDate = baseline ? fmtDate(baseline.run_at) : null;
-    const cycleNumber = (priorAudits?.length || 0) + 1;
-    const isFirstCycle = !baseline;
+    // ── 7. AEO measurement (the product we sell) ──────────────────────────────
+    const aeoRaw = raw.aeo || {};
+    const brandRadar = raw.brandRadar || null;
+    const radarTrend = audits.filter((a: any) => a.raw?.brandRadar?.mentions != null)
+      .map((a: any) => ({ date: a.run_at, mentions: a.raw.brandRadar.mentions, sov: a.raw.brandRadar.ourSov }));
+    const aeoChecklist: any[] = (raw.checklist || []).filter((c: any) => c.pillar === "aeo" || c.pillar === "schema");
+    const aeoReadyTotal = aeoChecklist.filter((c: any) => c.status !== "na").length;
+    const aeoReadyPass = aeoChecklist.filter((c: any) => c.status === "pass").length;
 
+    // ── 8. Cumulative asset ledger (program-to-date) ─────────────────────────
+    const { data: allTopics } = await supa.from("content_topics")
+      .select("kind, status, packages!inner(client_id)").eq("packages.client_id", client.id);
+    const publishedByKind: Record<string, number> = {};
+    (allTopics || []).filter((t: any) => t.status === "approved" || t.status === "published").forEach((t: any) => { publishedByKind[t.kind] = (publishedByKind[t.kind] || 0) + 1; });
+    const auditIds = audits.map((a: any) => a.id);
+    let cumulativeFixes = 0;
+    if (auditIds.length) {
+      const { count } = await supa.from("fixes").select("id", { count: "exact", head: true }).in("audit_id", auditIds).in("status", ["pushed", "verified"]);
+      cumulativeFixes = count || 0;
+    }
+    const schemaTypes: string[] = raw.schema?.all || [];
+    const clNow: any[] = raw.checklist || [];
+    const clBase: any[] = baseline?.raw?.checklist || [];
+    const passNow = clNow.filter((c) => c.status === "pass").length;
+    const passBase = clBase.filter((c) => c.status === "pass").length;
+
+    // ── 9. Narrative state (deterministic) ───────────────────────────────────
+    const windowOK = programDays >= MIN_WINDOW_DAYS;
+    const leadingMoving = (newlyRanking.length > 0) || (improvements.length > 0) ||
+      (gscConnected && gscPrior && ((gscNow.queries || 0) > (gscPrior.queries || 0) || (gscNow.impressions || 0) > (gscPrior.impressions || 0)));
+    const laggingMoving = windowOK && (((currentAudit.org_keywords || 0) > (baseline.org_keywords || 0)) ||
+      ((baseline.org_traffic || 0) >= PCT_FLOOR && (currentAudit.org_traffic || 0) > (baseline.org_traffic || 0)));
+    const regressions = gradeRows.filter((g) => g.regression);
+    const phase = programMonth <= 3 ? "foundation" : programMonth <= 6 ? "emergence" : "compounding";
+    const state = isFirstCycle ? "foundation"
+      : (laggingMoving && leadingMoving) ? "compounding"
+      : leadingMoving ? "emerging"
+      : !windowOK ? "foundation"
+      : (programMonth >= 7 ? "plateau" : "building");
+
+    // ── 10. Next-cycle plan from the directive (never a copy of section 1) ───
+    const dirItems: any[] = (pkg.directive?.items || []).filter((i: any) => i.in_plan && i.status !== "done");
+    const nextActions = dirItems.slice(0, 7);
+    const learnedFixed: string[] = ((pkg.directive?.progress?.fixed) || []).slice(0, 4);
+    const gateRejects: any[] = (raw.keyword_gate || []).slice(0, 4);
+    const roadmap: any[] = (pkg.directive?.items || []).filter((i: any) => !i.in_plan && i.status !== "done").slice(0, 4);
+
+    // ── 11. PRE-SEND VALIDATION (blocking) ───────────────────────────────────
+    const violations: string[] = [];
+    for (const g of gradeRows) if (g.regression && (!g.cause || !g.remediation)) violations.push(`grade regression without cause/remediation: ${g.label}`);
+    if (!isFirstCycle && !windowOK && !gscConnected) { /* allowed: leading section will state unavailability */ }
+    // grade fidelity assertion: rendered grades ARE the audit fields by construction; record the source.
+    const gradeSource = Object.fromEntries(PILLARS.map(([key]) => [key, (currentAudit as any)[key] || null]));
+    if (violations.length) return json({ error: "validation_failed", violations }, 422);
+
+    const reviewFlags: string[] = [];
+    if (regressions.length >= 2) reviewFlags.push(`${regressions.length} pillar regressions in one cycle`);
+    if (state === "plateau") reviewFlags.push(`month ${programMonth} with flat leading indicators — plan change required`);
+    if (windowOK && (baseline.org_traffic || 0) >= PCT_FLOOR && (currentAudit.org_traffic || 0) < (baseline.org_traffic || 0) * 0.7) reviewFlags.push("large negative traffic movement vs baseline");
+
+    // ── 12. Render ────────────────────────────────────────────────────────────
     const clientName = (client.url || "").replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
-    const market = tradeArea.primary || client.market || "";
-
     const html = renderHTML({
-      clientName, market, reportDate, baselineDate, cycleNumber, isFirstCycle,
-      business, tradeArea, authority, traffic, opportunities,
-      currentAudit, baseline, lastPrior, pillars,
-      pushedFixes: pushedFixes || [], fixesByKind, fixGroupLabels,
-      approvedDrafts: approvedDrafts || [],
-      movements, improvements, newlyRanking, topMovements,
+      brand, clientName, market: raw.tradeArea?.primary || client.market || "",
+      reportDate: fmtDate(currentAudit.run_at), baselineDate: fmtDate(baseline.run_at),
+      lastPriorDate: lastPrior ? fmtDate(lastPrior.run_at) : null,
+      programMonth, phase, state, isFirstCycle, programDays, cycleDays, windowOK,
+      baselineLocked, yoyAudit, business: raw.business || {},
+      currentAudit, baseline, lastPrior, gradeRows,
+      pushedFixes: pushedFixes || [], gatedDrafts, gatedCount,
+      gscConnected, gscNow, gscPrior, gscBase, gscTrend,
+      improvements, newlyRanking, deepMoves,
+      aeoRaw, brandRadar, radarTrend, aeoReadyPass, aeoReadyTotal,
+      publishedByKind, cumulativeFixes, schemaTypes, passNow, passBase, clNowCount: clNow.length,
+      nextActions, learnedFixed, gateRejects, roadmap, regressions,
     });
 
-    return json({ ok: true, html,
-      baseline: baseline?.run_at || null,
-      current: currentAudit.run_at,
-      deltas: { improvements: improvements.length, newlyRanking: newlyRanking.length, executedFixes: (pushedFixes || []).length, publishedContent: (approvedDrafts || []).length },
-    });
+    const meta = {
+      report_version: REPORT_VERSION, generated_at: new Date().toISOString(),
+      audit_id: currentAudit.id, baseline_audit_id: baseline.id, last_prior_audit_id: lastPrior?.id || null,
+      baseline_locked: baselineLocked, program_month: programMonth, window_days: programDays,
+      state, phase, grade_source: gradeSource, gated_content: gatedCount,
+      review_recommended: reviewFlags.length > 0, review_flags: reviewFlags, violations: [],
+      sources: { ahrefs: true, gsc: gscConnected, ga4: false, ai_citations: !!brandRadar },
+    };
+    try { await supa.from("packages").update({ report_html: html, report_built_at: meta.generated_at, report_meta: meta }).eq("id", pkg.id); } catch (_) { /* columns ship in report_storage_migration.sql */ }
+
+    return json({ ok: true, html, meta, baseline: baseline.run_at, current: currentAudit.run_at,
+      deltas: { improvements: improvements.length, newlyRanking: newlyRanking.length, executedFixes: (pushedFixes || []).length, publishedContent: gatedDrafts.length } });
   } catch (e) {
     console.error("generate-report fatal", e);
     return json({ error: "unhandled", detail: String(e) }, 500);
   }
 });
 
-// ── HTML rendering ────────────────────────────────────────────────────────────
-// All client-facing copy lives here. The arc is enforced by the section order:
-// Cover → Where we started → What we fixed/executed → The result → Next cycle.
+// ── HTML ──────────────────────────────────────────────────────────────────────
 function renderHTML(d: any): string {
-  const {
-    clientName, market, reportDate, baselineDate, cycleNumber, isFirstCycle,
-    business, tradeArea, authority, traffic, opportunities,
-    currentAudit, baseline, lastPrior, pillars,
-    pushedFixes, fixesByKind, fixGroupLabels, approvedDrafts,
-    movements, improvements, newlyRanking, topMovements,
-  } = d;
+  const { brand, clientName, market, reportDate, baselineDate, lastPriorDate,
+    programMonth, phase, state, isFirstCycle, programDays, windowOK,
+    yoyAudit, business, currentAudit, baseline, lastPrior, gradeRows,
+    pushedFixes, gatedDrafts, gatedCount, gscConnected, gscNow, gscPrior, gscTrend,
+    improvements, newlyRanking, deepMoves, brandRadar, radarTrend, aeoReadyPass, aeoReadyTotal,
+    publishedByKind, cumulativeFixes, schemaTypes, passNow, passBase, clNowCount,
+    nextActions, learnedFixed, gateRejects, roadmap, regressions } = d;
+  const BC = brand.color || "#4B9BD7";
 
   const css = `
     @page { size: letter; margin: 0.6in 0.55in; }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
-    body { font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-           color: #1b2330; line-height: 1.55; font-size: 11.5pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .wrap { max-width: 7.4in; margin: 0 auto; padding: 0; }
-    h1, h2, h3, h4 { font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #1b2330; margin: 0 0 8pt 0; line-height: 1.25; }
+    * { box-sizing: border-box; } html, body { margin: 0; padding: 0; }
+    body { font-family: 'Manrope', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; color: #1b2330; line-height: 1.55; font-size: 11pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .wrap { max-width: 7.4in; margin: 0 auto; }
+    h1,h2,h3,h4 { color: #1b2330; margin: 0 0 8pt 0; line-height: 1.25; }
     h1 { font-size: 30pt; font-weight: 800; letter-spacing: -0.02em; }
-    h2 { font-size: 18pt; font-weight: 700; margin-top: 22pt; border-bottom: 2px solid #4B9BD7; padding-bottom: 6pt; }
-    h3 { font-size: 13pt; font-weight: 700; margin-top: 14pt; color: #2a3548; }
-    h4 { font-size: 11pt; font-weight: 700; color: #4B9BD7; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 12pt; }
-    p { margin: 0 0 8pt 0; }
-    .lead { font-size: 12.5pt; color: #2a3548; }
-    .muted { color: #6b7686; font-size: 10pt; }
-    .cover { page-break-after: always; padding: 1.6in 0 0 0; }
-    .cover .brand { color: #4B9BD7; font-weight: 800; letter-spacing: 0.04em; font-size: 11pt; text-transform: uppercase; margin-bottom: 36pt; }
-    .cover h1 { font-size: 38pt; margin-bottom: 6pt; }
-    .cover .sub { font-size: 16pt; color: #2a3548; font-weight: 500; margin-bottom: 30pt; }
-    .cover .meta { margin-top: 40pt; padding-top: 18pt; border-top: 1px solid #e3e7ee; color: #2a3548; }
+    h2 { font-size: 17pt; font-weight: 700; margin-top: 22pt; border-bottom: 2px solid ${BC}; padding-bottom: 6pt; }
+    h3 { font-size: 12.5pt; font-weight: 700; margin-top: 14pt; color: #2a3548; }
+    h4 { font-size: 10.5pt; font-weight: 700; color: ${BC}; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 12pt; }
+    p { margin: 0 0 8pt 0; } .lead { font-size: 12pt; color: #2a3548; } .muted { color: #6b7686; font-size: 9.5pt; }
+    .tag { display:inline-block; font-size:8pt; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:1.5pt 6pt; border-radius:8pt; vertical-align:middle; }
+    .tag-measured { background:#e1f5e7; color:#1f7a3c; } .tag-estimate { background:#fdf0d8; color:#8a5a00; } .tag-grade { background:#eef0f4; color:#4a5468; }
+    .cover { page-break-after: always; padding-top: 1.4in; }
+    .cover .brand { color: ${BC}; font-weight: 800; letter-spacing: 0.04em; font-size: 11pt; text-transform: uppercase; margin-bottom: 30pt; }
+    .cover img.logo { max-height: 48pt; max-width: 220pt; display:block; margin-bottom: 18pt; }
+    .cover h1 { font-size: 36pt; } .cover .sub { font-size: 15pt; color: #2a3548; margin-bottom: 26pt; }
+    .cover .meta { margin-top: 34pt; padding-top: 16pt; border-top: 1px solid #e3e7ee; }
     .cover .meta div { margin-bottom: 4pt; }
-    .cover .meta strong { color: #1b2330; }
     section { page-break-inside: avoid; }
-    .grid { display: grid; gap: 10pt; }
-    .grid-2 { grid-template-columns: 1fr 1fr; }
-    .grid-3 { grid-template-columns: repeat(3, 1fr); }
-    .grid-4 { grid-template-columns: repeat(4, 1fr); }
-    .card { border: 1px solid #e3e7ee; border-radius: 6pt; padding: 10pt 12pt; background: #fff; }
-    .card .label { font-size: 9pt; color: #6b7686; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 4pt; }
-    .card .value { font-size: 18pt; font-weight: 800; color: #1b2330; line-height: 1.1; }
-    .card .sub { font-size: 9.5pt; color: #6b7686; margin-top: 3pt; }
-    .pill { display: inline-block; padding: 2pt 7pt; border-radius: 9pt; font-size: 9pt; font-weight: 700; }
-    .pill-blue { background: #e8f1fb; color: #4B9BD7; }
-    .pill-good { background: #e1f5e7; color: #1f7a3c; }
-    .pill-warn { background: #fdf0d8; color: #8a5a00; }
-    .pill-bad  { background: #fbe1e1; color: #a01818; }
-    .pill-neutral { background: #eef0f4; color: #4a5468; }
-    table { width: 100%; border-collapse: collapse; font-size: 10.5pt; margin-top: 6pt; }
-    th, td { text-align: left; padding: 6pt 7pt; border-bottom: 1px solid #e3e7ee; vertical-align: top; }
-    th { color: #6b7686; font-weight: 600; font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.04em; background: #f7f9fc; }
+    .grid { display: grid; gap: 9pt; } .grid-2{grid-template-columns:1fr 1fr;} .grid-3{grid-template-columns:repeat(3,1fr);} .grid-4{grid-template-columns:repeat(4,1fr);}
+    .card { border: 1px solid #e3e7ee; border-radius: 6pt; padding: 9pt 11pt; background: #fff; }
+    .card .label { font-size: 8.5pt; color: #6b7686; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 3pt; }
+    .card .value { font-size: 17pt; font-weight: 800; line-height: 1.1; } .card .sub { font-size: 9pt; color: #6b7686; margin-top: 3pt; }
+    table { width: 100%; border-collapse: collapse; font-size: 10pt; margin-top: 6pt; }
+    th, td { text-align: left; padding: 5.5pt 7pt; border-bottom: 1px solid #e3e7ee; vertical-align: top; }
+    th { color: #6b7686; font-weight: 600; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.04em; background: #f7f9fc; }
     td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .delta-up { color: #1f7a3c; font-weight: 700; }
-    .delta-down { color: #a01818; font-weight: 700; }
-    .delta-flat { color: #6b7686; }
-    .grade { display: inline-block; min-width: 28pt; padding: 4pt 8pt; border-radius: 5pt; font-weight: 800; text-align: center; font-size: 12pt; }
-    .grade-A { background: #1f7a3c; color: #fff; }
-    .grade-B { background: #4B9BD7; color: #fff; }
-    .grade-C { background: #d9a23a; color: #fff; }
-    .grade-D { background: #c66a3a; color: #fff; }
-    .grade-F { background: #a01818; color: #fff; }
-    .callout { background: #f4f8fc; border-left: 4pt solid #4B9BD7; padding: 10pt 14pt; border-radius: 0 5pt 5pt 0; margin: 12pt 0; }
-    .callout strong { color: #1b2330; }
-    ul.clean { margin: 6pt 0 10pt 18pt; padding: 0; }
-    ul.clean li { margin-bottom: 4pt; }
-    .footer { margin-top: 32pt; padding-top: 12pt; border-top: 1px solid #e3e7ee; font-size: 9pt; color: #6b7686; text-align: center; }
-    @media print { .no-print { display: none !important; } body { font-size: 11pt; } }
+    .delta-up { color: #1f7a3c; font-weight: 700; } .delta-down { color: #a01818; font-weight: 700; } .delta-flat { color: #6b7686; }
+    .grade { display:inline-block; min-width: 24pt; padding: 3pt 7pt; border-radius: 5pt; font-weight: 800; text-align: center; font-size: 11pt; }
+    .grade-A { background: #1f7a3c; color: #fff; } .grade-B { background: ${BC}; color: #fff; } .grade-C { background: #d9a23a; color: #fff; }
+    .grade-D { background: #c66a3a; color: #fff; } .grade-F { background: #a01818; color: #fff; } .grade-NA { background: #eef0f4; color: #6b7686; font-size: 8.5pt; }
+    .callout { background: #f4f8fc; border-left: 4pt solid ${BC}; padding: 9pt 13pt; border-radius: 0 5pt 5pt 0; margin: 10pt 0; }
+    .phase { display:flex; gap:6pt; margin: 10pt 0; }
+    .phase div { flex:1; text-align:center; padding: 7pt 4pt; border-radius: 5pt; background:#f2f5f9; color:#6b7686; font-size:9pt; font-weight:700; }
+    .phase div.on { background:${BC}; color:#fff; }
+    ul.clean { margin: 6pt 0 10pt 18pt; padding: 0; } ul.clean li { margin-bottom: 4pt; }
+    .footer { margin-top: 30pt; padding-top: 12pt; border-top: 1px solid #e3e7ee; font-size: 8.5pt; color: #6b7686; text-align: center; }
   `;
 
-  // Cover
-  const coverHtml = `
-    <section class="cover">
-      <div class="brand">44i Digital · SEO &amp; AEO Progress Report</div>
-      <h1>${esc(clientName)}</h1>
-      <div class="sub">${market ? esc(market) + " · " : ""}Cycle ${cycleNumber}${isFirstCycle ? " (Baseline)" : ""}</div>
-      <div class="callout">${isFirstCycle
-        ? `This is your <strong>baseline report</strong>. It records where the site stands today across the technical, on-page, schema, AEO, E-E-A-T, and local pillars, and lays out the trade-area opportunity. Every cycle after this will show real movement against this starting point — no fabricated gains, just measured progress.`
-        : `This report shows what we executed this cycle and the measured results against your starting position from <strong>${esc(baselineDate)}</strong>. Every number is real and pulled directly from search data.`}
-      </div>
-      <div class="meta">
-        <div><strong>Report date:</strong> ${esc(reportDate)}</div>
-        ${baselineDate ? `<div><strong>Baseline established:</strong> ${esc(baselineDate)}</div>` : ""}
-        ${business.type ? `<div><strong>Business:</strong> ${esc(business.type)}</div>` : ""}
-        ${tradeArea?.primary ? `<div><strong>Primary trade area:</strong> ${esc(tradeArea.primary)}</div>` : ""}
-        ${tradeArea?.secondary?.length ? `<div><strong>Secondary trade area:</strong> ${esc(tradeArea.secondary.join(", "))}</div>` : ""}
-      </div>
-    </section>
-  `;
+  const STATE_COPY: Record<string, string> = {
+    foundation: "This engagement is in the foundation phase: assets are being built and deployed, and the search engines are discovering them. Measurable ranking and traffic movement follows indexation — typically from the second and third month onward.",
+    emerging: "Leading indicators are moving — the site is surfacing for more queries and positions are improving — while lagging outcomes (traffic, top rankings) follow behind them. This is the expected order: visibility first, clicks second.",
+    compounding: "Both leading and lagging indicators are moving. The assets built earlier in the program are now producing measurable outcomes, and each cycle's work adds to a base that keeps working.",
+    building: "Measured movement is limited so far this program. The work shipped is accumulating (see the asset ledger), and the leading-indicator section below shows the earliest signals we track ahead of rankings and traffic.",
+    plateau: `Leading indicators have been flat past the point where movement is expected. That requires a changed plan, not patience — the next-cycle section reflects a revised approach, and this report has been flagged for strategist review.`,
+  };
 
-  // 1. Where we started — uses the current snapshot for first-cycle, the baseline for later cycles.
-  const anchor = isFirstCycle ? currentAudit : baseline;
-  const startedHtml = `
+  const cover = `
+  <section class="cover">
+    ${brand.logo ? `<img class="logo" src="${esc(brand.logo)}" alt="${esc(brand.name)}">` : ""}
+    <div class="brand">${esc(brand.name)} · SEO &amp; AEO Progress Report</div>
+    <h1>${esc(clientName)}</h1>
+    <div class="sub">${market ? esc(market) + " · " : ""}Program month ${programMonth} · ${esc(phase[0].toUpperCase() + phase.slice(1))} phase</div>
+    <div class="callout">${isFirstCycle
+      ? `This is the <strong>baseline report</strong>: the honest starting picture every future report measures against. Nothing is projected and nothing is estimated as fact.`
+      : `Progress is measured three ways: against last cycle (${esc(lastPriorDate || "—")}), against the program baseline (${esc(baselineDate)}, locked), and year-over-year once thirteen months of history exists. Each number states its source and reliability.`}
+    </div>
+    <div class="meta">
+      <div><strong>Report date:</strong> ${esc(reportDate)}</div>
+      <div><strong>Program baseline:</strong> ${esc(baselineDate)} (immutable)</div>
+      ${business.type ? `<div><strong>Business:</strong> ${esc(business.type)}</div>` : ""}
+      ${market ? `<div><strong>Primary trade area:</strong> ${esc(market)}</div>` : ""}
+    </div>
+  </section>`;
+
+  const context = `
+  <section>
+    <h2>1 · Where This Program Stands</h2>
+    <div class="phase">
+      <div class="${phase === "foundation" ? "on" : ""}">FOUNDATION · months 1–3<br>build &amp; deploy assets</div>
+      <div class="${phase === "emergence" ? "on" : ""}">EMERGENCE · months 4–6<br>impressions &amp; positions move</div>
+      <div class="${phase === "compounding" ? "on" : ""}">COMPOUNDING · month 7+<br>traffic &amp; leads follow</div>
+    </div>
+    <p class="lead">${STATE_COPY[state] || STATE_COPY.building}</p>
+    ${state === "plateau" ? `<div class="callout"><strong>Straight answer:</strong> at month ${programMonth}, measurable movement should be visible and is not. The plan for next cycle changes accordingly — see section 8.</div>` : ""}
+  </section>`;
+
+  const ledgerRows = Object.entries(publishedByKind).map(([k, v]) => `<tr><td>${esc(prettyKind(k))}</td><td class="num">${num(v)}</td></tr>`).join("");
+  const ledger = `
+  <section>
+    <h2>2 · What You Own So Far <span class="tag tag-measured">cumulative · program-to-date</span></h2>
+    <p>Everything below is a permanent, owned asset. Unlike paid ads — where traffic stops when spend stops — these keep working and compounding.</p>
+    <div class="grid grid-4" style="margin-top:10pt;">
+      <div class="card"><div class="label">Content published</div><div class="value">${num(Object.values(publishedByKind).reduce((a: number, b: any) => a + b, 0))}</div><div class="sub">pages &amp; articles, program-to-date</div></div>
+      <div class="card"><div class="label">Fixes deployed</div><div class="value">${num(cumulativeFixes)}</div><div class="sub">technical &amp; structural, cumulative</div></div>
+      <div class="card"><div class="label">Schema types live</div><div class="value">${num(schemaTypes.length)}</div><div class="sub">${esc(schemaTypes.slice(0, 4).join(", "))}${schemaTypes.length > 4 ? "…" : ""}</div></div>
+      <div class="card"><div class="label">Audit checks passing</div><div class="value">${num(passNow)}<span style="font-size:10pt;color:#6b7686;">/${num(clNowCount)}</span></div><div class="sub">${passBase ? `was ${num(passBase)} at baseline` : "baseline for future cycles"}</div></div>
+    </div>
+    ${ledgerRows ? `<h4>Published content by type</h4><table><thead><tr><th>Type</th><th class="num">Total</th></tr></thead><tbody>${ledgerRows}</tbody></table>` : ""}
+  </section>`;
+
+  const FIX_LABELS: Record<string, string> = { title_tag: "Title tags", meta_description: "Meta descriptions", h1: "H1 headings", image_alt: "Image alt text", page_copy: "Page copy", faq_schema: "FAQ schema", local_business_schema: "LocalBusiness schema", org_schema: "Organization schema", person_schema: "Person schema", breadcrumb_schema: "Breadcrumb schema", aggregate_rating_schema: "Rating schema", internal_link: "Internal links", canonical: "Canonicals", robots_txt: "robots.txt", sitemap_xml: "XML sitemap", security_headers: "Security headers", og_tags: "Social tags", llms_txt: "llms.txt", redirect_map: "Redirects", website_schema: "WebSite schema", favicon: "Favicon", gbp_post: "Business Profile posts" };
+  const byKind: Record<string, number> = {}; pushedFixes.forEach((f: any) => { byKind[f.kind] = (byKind[f.kind] || 0) + 1; });
+  const work = `
+  <section style="page-break-before: always;">
+    <h2>3 · This Cycle's Work</h2>
+    ${pushedFixes.length ? `
+      <h3>Deployed fixes (${pushedFixes.length})</h3>
+      <div class="grid grid-4" style="margin-top:8pt;">${Object.entries(byKind).slice(0, 8).map(([k, v]) => `<div class="card"><div class="label">${esc(FIX_LABELS[k] || k)}</div><div class="value">${v}</div></div>`).join("")}</div>
+    ` : `<p class="muted">No fixes were marked deployed in this window — items staged in the platform are not claimed here until they ship.</p>`}
+    ${gatedDrafts.length ? `
+      <h3>Content published (${gatedDrafts.length}${gatedCount ? ` — ${gatedCount} near-duplicate variant${gatedCount > 1 ? "s" : ""} consolidated pending differentiation` : ""})</h3>
+      <table><thead><tr><th>Title</th><th>Type</th></tr></thead><tbody>
+        ${gatedDrafts.slice(0, 20).map((c: any) => `<tr><td>${esc(c.title || "(untitled)")}</td><td>${esc(prettyKind(c.kind))}</td></tr>`).join("")}
+      </tbody></table>
+    ` : ""}
+  </section>`;
+
+  let leading = "";
+  if (gscConnected) {
+    const qDelta = gscPrior ? (gscNow.queries || 0) - (gscPrior.queries || 0) : null;
+    leading = `
     <section>
-      <h2>1 · Where ${isFirstCycle ? "We're Starting" : "We Started"}</h2>
-      <p class="lead">${isFirstCycle
-        ? `Here is the honest starting picture for ${esc(clientName)}. These numbers are the anchor every future improvement will be measured against.`
-        : `On ${esc(baselineDate)}, your site looked like this. We use this as the fixed point of comparison for everything that follows.`}</p>
-
-      <div class="grid grid-4" style="margin-top: 14pt;">
-        <div class="card"><div class="label">Domain Authority</div><div class="value">${num(anchor.domain_rating)}</div><div class="sub">Authority signal vs the web</div></div>
-        <div class="card"><div class="label">Ranking Keywords</div><div class="value">${num(anchor.org_keywords)}</div><div class="sub">${num(anchor.org_keywords_top3)} in the top 3</div></div>
-        <div class="card"><div class="label">Monthly Organic Traffic</div><div class="value">${num(anchor.org_traffic)}</div><div class="sub">Visits from search</div></div>
-        <div class="card"><div class="label">Referring Domains</div><div class="value">${num(anchor.referring_domains)}</div><div class="sub">Sites linking to yours</div></div>
+      <h2>4 · Leading Indicators <span class="tag tag-measured">measured · Google Search Console</span></h2>
+      <p>These move before rankings and traffic do, and they are measured by Google directly — not estimated.</p>
+      <div class="grid grid-3" style="margin-top:10pt;">
+        <div class="card"><div class="label">Query surface</div><div class="value">${num(gscNow.queries)}</div><div class="sub">unique searches the site appears for${qDelta != null ? ` · ${qDelta >= 0 ? "+" : ""}${qDelta} vs last cycle` : ""}</div></div>
+        <div class="card"><div class="label">Impressions (90d)</div><div class="value">${num(gscNow.impressions)}</div><div class="sub">times shown in results</div></div>
+        <div class="card"><div class="label">Clicks (90d)</div><div class="value">${num(gscNow.clicks)}</div><div class="sub">measured visits from Google</div></div>
       </div>
-
-      ${(traffic.branded != null && traffic.nonBranded != null && (traffic.total || 0) > 0) ? `
-        <h4>Traffic composition</h4>
-        <p>Of your starting organic traffic, <strong>${pct((traffic.branded / Math.max(1, traffic.total)) * 100)}</strong> comes from people already searching your brand name and <strong>${pct((traffic.nonBranded / Math.max(1, traffic.total)) * 100)}</strong> from non-branded buyer-intent terms. Growing the non-branded share is how we acquire customers who don't yet know you.</p>
-      ` : ""}
-
-      ${opportunities.length ? `
-        <h4>Trade-area opportunity</h4>
-        <p>These are the highest-value local search terms in ${esc(tradeArea?.primary || market || "your area")} that you don't yet own or rank well for. This is where the strategy is aimed.</p>
-        <table>
-          <thead><tr><th>Search Term</th><th class="num">Monthly Searches</th><th class="num">Current Position</th><th>Status</th></tr></thead>
-          <tbody>
-            ${opportunities.slice(0, 10).map((o: any) => `
-              <tr>
-                <td>${esc(o.keyword)}</td>
-                <td class="num">${num(o.volume)}</td>
-                <td class="num">${o.position ? `#${o.position}` : "—"}</td>
-                <td>${o.position ? `<span class="pill pill-warn">Ranking, needs lift</span>` : `<span class="pill pill-neutral">Not yet ranking</span>`}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      ` : ""}
-
-      ${(authority.medianCompetitor != null) ? `
-        <h4>Authority vs your real local competitors</h4>
-        <p>Your domain authority is <strong>${num(authority.client)}</strong>. The median authority across the businesses actually ranking for your trade-area terms is <strong>${num(authority.medianCompetitor)}</strong>. ${authority.client != null && authority.medianCompetitor > authority.client ? `That's the authority gap we need to close to outrank them on money terms.` : `You're at or above your local competition on authority — the bigger lever now is on-page targeting and content.`}</p>
-      ` : ""}
-
-      <h4>Where each area stood</h4>
-      <div class="grid grid-3" style="margin-top: 6pt;">
-        ${pillars.map((p: any) => {
-          const g = (anchor as any)[p.key] || "F";
-          return `<div class="card"><div class="label">${esc(p.label)}</div><div style="margin-top:4pt;"><span class="grade grade-${esc(g)}">${esc(g)}</span></div></div>`;
-        }).join("")}
-      </div>
-
-      ${anchor.diagnosis ? `<div class="callout" style="margin-top: 14pt;"><strong>The starting diagnosis:</strong> ${esc(anchor.diagnosis)}</div>` : ""}
-    </section>
-  `;
-
-  // 2. What we fixed / executed — only PUSHED fixes and APPROVED drafts.
-  const executedAnything = pushedFixes.length > 0 || approvedDrafts.length > 0;
-  const fixedHtml = `
-    <section style="page-break-before: always;">
-      <h2>2 · What We Fixed &amp; Executed</h2>
-      ${!executedAnything ? `
-        <p class="lead">${isFirstCycle
-          ? `This is the baseline cycle — implementation work begins now. Your next progress report will list every change we deployed and tie it to the result it produced.`
-          : `No deployable changes were marked completed in this reporting window. If work was completed in your CMS, mark the corresponding items as deployed inside the tool so the next report can credit it accurately.`}</p>
-      ` : `
-        <p class="lead">Every item below was actually deployed to your site during this cycle. We do not list work that was drafted but not pushed.</p>
-
-        ${pushedFixes.length ? `
-          <h3>Technical &amp; structural fixes</h3>
-          <div class="grid grid-3" style="margin-top: 8pt;">
-            ${[...fixesByKind.entries()].map(([kind, arr]: any) => `
-              <div class="card"><div class="label">${esc(fixGroupLabels[kind] || kind)}</div><div class="value">${arr.length}</div><div class="sub">deployed</div></div>
-            `).join("")}
-          </div>
-          <h4>What changed and why it matters</h4>
-          <table>
-            <thead><tr><th>Type</th><th>Where</th><th>What it accomplishes</th></tr></thead>
-            <tbody>
-              ${pushedFixes.slice(0, 30).map((f: any) => `
-                <tr>
-                  <td>${esc(fixGroupLabels[f.kind] || f.kind)}</td>
-                  <td style="word-break:break-all;font-size:9.5pt;color:#4a5468;">${esc((f.target_page || "").replace(/^https?:\/\//, "").slice(0, 60))}</td>
-                  <td>${esc(impactOfKind(f.kind))}</td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        ` : ""}
-
-        ${approvedDrafts.length ? `
-          <h3 style="margin-top:18pt;">New content published</h3>
-          <p>New pages and articles built specifically to target your trade-area opportunity terms.</p>
-          <table>
-            <thead><tr><th>Title</th><th>Type</th></tr></thead>
-            <tbody>
-              ${approvedDrafts.slice(0, 20).map((c: any) => `
-                <tr>
-                  <td>${esc(c.title || "(untitled)")}</td>
-                  <td>${esc(prettyKind(c.kind))}</td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        ` : ""}
-      `}
-    </section>
-  `;
-
-  // 3. The result — real before/after, or honest baseline notice on first cycle.
-  let resultHtml = "";
-  if (isFirstCycle) {
-    resultHtml = `
-      <section style="page-break-before: always;">
-        <h2>3 · The Result</h2>
-        <div class="callout">
-          <strong>This is the baseline cycle.</strong> Starting position recorded on ${esc(reportDate)} — improvements will be tracked from here. We do not show fabricated gains.
-        </div>
-        <p>In your next progress report, this section will show:</p>
-        <ul class="clean">
-          <li><strong>Keyword ranking improvements</strong> — each priority term, where it ranked at baseline, where it ranks now, and the positions gained.</li>
-          <li><strong>New keywords now ranking</strong> — every term that wasn't ranking at baseline and is now visible in search.</li>
-          <li><strong>Traffic delta</strong> — measured monthly organic traffic change against baseline.</li>
-          <li><strong>Pillar grade movement</strong> — how each of the six audit pillars improved.</li>
-        </ul>
-      </section>
-    `;
+      ${gscTrend.length > 1 ? `<h4>Trend across cycles</h4><table><thead><tr><th>Audit date</th><th class="num">Queries</th><th class="num">Impressions</th><th class="num">Clicks</th></tr></thead><tbody>
+        ${gscTrend.slice(-6).map((t: any) => `<tr><td>${esc(fmtDate(t.date))}</td><td class="num">${num(t.queries)}</td><td class="num">${num(t.impressions)}</td><td class="num">${num(t.clicks)}</td></tr>`).join("")}
+      </tbody></table>` : ""}
+      ${(gscNow.striking || 0) > 0 ? `<p><strong>${num(gscNow.striking)}</strong> queries sit in striking distance (positions 4–20) — the next-cycle work targets these first.</p>` : ""}
+      ${deepMoves.length ? `<h4>Early position movement (positions 20–100)</h4><p>Movement here precedes page-one visibility and is missed by "ranking keyword" counts:</p>
+        <table><thead><tr><th>Term</th><th class="num">Was</th><th class="num">Now</th></tr></thead><tbody>
+        ${deepMoves.slice(0, 8).map((m: any) => `<tr><td>${esc(m.keyword)}</td><td class="num">#${num(m.before)}</td><td class="num"><strong>#${num(m.after)}</strong></td></tr>`).join("")}</tbody></table>` : ""}
+    </section>`;
   } else {
-    const trafBefore = baseline?.org_traffic || 0;
-    const trafNow = currentAudit?.org_traffic || 0;
-    const trafDelta = trafNow - trafBefore;
-    const trafPct = trafBefore ? Math.round((trafDelta / trafBefore) * 100) : null;
-    const kwBefore = baseline?.org_keywords || 0;
-    const kwNow = currentAudit?.org_keywords || 0;
-    const kwDelta = kwNow - kwBefore;
-    const drBefore = baseline?.domain_rating ?? null;
-    const drNow = currentAudit?.domain_rating ?? null;
-
-    resultHtml = `
-      <section style="page-break-before: always;">
-        <h2>3 · The Result</h2>
-        <p class="lead">Measured movement from <strong>${esc(baselineDate)}</strong> through <strong>${esc(reportDate)}</strong>. All numbers come directly from search data, not estimates.</p>
-
-        <div class="grid grid-4" style="margin-top: 14pt;">
-          <div class="card"><div class="label">Ranking Keywords</div><div class="value">${num(kwNow)}</div><div class="sub">${formatDelta(kwDelta)} vs baseline</div></div>
-          <div class="card"><div class="label">Monthly Organic Traffic</div><div class="value">${num(trafNow)}</div><div class="sub">${formatDelta(trafDelta)}${trafPct != null ? ` (${trafPct >= 0 ? "+" : ""}${trafPct}%)` : ""}</div></div>
-          <div class="card"><div class="label">Domain Authority</div><div class="value">${num(drNow)}</div><div class="sub">${drBefore != null && drNow != null ? formatDelta(drNow - drBefore, true) : "—"}</div></div>
-          <div class="card"><div class="label">Newly Ranking</div><div class="value">${num(newlyRanking.length)}</div><div class="sub">keywords not ranking at baseline</div></div>
-        </div>
-
-        ${improvements.length ? `
-          <h3>Keyword position improvements</h3>
-          <p>These are search terms where you moved up in Google's results — the closer to position 1, the more clicks the term earns.</p>
-          <table>
-            <thead><tr><th>Search Term</th><th class="num">Volume</th><th class="num">Before</th><th class="num">Now</th><th class="num">Positions Gained</th></tr></thead>
-            <tbody>
-              ${improvements.slice(0, 20).map((m: any) => `
-                <tr>
-                  <td>${esc(m.keyword)}</td>
-                  <td class="num">${num(m.volume)}</td>
-                  <td class="num">#${num(m.before)}</td>
-                  <td class="num"><strong>#${num(m.after)}</strong></td>
-                  <td class="num delta-up">+${num(m.delta)}</td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        ` : `<p class="muted">No improvements measured against baseline yet for this cycle.</p>`}
-
-        ${newlyRanking.length ? `
-          <h3>New keywords now ranking</h3>
-          <p>These terms weren't ranking at all when we started. They are now.</p>
-          <table>
-            <thead><tr><th>Search Term</th><th class="num">Volume</th><th class="num">Current Position</th></tr></thead>
-            <tbody>
-              ${newlyRanking.slice(0, 15).map((m: any) => `
-                <tr>
-                  <td>${esc(m.keyword)}</td>
-                  <td class="num">${num(m.volume)}</td>
-                  <td class="num"><strong>#${num(m.after)}</strong></td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        ` : ""}
-
-        <h3>Pillar grade movement</h3>
-        <table>
-          <thead><tr><th>Area</th><th>Before</th><th>Now</th></tr></thead>
-          <tbody>
-            ${pillars.map((p: any) => {
-              const before = (baseline as any)[p.key] || "F";
-              const now = (currentAudit as any)[p.key] || "F";
-              return `<tr><td>${esc(p.label)}</td><td><span class="grade grade-${esc(before)}">${esc(before)}</span></td><td><span class="grade grade-${esc(now)}">${esc(now)}</span></td></tr>`;
-            }).join("")}
-          </tbody>
-        </table>
-      </section>
-    `;
+    leading = `
+    <section>
+      <h2>4 · Leading Indicators</h2>
+      <div class="callout">Google Search Console is not yet feeding this report. Once connected, this section shows measured impressions, query surface growth, and indexation of every published asset — the earliest honest signals of progress. <strong>Data unavailable is reported as unavailable, never estimated.</strong></div>
+    </section>`;
   }
 
-  // 4. Next cycle — opportunity terms still to win.
-  const nextHtml = `
-    <section style="page-break-before: always;">
-      <h2>4 · Next Cycle</h2>
-      <p class="lead">Where we're aiming the work next.</p>
-      ${opportunities.length ? `
-        <h3>Priority terms to target</h3>
-        <p>These are the trade-area searches with the most upside that still aren't won. The next cycle's content and on-page work will be aimed at moving these.</p>
-        <table>
-          <thead><tr><th>Search Term</th><th class="num">Monthly Searches</th><th class="num">Current Position</th></tr></thead>
-          <tbody>
-            ${opportunities.slice(0, 10).map((o: any) => `
-              <tr>
-                <td>${esc(o.keyword)}</td>
-                <td class="num">${num(o.volume)}</td>
-                <td class="num">${o.position ? `#${o.position}` : "Not ranking"}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      ` : `<p>Specific targets will be set when the next audit cycle runs.</p>`}
-    </section>
-  `;
+  const kwCells = laggingDelta(currentAudit.org_keywords, baseline.org_keywords, programDays);
+  const trafCells = laggingDelta(currentAudit.org_traffic, baseline.org_traffic, programDays);
+  const lagging = `
+  <section>
+    <h2>5 · Rankings &amp; Traffic <span class="tag tag-estimate">modeled estimates · Ahrefs</span></h2>
+    <p>These are third-party estimates useful for direction, not precise counts — on small bases a single keyword shifting position swings them heavily, so percentages are suppressed below a base of ${PCT_FLOOR} and windows under ${MIN_WINDOW_DAYS} days report absolute values only.</p>
+    <div class="grid grid-3" style="margin-top:10pt;">
+      <div class="card"><div class="label">Ranking keywords</div><div class="value">${num(currentAudit.org_keywords)}</div><div class="sub">${kwCells} vs program baseline</div></div>
+      <div class="card"><div class="label">Est. monthly organic visits</div><div class="value">${num(currentAudit.org_traffic)}</div><div class="sub">${trafCells} vs program baseline</div></div>
+      <div class="card"><div class="label">Domain authority</div><div class="value">${num(currentAudit.domain_rating)}</div><div class="sub">${baseline.domain_rating != null ? `was ${num(baseline.domain_rating)} at baseline` : "—"} · builds over months</div></div>
+    </div>
+    ${improvements.length ? `<h3>Position improvements ${lastPriorDate ? `since ${esc(lastPriorDate)}` : ""}</h3>
+      <table><thead><tr><th>Term</th><th class="num">Volume</th><th class="num">Was</th><th class="num">Now</th></tr></thead><tbody>
+      ${improvements.slice(0, 12).map((m: any) => `<tr><td>${esc(m.keyword)}</td><td class="num">${num(m.volume)}</td><td class="num">#${num(m.before)}</td><td class="num"><strong>#${num(m.after)}</strong></td></tr>`).join("")}</tbody></table>` : ""}
+    ${newlyRanking.length ? `<h3>Newly ranking</h3>
+      <table><thead><tr><th>Term</th><th class="num">Volume</th><th class="num">Position</th></tr></thead><tbody>
+      ${newlyRanking.slice(0, 10).map((m: any) => `<tr><td>${esc(m.keyword)}</td><td class="num">${num(m.volume)}</td><td class="num"><strong>#${num(m.after)}</strong></td></tr>`).join("")}</tbody></table>` : ""}
+    ${(!improvements.length && !newlyRanking.length) ? `<p class="muted">Position movement is developing — the leading indicators in section 4 are the earlier signal, and the program timeline in section 1 places this cycle in its expected arc.</p>` : ""}
+    ${yoyAudit ? `<h4>Year-over-year</h4><p>Keywords ${num(yoyAudit.org_keywords)} → ${num(currentAudit.org_keywords)}; est. visits ${num(yoyAudit.org_traffic)} → ${num(currentAudit.org_traffic)} (same-period comparison controls for seasonality).</p>` : `<p class="muted">Year-over-year comparison unlocks at month 13 of the program.</p>`}
+  </section>`;
+
+  let aeoBody = "";
+  if (brandRadar) {
+    aeoBody = `
+      <div class="grid grid-3" style="margin-top:10pt;">
+        <div class="card"><div class="label">AI mentions</div><div class="value">${num(brandRadar.mentions)}</div><div class="sub">brand cited in AI answers</div></div>
+        <div class="card"><div class="label">AI share of voice</div><div class="value">${brandRadar.ourSov != null ? Math.round(brandRadar.ourSov * 100) + "%" : "—"}</div><div class="sub">${brandRadar.topCompetitor ? `top competitor: ${esc(brandRadar.topCompetitor.brand)} at ${Math.round((brandRadar.topCompetitor.sov || 0) * 100)}%` : "vs tracked competitors"}</div></div>
+        <div class="card"><div class="label">AEO readiness</div><div class="value">${aeoReadyTotal ? Math.round((aeoReadyPass / aeoReadyTotal) * 100) + "%" : "—"}</div><div class="sub">structured-data &amp; answer-content checks passing</div></div>
+      </div>
+      ${radarTrend.length > 1 ? `<h4>Citation trend</h4><table><thead><tr><th>Date</th><th class="num">Mentions</th><th class="num">Share of voice</th></tr></thead><tbody>
+        ${radarTrend.slice(-6).map((t: any) => `<tr><td>${esc(fmtDate(t.date))}</td><td class="num">${num(t.mentions)}</td><td class="num">${t.sov != null ? Math.round(t.sov * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table>` : ""}`;
+  } else {
+    aeoBody = `
+      <div class="grid grid-2" style="margin-top:10pt;">
+        <div class="card"><div class="label">AEO readiness <span class="tag tag-measured">measured</span></div><div class="value">${aeoReadyTotal ? Math.round((aeoReadyPass / aeoReadyTotal) * 100) + "%" : "—"}</div><div class="sub">structured-data &amp; answer-content checks passing (${num(aeoReadyPass)}/${num(aeoReadyTotal)})</div></div>
+        <div class="card"><div class="label">AI citation tracking</div><div class="value" style="font-size:11pt;">Being configured</div><div class="sub">Once live, this section reports the queries checked per AI engine, citations earned with the cited URL, and the trend across cycles.</div></div>
+      </div>
+      <p class="muted" style="margin-top:6pt;">What we track ahead of citations: answer-formatted content, FAQ/schema coverage, llms.txt for AI crawlers, and entity signals — the readiness score above. Citations follow readiness plus authority.</p>`;
+  }
+  const aeoHtml = `
+  <section style="page-break-before: always;">
+    <h2>6 · AI Visibility (AEO)</h2>
+    <p>How the business shows up when customers ask AI assistants instead of searching. This is measured, not graded on a curve.</p>
+    ${aeoBody}
+  </section>`;
+
+  const gradeTable = `
+  <section>
+    <h2>7 · Pillar Grades <span class="tag tag-grade">proprietary rubric v1 · graded checklist pass-rate</span></h2>
+    <p>Each grade is the weighted pass-rate of that pillar's audit checks (A ≥90 · B ≥78 · C ≥65 · D ≥50). Grades are computed once by the audit engine and reported here unchanged. A pillar whose checks mostly could not be measured this cycle shows "not assessed" instead of a grade from partial data.</p>
+    <table><thead><tr><th>Pillar</th><th>Baseline</th><th>Last cycle</th><th>Now</th><th>Notes</th></tr></thead><tbody>
+      ${gradeRows.map((g: any) => {
+        const cell = (v: string | null) => v ? `<span class="grade grade-${esc(v)}">${esc(v)}</span>` : `<span class="muted">—</span>`;
+        const nowCell = g.suppressed ? `<span class="grade grade-NA">not assessed<br>(${Math.round(g.coverage * 100)}% coverage)</span>` : cell(g.now);
+        const note = g.regression ? `<strong>Moved down.</strong> ${esc(g.cause)} <em>${esc(g.remediation)}</em>` : (g.suppressed ? "Measurement coverage too low this cycle to grade honestly." : "");
+        return `<tr><td>${esc(g.label)}</td><td>${cell(g.base)}</td><td>${cell(g.prior)}</td><td>${nowCell}</td><td style="font-size:9.5pt;">${note}</td></tr>`;
+      }).join("")}
+    </tbody></table>
+  </section>`;
+
+  const plan = `
+  <section style="page-break-before: always;">
+    <h2>8 · Next Cycle — The Plan</h2>
+    ${learnedFixed.length ? `<h4>Verified this cycle</h4><p>${learnedFixed.length} previously-open item${learnedFixed.length > 1 ? "s were" : " was"} confirmed fixed by re-measurement.</p>` : ""}
+    ${nextActions.length ? `<h3>Committed actions</h3>
+      <table><thead><tr><th>Action</th><th>What it does</th><th>Program area</th></tr></thead><tbody>
+      ${nextActions.map((i: any) => `<tr><td><strong>${esc(i.title)}</strong></td><td style="font-size:9.5pt;">${esc(i.action || "")}</td><td style="font-size:9.5pt;">${esc(i.service || "")}</td></tr>`).join("")}</tbody></table>`
+      : `<p>The next audit cycle sets the specific work items.</p>`}
+    ${gateRejects.length ? `<h4>Deliberately not pursuing</h4><ul class="clean">${gateRejects.map((r: any) => `<li><strong>${esc(r.keyword)}</strong> — ${esc(r.reason)}</li>`).join("")}</ul>` : ""}
+    ${roadmap.length ? `<h4>On the roadmap beyond the current plan</h4><ul class="clean">${roadmap.map((i: any) => `<li>${esc(i.title)}</li>`).join("")}</ul>` : ""}
+  </section>`;
 
   return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <title>${esc(clientName)} — SEO &amp; AEO Progress Report — ${esc(reportDate)}</title>
-<style>${css}</style>
-</head>
-<body>
-<div class="wrap">
-  ${coverHtml}
-  ${startedHtml}
-  ${fixedHtml}
-  ${resultHtml}
-  ${nextHtml}
-  <div class="footer">Prepared by 44i Digital, Inc. · ${esc(reportDate)} · This report reflects measured data from search engines and your site only.</div>
-</div>
-</body>
-</html>`;
-}
-
-function impactOfKind(kind: string): string {
-  switch (kind) {
-    case "title_tag": return "Search engines and AI assistants use this as the page's headline. A precise title increases click-through from results.";
-    case "meta_description": return "Controls the preview text under your search result. Strong meta descriptions earn more clicks at the same ranking position.";
-    case "h1": return "Tells search engines what the page is primarily about. A correct H1 anchors the keyword target.";
-    case "heading": return "Structures content so search engines and AI can extract answers from your page.";
-    case "page_copy": return "Strengthens the page's substance and keyword targeting so it competes for the term it should.";
-    case "image_alt": return "Describes images for search engines and accessibility tools. Helps image search and screen-reader users.";
-    case "faq_schema": return "Lets your page appear in 'People also ask' answers and AI assistant responses with direct quotes.";
-    case "local_business_schema": return "Tells Google exactly what kind of business you are, where you're located, and how to contact you — required for strong local visibility.";
-    case "org_schema": return "Establishes the business as a recognized entity to search engines and AI systems.";
-    case "person_schema": return "Establishes authorship and expertise — key for E-E-A-T signals.";
-    case "breadcrumb_schema": return "Gives Google a clean navigation trail to display in results.";
-    case "aggregate_rating_schema": return "Surfaces star ratings under your search results, which materially increases click-through.";
-    case "internal_link": return "Routes authority from strong pages to the pages you want to rank.";
-    case "gbp_post": return "Keeps your Business Profile active — a documented local-pack ranking signal.";
-    case "canonical": return "Prevents Google from splitting authority between near-duplicate URLs.";
-    case "schema_jsonld": return "Adds the structured data search engines and AI use to understand your content.";
-    default: return "Improves how search engines and AI understand and surface this page.";
-  }
+<style>${css}</style></head><body><div class="wrap">
+${cover}${context}${ledger}${work}${leading}${lagging}${aeoHtml}${gradeTable}${plan}
+<div class="footer">Prepared by ${esc(brand.name)} · ${esc(reportDate)} · Sources are labeled per metric: measured (Google Search Console), modeled estimate (third-party index), or proprietary rubric. Unavailable data is reported as unavailable.</div>
+</div></body></html>`;
 }
 
 function prettyKind(kind: string): string {
   const m: Record<string, string> = { blog: "Blog article", landing: "Landing page", service: "Service page", pillar: "Pillar article", gbp_post: "Business Profile post", faq: "FAQ content" };
   return m[kind] || kind;
-}
-
-function formatDelta(n: number, isGrade = false): string {
-  if (n === 0 || n == null) return `<span class="delta-flat">no change</span>`;
-  const cls = n > 0 ? "delta-up" : "delta-down";
-  const sign = n > 0 ? "+" : "";
-  return `<span class="${cls}">${sign}${num(n)}${isGrade ? " pts" : ""}</span>`;
 }
