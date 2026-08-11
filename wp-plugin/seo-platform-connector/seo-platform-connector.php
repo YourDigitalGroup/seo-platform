@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.5.3
+ * Version: 1.5.4
  * Author: 44i Digital
  * License: GPL-2.0+
  */
@@ -16,7 +16,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.5.3');
+define('SEOP_VERSION', '1.5.4');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -536,7 +536,10 @@ add_action('template_redirect', function () {
     if ($uri === '/llms.txt') {
         $body = get_option(SEOP_OPT_LLMS);
         if (!$body) $body = seop_llms_fallback(); // v1.4: auto-generate from real site data
-        if ($body) { header('Content-Type: text/plain; charset=utf-8'); echo $body; exit; }
+        // v1.5.4: WP has already flagged this unknown URL as a 404 by now — the
+        // body was being served with a 404 status, which crawlers (and the
+        // audit) rightly treat as "no llms.txt". Assert 200 explicitly.
+        if ($body) { status_header(200); header('Content-Type: text/plain; charset=utf-8'); echo $body; exit; }
     }
     $rules = get_option(SEOP_OPT_REDIRECTS, []);
     if (is_array($rules) && $uri) {

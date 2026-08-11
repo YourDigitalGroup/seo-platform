@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.3.1";
+const ENGINE_VERSION = "5.3.2";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -498,7 +498,15 @@ Deno.serve(async (req) => {
     [homePage, aboutPage].forEach((p: any) => p && (p.schemaTypes || []).forEach((t: string) => allSchema.add(t)));
     const schemaPresent = EXPECT_SCHEMA.filter((t) => allSchema.has(t) || (t === "Organization" && allSchema.has("LocalBusiness")));
     const hasFAQ = allSchema.has("FAQPage");
-    const questionHeads = (homePage?.aeo?.questionHeadings || 0) + (aboutPage?.aeo?.questionHeadings || 0);
+    // Question headings live on BLOG/FAQ pages, not the homepage — count every
+    // sampled page (deduped by URL; crawl-path pages carry a 0 stub, so a
+    // configured crawl undercounts prose signals — the fetch sample covers it).
+    let questionHeads = 0;
+    { const qhSeen = new Set<string>();
+      for (const p of [homePage, aboutPage, ...pages]) {
+        const u = p?.url; if (!p || !u || qhSeen.has(u)) continue; qhSeen.add(u);
+        questionHeads += p?.aeo?.questionHeadings || 0;
+      } }
     const hasNAP = !!(homePage?.nap?.hasPhone && homePage?.nap?.hasAddress);
     const eeat = { ...(aboutPage?.eeat || {}), ...(homePage?.eeat || {}),
       hasPerson: !!(homePage?.eeat?.hasPerson || aboutPage?.eeat?.hasPerson || allSchema.has("Person")),
