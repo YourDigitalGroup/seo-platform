@@ -4,6 +4,38 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-10 — Report engine v2 + V5.3.0 full automation
+
+Redeploy `generate-report`; run `report_baseline.sql` (adds
+clients.baseline_audit_id — the immutable engagement baseline). Console V5.3.0.
+
+- **generate-report v2** (deterministic; no LLM anywhere in the pipeline):
+  white-label branding from partner_groups (name/logo/color — was hardcoded
+  44i); immutable engagement baseline locked on the client; three time frames
+  (cycle vs last audit, program-to-date vs locked baseline, YoY at month 13);
+  program month derived from engagement start, NOT audit count (re-audit
+  testing was inflating "Cycle 10" over six days); metric tiers (GSC =
+  measured fact, Ahrefs = labeled estimate never headlined, no % on base <30
+  or window <28d); GSC leading indicators (query surface, impressions,
+  clicks, striking distance, 20→100 position moves) with cross-cycle trend;
+  AEO section from Brand Radar or readiness coverage — never a bare F;
+  cumulative asset ledger (content, fixes, schema, checks passing vs
+  baseline); state-aware narrative (foundation/emergence/compounding/
+  plateau) with an expectation timeline; grade table reads the persisted
+  audit grades verbatim, suppresses pillars under 50% check coverage
+  ("not assessed"), and every regression carries a derived cause +
+  remediation (data-outage flips are named as data gaps, not site changes);
+  next-cycle plan from the directive (never a copy of the opportunity
+  table); near-duplicate city-token content consolidated in the deliverable;
+  blocking pre-send validation + churn-risk review_flags persisted in
+  packages.report_meta alongside the full input snapshot.
+- **Console**: topic allocation auto-fills from gate-checked suggestions
+  after every audit (no "Suggest topics" click); QA-flagged drafts auto-
+  rewrite after drafting (no "Auto-fix flagged" click); the report bar shows
+  a loud STALE warning when the cached report predates the latest audit
+  (the audit/report "grade divergence" was this cache) and a strategist-
+  review badge when report_meta flags churn risk.
+
 ## 2026-08-10 — Connector v1.5.1: About pages always carry trust language
 
 Re-zip + update. The audit scans the about page for literal trust words
