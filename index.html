@@ -889,7 +889,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.3.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.3.2</div>
   </div>
   </div>
 </div>
@@ -970,7 +970,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.3.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.3.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1018,7 +1018,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.3.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.3.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1172,7 +1172,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.3.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.3.2 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3509,8 +3509,12 @@ async function generatePackage(){
   try{
     const { data, error } = await sb.functions.invoke('run-audit', { body:{ client_id:c.id } });
     if(error || (data && data.error)){
-      console.error('run-audit', error, data);
-      showToast('Audit failed: '+((data&&data.error)||error?.message||'see console'), true);
+      // supabase-js wraps every non-2xx as "Edge Function returned a non-2xx
+      // status code" — always dig the function's real error body out.
+      let body=null; try{ body=await error?.context?.json(); }catch(_){}
+      console.error('run-audit', error, data||body);
+      const why=(data&&data.error)||(body&&(String(body.error||'')+(body.detail?': '+String(body.detail).slice(0,140):'')))||error?.message||'see console';
+      showToast('Audit failed: '+why, true);
       c.pkg_status='none'; renderPackage();
     } else {
       c.pkg_status='ready'; c.last_audit=new Date().toISOString().slice(0,10);
