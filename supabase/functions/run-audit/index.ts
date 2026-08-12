@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.4.0";
+const ENGINE_VERSION = "5.4.1";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -328,7 +328,7 @@ Deno.serve(async (req) => {
     ].map((s) => s.trim()).filter((s) => s && primaryCity))).slice(0, 8);
     const compTally = new Map<string, { domain: string; hits: number; localPack: boolean; dr: number | null; traffic: number | null }>();
     for (const seed of localSeeds) {
-      const so = await ah("serp-overview", { keyword: seed, country: COUNTRY, top_positions: String(SERP_TOP), select: "position,type,url,domain_rating,traffic" });
+      const so = await ah("serp-overview/serp-overview", { keyword: seed, country: COUNTRY, top_positions: String(SERP_TOP), select: "position,type,url,domain_rating,traffic" });
       const seen = new Set<string>();
       for (const p of (so?.positions ?? [])) {
         const types = ([] as string[]).concat(p.type || []);
@@ -669,7 +669,7 @@ Deno.serve(async (req) => {
     //        back to lab data, then to our own TTFB/payload heuristics.
     let psi: any = null;
     try {
-      const PSI_KEY = Deno.env.get("PAGESPEED_API_KEY") || "";
+      const PSI_KEY = Deno.env.get("PAGESPEED_API_KEY") || Deno.env.get("GOOGLE_PLACES_API_KEY") || ""; // keyless PSI shares a tiny per-IP quota across all of Supabase — always use a key
       const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 45000);
       const pr = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(home)}&strategy=mobile&category=performance${PSI_KEY ? `&key=${PSI_KEY}` : ""}`, { signal: ctrl.signal });
       clearTimeout(timer);
@@ -699,10 +699,12 @@ Deno.serve(async (req) => {
     let brandRadar: any = null;
     {
       const common: Record<string, string> = { data_source: AI_SOURCES, country: COUNTRY };
+      // Without a report_id the endpoint 400s ("Custom prompts require a
+      // report_id") on this plan — skip the guaranteed failure instead of
+      // logging two errors per audit; the AEO checks go na as before.
       if (client.brand_radar_report_id) common.report_id = String(client.brand_radar_report_id);
-      else { common.brand = businessName; if (competitorNames) common.competitors = competitorNames; }
-      const sov = await ah("brand-radar/sov-overview", { ...common });
-      const men = await ah("brand-radar/mentions-overview", { ...common, select: "brand,total,only_target_brand,only_competitors_brands,target_and_competitors_brands" });
+      const sov = !client.brand_radar_report_id ? null : await ah("brand-radar/sov-overview", { ...common });
+      const men = !client.brand_radar_report_id ? null : await ah("brand-radar/mentions-overview", { ...common, select: "brand,total,only_target_brand,only_competitors_brands,target_and_competitors_brands" });
       if (sov?.metrics || men?.metrics) {
         const sovRows = sov?.metrics ?? []; const menRows = men?.metrics ?? [];
         const norm = (s: string) => String(s || "").toLowerCase();
