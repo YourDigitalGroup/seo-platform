@@ -172,6 +172,6 @@ Deno.serve(async (req) => {
     return json({ ok: true, draft_id, revision: newRev, model: apiModel, kind: topic.kind, chars: body.length, usage });
   } catch (e) {
     console.error("generate-content fatal", e);
-    return json({ error: "unhandled", detail: String(e) }, 500);
+    return json({ error: "unhandled", detail: String((e as any)?.stack || e).slice(0, 500) }, 500);
   }
 });

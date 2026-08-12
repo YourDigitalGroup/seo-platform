@@ -101,6 +101,6 @@ Deno.serve(async (req) => {
       skipped_fresh: mode === "daily-audits" ? active.length - targets.length : undefined });
   } catch (e) {
     console.error("run-scheduled fatal", e);
-    return json({ error: "unhandled", detail: String(e) }, 500);
+    return json({ error: "unhandled", detail: String((e as any)?.stack || e).slice(0, 500) }, 500);
   }
 });

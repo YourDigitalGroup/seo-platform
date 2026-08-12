@@ -309,7 +309,7 @@ Deno.serve(async (req) => {
       deltas: { improvements: improvements.length, newlyRanking: newlyRanking.length, executedFixes: (pushedFixes || []).length, publishedContent: gatedDrafts.length } });
   } catch (e) {
     console.error("generate-report fatal", e);
-    return json({ error: "unhandled", detail: String(e) }, 500);
+    return json({ error: "unhandled", detail: String((e as any)?.stack || e).slice(0, 500) }, 500);
   }
 });
 

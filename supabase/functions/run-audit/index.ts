@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.4.1";
+const ENGINE_VERSION = "5.4.2";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -1493,6 +1493,6 @@ Deno.serve(async (req) => {
       notes: note, ahrefs_errors: errors });
   } catch (e) {
     console.error("run-audit fatal", e);
-    return json({ error: "unhandled", detail: String(e), ahrefs_errors: errors }, 500);
+    return json({ error: "unhandled", detail: String((e as any)?.stack || e).slice(0, 500), ahrefs_errors: errors }, 500);
   }
 });

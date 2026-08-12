@@ -110,6 +110,6 @@ Deno.serve(async (req) => {
     }
     return json({ ok: true, suggestions: out, rejected });
   } catch (e) {
-    return json({ error: "unhandled", detail: String(e) }, 500);
+    return json({ error: "unhandled", detail: String((e as any)?.stack || e).slice(0, 500) }, 500);
   }
 });
