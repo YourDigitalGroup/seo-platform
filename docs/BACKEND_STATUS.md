@@ -4,6 +4,16 @@ Last reconciled: 2026-06-22. This repo's live artifact is `index.html` (FTP-depl
 on push to `main`). The backend (Supabase Edge Functions + SQL) is **not** part of the
 deployed site and is excluded from the FTP action.
 
+## 2026-08-11 — Scheduling: daily audits, weekly reports
+
+New `run-scheduled` Edge Function + `schedules.sql` (pg_cron + pg_net +
+Vault). Daily 11:00 UTC: audit-only re-run for every active client
+(least-recently-audited first, 20/run cap, skips <20h-fresh, dispatched to
+background so the dispatcher never times out). Mondays 13:00 UTC: rebuilds
+every client's white-label progress report after that morning's audits.
+Setup: two vault.create_secret() calls + run schedules.sql + deploy
+run-scheduled (see runbook 1a-2).
+
 ## 2026-08-10 — Report engine v2 + V5.3.0 full automation
 
 Redeploy `generate-report`; run `report_baseline.sql` (adds

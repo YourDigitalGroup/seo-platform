@@ -25,6 +25,17 @@ it is one idempotent line (`alter table clients add column if not exists
 wp_api_key text;`). Without it, saving the WP API key in Platform Access
 fails with "Could not save the key", and `publish-wp` cannot push anything.
 
+## 1a-2. Scheduling — daily audits + weekly reports  (Supabase → SQL Editor)
+
+First store the two Vault secrets (once):
+`select vault.create_secret('https://YOURPROJECT.supabase.co', 'project_url');`
+`select vault.create_secret('YOUR_SERVICE_ROLE_KEY', 'service_role_key');`
+Then paste `supabase/migrations/schedules.sql` and Run, and deploy the
+`run-scheduled` Edge Function. Daily 11:00 UTC: audit-only re-run per active
+client (rotating, 20/run, skips anything audited <20h ago). Mondays 13:00 UTC:
+report rebuild per client. Verify: `select jobname, schedule from cron.job;`
+Manual fire: POST /functions/v1/run-scheduled {"mode":"daily-audits"}.
+
 ## 1b. Service catalog + contract model  (Supabase → SQL Editor)
 
 Paste the full contents of `supabase/migrations/service_catalog.sql` and Run
