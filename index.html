@@ -714,6 +714,18 @@ footer .fbadges{display:flex;gap:18px}
 .dir-main{flex:1;min-width:0}
 .dir-title{font-weight:700;color:var(--ink)}
 .dir-title .ev{color:var(--muted);font-weight:500}
+.dir-row{cursor:pointer} .dir-row.open{background:var(--mist)}
+.dir-chev{color:var(--muted);font-size:10px;margin-right:2px}
+.dir-detail{margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--s-card,#fff);cursor:default;font-size:12px}
+.dd-how{line-height:1.55;color:var(--ink)}
+.dd-note{margin-top:7px;padding:6px 9px;border-radius:6px;background:var(--s-tint-green,#e1f5e7);color:var(--s-green-text,#1f7a3c);font-weight:600;font-size:11.5px}
+.dd-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:11.5px}
+.dd-table th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:4px 6px;border-bottom:1px solid var(--line)}
+.dd-table td{padding:5px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.dd-table a{color:var(--blue-d,var(--blue));font-weight:600;word-break:break-all}
+.dd-paste{font-family:Menlo,Consolas,monospace;font-size:10.5px;background:var(--mist);padding:1px 5px;border-radius:4px}
+.dd-copy{font-size:10.5px;font-weight:700;border:1px solid var(--line);background:none;color:var(--muted);border-radius:6px;padding:2px 7px;cursor:pointer;margin-left:4px}
+.dd-copy:hover{color:var(--blue);border-color:var(--blue)}
 .dir-act{color:var(--muted);margin-top:1px;line-height:1.35}
 .dir-tags{display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:38%}
 .dir-tag{font-size:10px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:9px;background:var(--s-sunk2);color:var(--s-mut1);white-space:nowrap}
@@ -877,7 +889,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.3.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.3.1</div>
   </div>
   </div>
 </div>
@@ -958,7 +970,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.3.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.3.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1006,7 +1018,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.3.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.3.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1160,7 +1172,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.3.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.3.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2648,6 +2660,69 @@ function renderScorecard(){
   requestAnimationFrame(()=>{ const v=el.querySelector('.scring .val'); if(v) v.style.strokeDashoffset=v.dataset.off; });
 }
 // ── Plan Directive: the tier-scoped work order the audit compiled ─────────────
+// ── Directive drill-down: click any work-order row for layman WordPress
+// instructions + the exact pages needing the fix, with the AI's already-
+// written replacement copy ready to paste. Written for content specialists
+// who know WordPress and SEO but are not developers.
+const _dirOpen=new Set();
+function toggleDir(id){ if(_dirOpen.has(id))_dirOpen.delete(id); else _dirOpen.add(id); renderDirective(); }
+const DIR_AFFECT={
+  title_tag:p=>!p.title||p.titleLen<20||p.titleLen>65,
+  meta_description:p=>!p.metaDesc||p.metaLen<70||p.metaLen>165,
+  h1:p=>p.h1!==1,
+  image_alt:p=>(p.imgsNoAlt||0)>0,
+  page_copy:p=>(p.words||0)<300,
+};
+const DIR_CURRENT={
+  title_tag:p=>p.title?`“${p.title}” (${p.titleLen} chars — aim for 50–60)`:'no title tag',
+  meta_description:p=>p.metaDesc?`${p.metaLen} chars — aim for 150–160`:'missing',
+  h1:p=>`${p.h1} H1 heading${p.h1===1?'':'s'} (needs exactly 1)`,
+  image_alt:p=>`${p.imgsNoAlt} of ${p.imgs} images missing alt text`,
+  page_copy:p=>`${p.words} words (aim for 300+)`,
+};
+const DIR_HOWTO={
+  title_tag:'In WordPress, open each page below (Pages → Edit), scroll to the Yoast/Rank Math box, and paste the ready-to-paste title into <b>SEO title</b>. If no paste-ready text is shown, write 50–60 characters: main keyword + city + business name.',
+  meta_description:'Same place as the SEO title: paste the ready-to-paste text into <b>Meta description</b>, or write 150–160 characters — what the page offers plus a reason to click (call, quote, hours).',
+  h1:'Each page must have exactly one “Heading 1”. In the editor, the page title is already the H1 — click any extra H1 blocks in the body and change them to Heading 2 (select the block → heading-level dropdown).',
+  image_alt:'Media → Library → click each image → fill <b>Alternative Text</b>: describe the photo in ≤12 words (e.g. “Technician installing a network switch”). Note: the connector plugin’s weekly AI pass also fills missing alts automatically — check back after Sunday before doing these by hand.',
+  page_copy:'The pages below are too thin for Google to take seriously. Add real, useful copy — what the service includes, who it’s for, the area served — until the page passes 300 words. No filler; write what a customer would actually ask.',
+  internal_link:'Open each page below, find the first natural mention of the keyword, highlight it, click the link button (🔗), and link it to the target page. One link per page is enough. The WordPress plugin also adds these automatically on its weekly pass.',
+  gbp_post:'business.google.com → select the profile → <b>Add update</b> → paste the post text from the campaign doc. Weekly posts are a documented local-pack ranking signal.',
+  faq_schema:'This resolves through content: approve the FAQ piece on tab ③ (it’s drafted) and import the deploy file — the schema is generated automatically from the published questions.',
+  robots_txt:'Deployed automatically by the deploy file — import the latest file on the site (Settings → SEO Platform → Import package), then re-run the audit. No hand-editing.',
+};
+['sitemap_xml','canonical','redirect_map','security_headers','og_tags','llms_txt','website_schema','local_business_schema','org_schema','person_schema','breadcrumb_schema','aggregate_rating_schema','favicon'].forEach(k=>{ DIR_HOWTO[k]=DIR_HOWTO.robots_txt; });
+const DIR_HOWTO_CHECK={
+  local_pack:'This is Google Business Profile work, not website work: 1) business.google.com → verify the primary category matches the money service; 2) add 5–10 real photos; 3) post weekly (texts are in the campaign doc); 4) ask happy customers for reviews after each job (link is in the Citation Pack). Movement takes weeks — it compounds.',
+  local_intent:'Won by the town landing pages: they’re already drafted on tab ③ — approve them and they publish on schedule. Then Google has a page to rank for each “[service] [town]” search.',
+  local_geo_pages:'Approve the town × service landing pages on tab ③ — already written, they publish on schedule once approved.',
+  crawl_coverage:'44i-side setup, no site work: create an Ahrefs Site Audit project for the domain and paste its project ID into the Site Coverage card on tab ②, then run a crawl.',
+  crawl_health:'Fix the crawl errors listed in the Ahrefs Site Audit project — most are broken links or redirects the deploy file’s redirect rules already address.',
+  aeo_qheads:'Add question-formatted headings to service pages and blog posts: real customer questions as Heading 2/3 ending in “?”, each answered in the 40–60 words below it. New blog drafts already come formatted this way.',
+  eeat_about:'Publish the About Us draft (WordPress → Pages → About Us): fill any [CLIENT TO CONFIRM] gaps with real facts, click Publish, and add it to the site menu.',
+  eeat_credentials:'Add one true sentence to the About page using the words Google scans for: “certified”, “licensed”, “years of experience”, “accredited”, or “award”. Real credentials only — put them in the Credentials intake field on tab ① too.',
+};
+function dirDetail(i){
+  const how=DIR_HOWTO[i.fix_kind]||DIR_HOWTO_CHECK[i.check_id]||'';
+  const affect=DIR_AFFECT[i.fix_kind];
+  const pages=affect?((PK.raw&&PK.raw.pages)||[]).filter(affect):[];
+  const fixBy={}; (PK.fixes||[]).filter(f=>f.kind===i.fix_kind&&f.after).forEach(f=>{ fixBy[String(f.target||'').replace(/\/+$/,'')]=f; });
+  const staged=(PK.fixes||[]).some(f=>f.kind===i.fix_kind&&(f.after||f.schema)&&f.status!=='dismissed');
+  let rows='';
+  if(pages.length){
+    rows=`<table class="dd-table"><tr><th>Page</th><th>Current</th><th>Ready to paste</th></tr>`+
+      pages.slice(0,12).map(p=>{
+        const f=fixBy[String(p.url||'').replace(/\/+$/,'')];
+        const paste=f&&f.after?`<span class="dd-paste">${esc(String(f.after).slice(0,140))}</span> <button class="dd-copy" data-t="${esc(f.after)}" onclick="event.stopPropagation();navigator.clipboard.writeText(this.dataset.t);showToast('Copied — paste it in WordPress')">📋 Copy</button>`:'<span class="ev">write per the steps above</span>';
+        return `<tr><td><a href="${esc(p.url)}" target="_blank" onclick="event.stopPropagation()">${esc(String(p.url||'').replace(/^https?:\/\/[^/]+/,'')||'/')}</a></td><td>${esc((DIR_CURRENT[i.fix_kind]||(()=>''))(p))}</td><td>${paste}</td></tr>`;
+      }).join('')+`</table>`;
+  }
+  return `<div class="dir-detail" onclick="event.stopPropagation()">
+    ${how?`<div class="dd-how">${how}</div>`:''}
+    ${staged&&DIR_AFFECT[i.fix_kind]?`<div class="dd-note">✓ The AI has already written these fixes — they’re in the deploy file (tab ④). Importing it applies them; the table below is for doing any of them by hand.</div>`:''}
+    ${rows||(affect?'<div class="ev" style="margin-top:6px">No affected pages in the current sample — re-run the audit after changes to refresh this list.</div>':'')}
+  </div>`;
+}
 function renderDirective(){
   const el=document.getElementById('directive'); if(!el)return;
   const tag=document.getElementById('dir-tag');
@@ -2662,16 +2737,19 @@ function renderDirective(){
   const inPlan=open.filter(i=>i.in_plan), upsell=open.filter(i=>!i.in_plan);
   const done=items.length-open.length;
   const delta=d.progress?d.progress.delta:null;
-  const row=i=>`<div class="dir-row ${i.status==='done'?'done':''}">
+  const row=i=>{
+    const openNow=_dirOpen.has(i.check_id);
+    return `<div class="dir-row ${i.status==='done'?'done':''} ${openNow?'open':''}" onclick="toggleDir('${esc(i.check_id)}')" title="Click for step-by-step instructions and the exact pages">
     <span class="dir-dot" style="background:${SEV_C[i.severity]||'#9AA'}"></span>
     <div class="dir-main">
-      <div class="dir-title">${esc(i.title)}${i.evidence?` <span class="ev">· ${esc(i.evidence)}</span>`:''}</div>
+      <div class="dir-title"><span class="dir-chev">${openNow?'▾':'▸'}</span> ${esc(i.title)}${i.evidence?` <span class="ev">· ${esc(i.evidence)}</span>`:''}</div>
       <div class="dir-act">${esc(i.action||'')}</div>
+      ${openNow?dirDetail(i):''}
     </div>
     <div class="dir-tags"><span class="dir-tag">${esc(i.service||i.pillar||'')}</span>
       ${i.in_plan?`<span class="dir-tag st-${i.status}">${i.status}</span>`
                  :`<span class="dir-tag upsell">↑ ${esc(planLabel(i.unlock_tier))}</span>`}
-      <span class="dir-tag">+${i.points||1} pts</span></div></div>`;
+      <span class="dir-tag">+${i.points||1} pts</span></div></div>`;};
   const g=gradeOf(d.score||0);
   el.innerHTML=`<div class="dir-wrap">
     <div class="dir-head">
