@@ -143,7 +143,22 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.3.2";
+const ENGINE_VERSION = "5.4.0";
+
+/* Google Places weekday_text → the intake's compact hours format:
+ * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
+function compressHours(wd: string[]): string {
+  const DAY: Record<string, string> = { Monday: "Mo", Tuesday: "Tu", Wednesday: "We", Thursday: "Th", Friday: "Fr", Saturday: "Sa", Sunday: "Su" };
+  const rows = wd.map((l) => { const m = String(l).match(/^(\w+):\s*(.+)$/); return m ? { d: DAY[m[1]] || m[1], h: m[2].replace(/[   ]/g, " ").trim() } : null; })
+    .filter(Boolean) as { d: string; h: string }[];
+  const out: string[] = []; let i = 0;
+  while (i < rows.length) {
+    let j = i; while (j + 1 < rows.length && rows[j + 1].h === rows[i].h) j++;
+    out.push((j > i ? `${rows[i].d}-${rows[j].d}` : rows[i].d) + " " + rows[i].h);
+    i = j + 1;
+  }
+  return out.join("; ");
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -604,6 +619,49 @@ Deno.serve(async (req) => {
       const li = so(/https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[A-Za-z0-9_.\-]+/i); if (li) intakeSuggested.linkedin = li;
       const gb = so(/https?:\/\/(?:goo\.gl\/maps|maps\.app\.goo\.gl|g\.page)\/[A-Za-z0-9_.\-]+/i); if (gb) intakeSuggested.gbp = gb;
       if (Object.keys(intakeSuggested).length) note.push(`Intake: ${Object.keys(intakeSuggested).length} business facts scraped from the site, awaiting approval in the console.`);
+    }
+
+    // ── 8a-bis. GBP ENRICHMENT (Google Places API) ────────────────────────────
+    // The Business Profile is the authoritative source for NAP, hours, rating
+    // and review count — pull it directly instead of asking a human to retype
+    // it. share.google links are JS-only and can't be scraped server-side; the
+    // Places lookup keys off the business name + market, so no link is needed.
+    // Uses GOOGLE_PLACES_API_KEY, falling back to the PageSpeed key when the
+    // Places API is enabled on the same Google project. Everything found lands
+    // in intake SUGGESTIONS (approve-to-save) — GBP wins over the site scrape
+    // for overlapping fields.
+    {
+      const GKEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || Deno.env.get("PAGESPEED_API_KEY") || "";
+      if (GKEY) {
+        try {
+          const bizName = homePage?.orgName || (homePage?.title ? String(homePage.title).split(/[|\-–—:]/)[0].trim() : "") || root;
+          const q = encodeURIComponent(`${bizName} ${client.market || ""}`.trim());
+          const fp = await (await fetch(`https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${q}&inputtype=textquery&fields=place_id&key=${GKEY}`)).json();
+          const pid = fp?.candidates?.[0]?.place_id;
+          if (pid) {
+            const det = await (await fetch(`https://maps.googleapis.com/maps/api/place/details/json?place_id=${pid}&fields=name,formatted_address,formatted_phone_number,opening_hours,rating,user_ratings_total,website,types,url&key=${GKEY}`)).json();
+            const r = det?.result || {};
+            const gbpFacts: Record<string, string> = {};
+            if (r.formatted_phone_number) gbpFacts.phone = r.formatted_phone_number;
+            const am = String(r.formatted_address || "").match(/^(.*?),\s*([^,]+),\s*([A-Z]{2})\s+(\d{5})/);
+            if (am) { gbpFacts.street = am[1].trim(); gbpFacts.city = am[2].trim(); gbpFacts.state = am[3]; gbpFacts.zip = am[4]; }
+            if (r.rating != null) gbpFacts.gbp_rating = String(r.rating);
+            if (r.user_ratings_total != null) gbpFacts.gbp_reviews = String(r.user_ratings_total);
+            if (r.url) gbpFacts.gbp = String(r.url);
+            if (Array.isArray(r.opening_hours?.weekday_text)) gbpFacts.hours = compressHours(r.opening_hours.weekday_text);
+            if (Array.isArray(r.types) && r.types.length) {
+              const cats = r.types.filter((t: string) => !/point_of_interest|establishment/.test(t)).slice(0, 4).map((t: string) => t.replace(/_/g, " "));
+              if (cats.length) gbpFacts.categories = cats.join(", ");
+            }
+            if (Object.keys(gbpFacts).length) {
+              Object.assign(intakeSuggested, gbpFacts);
+              note.push(`GBP enrichment: ${Object.keys(gbpFacts).length} facts pulled from the Business Profile (rating ${gbpFacts.gbp_rating ?? "—"} · ${gbpFacts.gbp_reviews ?? "—"} reviews) — amber in the console, approve to save.`);
+            }
+          } else note.push("GBP enrichment: no Places match for the business name + market — check the client's market field.");
+        } catch (e) { errors.push(`places: ${String(e).slice(0, 120)}`); }
+      } else {
+        note.push("GBP enrichment available: set GOOGLE_PLACES_API_KEY (or enable the Places API on the PageSpeed key's project) to auto-pull NAP, hours, rating and review count from the Business Profile.");
+      }
     }
 
     // ── 8b. PERFORMANCE — Google PageSpeed Insights (free API; key optional
