@@ -889,7 +889,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.4.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.4.1</div>
   </div>
   </div>
 </div>
@@ -970,7 +970,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.4.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.4.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1018,7 +1018,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.4.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.4.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1172,7 +1172,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.4.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.4.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3546,7 +3546,14 @@ async function generatePackage(){
       // status code" — always dig the function's real error body out.
       let body=null; try{ body=await error?.context?.json(); }catch(_){}
       console.error('run-audit', error, data||body);
-      const why=(data&&data.error)||(body&&(String(body.error||'')+(body.detail?': '+String(body.detail).slice(0,140):'')))||error?.message||'see console';
+      // No JSON body = the platform killed the worker (timeout/CPU/memory)
+      // before our code could answer — surface the HTTP status so it's
+      // diagnosable from the toast (546 = resource limit).
+      const st=error?.context?.status;
+      const why=(data&&data.error)
+        ||(body&&(String(body.error||'')+(body.detail?': '+String(body.detail).slice(0,140):'')))
+        ||(st?`HTTP ${st} with no error body — usually the function hit a time/CPU/memory limit; check Edge Function logs for this invocation`:null)
+        ||error?.message||'see console';
       showToast('Audit failed: '+why, true);
       c.pkg_status='none'; renderPackage();
     } else {
