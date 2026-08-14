@@ -889,7 +889,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.3.2</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.4.0</div>
   </div>
   </div>
 </div>
@@ -970,7 +970,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.3.2</span>
+        <span>44i, Inc. · Internal Ops Console · V5.4.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1018,7 +1018,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.3.2</span>
+        <span>44i, Inc. · Internal Ops Console · V5.4.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1172,7 +1172,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.3.2 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.4.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1206,6 +1206,17 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
           <option value="12">12 months</option>
           <option value="evergreen">Evergreen — ongoing</option>
         </select>
+      </div>
+      <div class="mfield" id="m-startmonth-wrap" style="display:none"><label>Current month of campaign</label>
+        <select id="m-startmonth"></select>
+      </div>
+    </div>
+    <div class="mrow">
+      <div class="mfield" style="justify-content:center">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600">
+          <input type="checkbox" id="m-started" onchange="document.getElementById('m-startmonth-wrap').style.display=this.checked?'':'none'">
+          Campaign already started — importing mid-contract. Months before the selected one are marked delivered-elsewhere; the platform only generates the remainder.
+        </label>
       </div>
     </div>
     <div class="mrow">
@@ -1666,6 +1677,16 @@ async function seedCampaign(clientId, tier, startDate, months){
     ({ error } = await sb.from('deliverables').insert(rows.map(({cadence_type,service_template_id,...r})=>r)));
   }
   if(error) console.error('seedCampaign', error);
+  // Months already in the past at seed time were delivered outside the
+  // platform (mid-campaign import) — mark them skipped so the audit's
+  // campaign-driven generation and the roadmap never reopen them.
+  const sD=new Date(start+'T00:00:00Z'), nD=new Date();
+  const cur=Math.max(1,(nD.getUTCFullYear()-sD.getUTCFullYear())*12+(nD.getUTCMonth()-sD.getUTCMonth())+1);
+  if(cur>1){
+    const { error: skErr } = await sb.from('deliverables').update({ state:'skipped' })
+      .eq('client_id',clientId).lt('month_offset',cur).eq('state','planned');
+    if(skErr) console.warn('seedCampaign skip-past', skErr);
+  }
 }
 async function loadCampaign(){
   PK.campaign=[]; if(OFFLINE||!activeClient) return;
@@ -2163,6 +2184,9 @@ function openAddModal(){
   ['m-name','m-url','m-market'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('m-tier').value='starter'; document.getElementById('m-status').value='onboarding';
   document.getElementById('m-contract').value='6';
+  document.getElementById('m-started').checked=false;
+  document.getElementById('m-startmonth-wrap').style.display='none';
+  document.getElementById('m-startmonth').innerHTML=Array.from({length:23},(_,i)=>`<option value="${i+2}">Month ${i+2}</option>`).join('');
   document.getElementById('m-strat').innerHTML=`<option value="">— assign later —</option>`+STRATEGISTS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
   document.getElementById('modal-grp').innerHTML=`Adding to <b>${activeGroup.name}</b> — package deploys in this partner's brand. As ${ROLE_LABEL[me.role]||'staff'}, assign the SEO/AEO strategist here.`;
   document.getElementById('access-toggles').innerHTML=PLATFORMS.map(p=>`
@@ -2212,9 +2236,18 @@ async function saveClient(){
     ({data:ins, error}=await sb.from('clients').insert(legacy).select('id').single());
   }
   if(error){ console.error(error); showToast('Could not save client: '+error.message,true); return; }
+  // Mid-campaign import: backdating the engagement start is the single lever
+  // every downstream system keys off — the audit's cycle allocation, the
+  // roadmap's current month, and the report's program month all compute from
+  // engagement_start_date, so the platform only generates the remainder.
+  const started=document.getElementById('m-started')?.checked;
+  let startMonth=started?Math.max(2,parseInt(document.getElementById('m-startmonth')?.value||'2',10)):1;
+  if(!evergreen&&startMonth>lengthMonths) startMonth=lengthMonths;
+  const sd=new Date(); sd.setUTCMonth(sd.getUTCMonth()-(startMonth-1));
+  const engStart=sd.toISOString().slice(0,10);
   const lab=evergreen?'evergreen':`${lengthMonths}-month`;
-  closeAddModal(); showToast(`${name||url} added — building ${lab} campaign…`);
-  if(ins&&ins.id) await seedCampaign(ins.id, tier, new Date().toISOString().slice(0,10), evergreen?EVERGREEN_HORIZON:lengthMonths);
+  closeAddModal(); showToast(`${name||url} added — building ${lab} campaign${started?` from month ${startMonth}`:''}…`);
+  if(ins&&ins.id) await seedCampaign(ins.id, tier, engStart, evergreen?EVERGREEN_HORIZON:lengthMonths);
   await loadGroupClients(); page=0; loadPage(); renderTriage();
 }
 
