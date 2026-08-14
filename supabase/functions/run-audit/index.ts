@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.4.3";
+const ENGINE_VERSION = "5.5.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -160,14 +160,18 @@ function compressHours(wd: string[]): string {
   return out.join("; ");
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
-  if (req.method !== "POST") return json({ error: "POST only" }, 405);
+// The full audit pipeline, kept as a plain function so the HTTP handler can
+// either await it (classic mode) or hand it to the runtime's background
+// (background: true). Big sites that exercise the crawl + SERP discovery
+// paths can outlive the API gateway's patience — the gateway then answers
+// the console with a bare 504 while the platform throws the work away.
+// Background mode answers in <1s and finishes the audit regardless.
+async function runAuditPipeline(body: any): Promise<Response> {
   const errors: string[] = [];
   const note: string[] = [];   // human-readable notes about which sources were used
 
   try {
-    const { client_id, audit_only } = await req.json().catch(() => ({}));
+    const { client_id, audit_only } = body || {};
     if (!client_id) return json({ error: "client_id is required" }, 400);
     // audit_only: re-measure the site and score it against the checklist WITHOUT
     // rebuilding the campaign — no new fixes staged, no content topics created,
@@ -1495,4 +1499,54 @@ Deno.serve(async (req) => {
     console.error("run-audit fatal", e);
     return json({ error: "unhandled", detail: String((e as any)?.stack || e).slice(0, 500), ahrefs_errors: errors }, 500);
   }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  const body = await req.json().catch(() => ({}));
+
+  // Classic synchronous mode — the caller waits for the full result.
+  if (body?.background !== true) return await runAuditPipeline(body);
+
+  // Background mode: answer immediately, keep working after the response.
+  // Progress + the final result payload land in audit_jobs (audit_jobs.sql);
+  // if that table hasn't been migrated yet the audit still completes and the
+  // console falls back to polling the audits table for the new row.
+  if (!body.client_id) return json({ error: "client_id is required" }, 400);
+  const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  let jobId: string | null = null;
+  try {
+    const { data } = await supa.from("audit_jobs").insert({
+      client_id: body.client_id, status: "running",
+      audit_only: body.audit_only === true, engine_version: ENGINE_VERSION,
+    }).select("id").single();
+    jobId = data?.id ?? null;
+  } catch (_) { /* table not migrated yet — run anyway */ }
+
+  const work = (async () => {
+    let status = "error"; let errText: string | null = null;
+    let auditId: string | null = null; let result: any = null;
+    try {
+      const res = await runAuditPipeline(body);
+      const out = await res.json().catch(() => null);
+      if (res.ok && out?.ok) { status = "done"; auditId = out.audit_id ?? null; result = out; }
+      else errText = (String(out?.error || `HTTP ${res.status}`) + (out?.detail ? `: ${String(out.detail)}` : "")).slice(0, 600);
+    } catch (e) {
+      errText = String((e as any)?.stack || e).slice(0, 600);
+    }
+    console.log(`background audit ${body.client_id}: ${status}${errText ? ` — ${errText}` : ""}`);
+    if (jobId) {
+      try {
+        await supa.from("audit_jobs").update({
+          status, error: errText, audit_id: auditId, result,
+          finished_at: new Date().toISOString(),
+        }).eq("id", jobId);
+      } catch (e) { console.error("audit_jobs update failed", e); }
+    }
+  })();
+  const er = (globalThis as any).EdgeRuntime;
+  if (er?.waitUntil) er.waitUntil(work); else await work;
+
+  return json({ ok: true, background: true, job_id: jobId, engine_version: ENGINE_VERSION }, 202);
 });

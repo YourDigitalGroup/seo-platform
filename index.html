@@ -899,7 +899,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.5.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.5.1</div>
   </div>
   </div>
 </div>
@@ -984,7 +984,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.5.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.5.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1032,7 +1032,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.5.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.5.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1186,7 +1186,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.5.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.5.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1214,7 +1214,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.5.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.5.1</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2719,6 +2719,29 @@ function togglePlatform(k){
 
 // ── re-audit (audit_only) + audit history ──
 // Re-measures and rescores the live site WITHOUT rebuilding the campaign:
+// run-audit (engine 5.5.0+) answers immediately and finishes in the
+// background, so the API gateway can't 504 a long crawl and throw the work
+// away. This waits for the outcome: the audit_jobs row when that migration
+// is in, otherwise a new audits row (no error detail in that fallback).
+async function awaitBackgroundAudit(jobId, startedIso, onTick){
+  const T0=Date.now(), MAX=15*60*1000, EVERY=6000;
+  let useJobs=!!jobId;
+  while(Date.now()-T0<MAX){
+    await new Promise(r=>setTimeout(r,EVERY));
+    if(onTick) onTick(Math.floor((Date.now()-T0)/60000));
+    if(useJobs){
+      const {data:j,error}=await sb.from('audit_jobs').select('status,error,audit_id,result').eq('id',jobId).maybeSingle();
+      if(error||!j){ useJobs=false; continue; }   // table missing / RLS gap — fall back
+      if(j.status==='done') return {ok:true, data:j.result||{ok:true, audit_id:j.audit_id, engine_version:'5.5+'}};
+      if(j.status==='error') return {ok:false, error:j.error||'audit failed — check the run-audit logs in Supabase'};
+    } else {
+      const {data:a}=await sb.from('audits').select('id,run_at,score').eq('client_id',activeClient.id)
+        .gt('run_at',startedIso).order('run_at',{ascending:false}).limit(1).maybeSingle();
+      if(a) return {ok:true, data:{ok:true, audit_id:a.id, score:a.score, engine_version:'5.5+', fixes_dispatched:true}};
+    }
+  }
+  return {ok:false, error:'still running after 15 minutes — check the run-audit logs in Supabase (run audit_jobs.sql so failures surface here)'};
+}
 // run-audit's audit_only mode stages no fixes, creates no topics, and leaves
 // the package alone — it just writes a fresh audits row (history) and carries
 // the existing fix queue forward, verifying anything that now passes.
@@ -2730,7 +2753,15 @@ async function reRunAudit(){
   if(btn){ btn.disabled=true; btn.textContent='Re-auditing…'; }
   showToast('Re-running audit — measuring the live site; package, fixes and content untouched…');
   try{
-    const { data, error } = await sb.functions.invoke('run-audit', { body:{ client_id:c.id, audit_only:true } });
+    const startedIso=new Date().toISOString();
+    let { data, error } = await sb.functions.invoke('run-audit', { body:{ client_id:c.id, audit_only:true, background:true } });
+    if(!error && data && data.background===true){
+      showToast('Re-audit running in the background — big sites can take a few minutes…');
+      const r=await awaitBackgroundAudit(data.job_id, startedIso,
+        m=>{ if(btn) btn.textContent=m>0?`Re-auditing… ${m}m`:'Re-auditing…'; });
+      if(r.ok) data=r.data; else data={error:r.error};
+      error=null;
+    }
     if(error || (data&&data.error)){
       let body=null; try{ body=await error?.context?.json(); }catch(_){}
       console.error('run-audit(audit_only)', error, data||body);
@@ -3688,7 +3719,15 @@ async function generatePackage(){
   c.pkg_status='generating'; renderPackage();
   showToast('Running live audit — data pulls, competitors, gaps, findings…');
   try{
-    const { data, error } = await sb.functions.invoke('run-audit', { body:{ client_id:c.id } });
+    const startedIso=new Date().toISOString();
+    let { data, error } = await sb.functions.invoke('run-audit', { body:{ client_id:c.id, background:true } });
+    if(!error && data && data.background===true){
+      showToast('Audit accepted — the engine is working in the background. Big sites (full crawl + competitor discovery) can take several minutes; leave this tab open.');
+      const r=await awaitBackgroundAudit(data.job_id, startedIso,
+        m=>{ const b=document.querySelector('#v-package .run'); if(b) b.textContent=m>0?`Running audit… ${m}m`:'Running audit…'; });
+      if(r.ok) data=r.data; else data={error:r.error};
+      error=null;
+    }
     if(error || (data && data.error)){
       // supabase-js wraps every non-2xx as "Edge Function returned a non-2xx
       // status code" — always dig the function's real error body out.
@@ -3708,7 +3747,9 @@ async function generatePackage(){
       c.pkg_status='ready'; c.last_audit=new Date().toISOString().slice(0,10);
       const gc=groupClients.find(x=>x.id===c.id); if(gc){ gc.pkg_status='ready'; gc.last_audit=c.last_audit; }
       await loadLiveAudit(); renderPackage();
-      const n=data.counts||{};
+      // audits-table fallback (audit_jobs.sql not run yet): no result payload,
+      // so derive what the post-steps need from the freshly loaded package.
+      const n=data.counts||{content_topics:(PK&&PK.topics?PK.topics.length:0)};
       const fixIds = Array.isArray(data.fix_ids) ? data.fix_ids : [];
       showToast(`Audit complete — ${n.competitors||0} competitors · ${n.opportunities||0} opportunities · ${n.findings||0} findings · ${fixIds.length} fixes · ${n.content_topics||0} content pieces`, false, true);
       // AUTO-WRITE EVERYTHING (Pro behavior): kick off content drafts and fix

@@ -36,6 +36,17 @@ client (rotating, 20/run, skips anything audited <20h ago). Mondays 13:00 UTC:
 report rebuild per client. Verify: `select jobname, schedule from cron.job;`
 Manual fire: POST /functions/v1/run-scheduled {"mode":"daily-audits"}.
 
+## 1a-3. Background audit jobs  (Supabase → SQL Editor)
+
+Paste `supabase/migrations/audit_jobs.sql` and Run (idempotent). run-audit
+5.5.0+ answers the console immediately and finishes long audits in the
+background — this table is where the console watches for the result. It fixes
+the "HTTP 504 with no error body" failure on big sites (full crawl +
+competitor discovery outliving the API gateway timeout). Requires
+**redeploying run-audit** at the same time. Without the table audits still
+complete (the console falls back to polling the audits list), but failures
+surface with no error message.
+
 ## 1b. Service catalog + contract model  (Supabase → SQL Editor)
 
 Paste the full contents of `supabase/migrations/service_catalog.sql` and Run
