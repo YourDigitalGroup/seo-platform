@@ -319,6 +319,10 @@ button{cursor:pointer;font-family:inherit}
 .tbtn{font-family:inherit;font-size:12px;font-weight:700;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--s-card);color:var(--ink);cursor:pointer}
 .tbtn:hover{border-color:var(--blue);color:var(--blue)}
 .tbtn.danger:hover{border-color:#c0392b;color:#c0392b}
+.dangerzone{margin-top:26px;padding:16px 18px;border:1px solid rgba(192,57,43,.35);border-radius:var(--r-sm);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.dangerzone>div{flex:1 1 320px}
+.dangerzone b{color:#c0392b}
+.dangerzone .tbtn{flex-shrink:0}
 .tiers{display:flex;gap:8px;margin-top:6px}
 .tsel{flex:1;text-align:center;padding:10px 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);transition:.12s;user-select:none}
 .tsel:hover{border-color:var(--blue)} .tsel.on{background:var(--blue);border-color:var(--blue);color:#fff}
@@ -899,7 +903,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.5.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.6.0</div>
   </div>
   </div>
 </div>
@@ -984,7 +988,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.5.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.6.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1032,7 +1036,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.5.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.6.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1094,6 +1098,11 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
       <div class="acp" id="access-panel"></div>
       <div class="datasrc" id="datasrc"></div>
+      <div class="dangerzone" id="dangerzone" style="display:none">
+        <div><b>Remove this client</b>
+          <div class="wmeta">Permanently deletes the client and everything attached — package, audit history, fixes, drafts and reports. This cannot be undone.</div></div>
+        <button class="tbtn danger" onclick="removeClient()">Remove client…</button>
+      </div>
     </div>
 
     <div class="ptab" id="ptab-2">
@@ -1186,7 +1195,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.5.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.6.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1214,7 +1223,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.5.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.6.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1579,6 +1588,33 @@ async function teamSetRole(i,sel){
   }catch(e){
     showToast('Could not change role — '+String(e.message||e),true);
     sel.value=u.role||'';
+  }
+}
+// Deleting a client wipes real history (audits, drafts, reports), so it's
+// Super Admin only, requires re-typing the URL, and runs server-side via
+// manage-users where the service role can clean every attached table.
+async function removeClient(){
+  const c=activeClient; if(!c) return;
+  if(me.role!=='admin'){ showToast('Only a Super Admin can remove clients',true); return; }
+  if(OFFLINE){ showToast('Live mode only',true); return; }
+  const norm=s=>String(s||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/+$/,'');
+  const label=c.url||c.name;
+  const typed=prompt(`This permanently deletes ${label} — package, audit history, fixes, drafts and reports. It cannot be undone.\n\nType the client ${c.url?'URL':'name'} to confirm:`);
+  if(typed==null) return;
+  if(norm(typed)!==norm(label)){ showToast('Didn’t match — nothing was deleted',true); return; }
+  showToast('Removing client and all attached data…');
+  try{
+    const d=await teamInvoke({action:'delete_client', client_id:c.id});
+    const n=Object.values(d.removed||{}).reduce((a,b)=>a+b,0);
+    groupClients=groupClients.filter(x=>x.id!==c.id);
+    activeClient=null;
+    navigate(activeGroup?'group':'groups');
+    showToast(`✓ ${d.client||label} removed — ${n} related record(s) deleted`+
+      (d.warnings&&d.warnings.length?` · ⚠ ${d.warnings.length} table(s) reported errors — see function logs`:''), false, true);
+  }catch(e){
+    const msg=String(e.message||e);
+    showToast('Could not remove client — '+(/unknown action/i.test(msg)
+      ?'redeploy the manage-users function (this needs its delete_client action)':msg), true);
   }
 }
 async function teamDelete(i){
@@ -2014,6 +2050,7 @@ function onAuth(){
   const isAdmin=me.role==='admin';
   document.getElementById('nav-team').style.display=isAdmin?'':'none';
   document.getElementById('nav-team-label').style.display=isAdmin?'':'none';
+  document.getElementById('dangerzone').style.display=isAdmin?'':'none';
   navigate('groups');
 }
 function showErr(m){ const e=document.getElementById('l-err'); e.textContent=m; e.style.display='block'; }
