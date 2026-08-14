@@ -73,8 +73,11 @@ Deno.serve(async (req) => {
     targets = targets.slice(0, cap);
 
     const fn = mode === "daily-audits" ? "run-audit" : "generate-report";
+    // background:true → run-audit (5.5.0+) answers fast and finishes in its
+    // own invocation, so a slow site can't 504 out of the nightly rotation.
+    // Older deployed engines ignore the flag and run synchronously as before.
     const bodyFor = (c: any) => mode === "daily-audits"
-      ? { client_id: c.id, audit_only: true }
+      ? { client_id: c.id, audit_only: true, background: true }
       : { client_id: c.id };
 
     // Dispatch with modest concurrency; completion happens in the target
