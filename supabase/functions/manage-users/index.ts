@@ -6,12 +6,17 @@
 //  remove users. Callable ONLY by a logged-in console user whose profiles.role
 //  is 'admin' — the caller's JWT is verified server-side before any action.
 //
+//  Also home to other admin-only destructive maintenance: delete_client
+//  removes a client and every record attached to it (the console's anon key
+//  can't be trusted with that, and RLS/FK shapes on the live DB vary).
+//
 //  Deploy: Edge Functions → manage-users.
 //  Input:  { action: "list" }
 //          { action: "create", email, password, name?, role? }
 //          { action: "set_password", user_id, password }
 //          { action: "update_profile", user_id, name?, role? }
 //          { action: "delete", user_id }
+//          { action: "delete_client", client_id }
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -123,6 +128,76 @@ Deno.serve(async (req) => {
       if (error) return json({ error: error.message }, 400);
       await supa.from("profiles").delete().eq("id", String(body.user_id));
       return json({ ok: true });
+    }
+
+    if (action === "delete_client") {
+      const cid = String(body.client_id || "");
+      if (!cid) return json({ error: "client_id required" }, 400);
+      const { data: client } = await supa.from("clients").select("id, url, name").eq("id", cid).maybeSingle();
+      if (!client) return json({ error: "no such client" }, 404);
+
+      const warnings: string[] = [];
+      const removed: Record<string, number> = {};
+      // Children are deleted leaf-first so FK constraints without ON DELETE
+      // CASCADE can't block the final clients row. A table or column that
+      // doesn't exist on this database is skipped silently; real failures
+      // are collected and reported.
+      const zap = async (table: string, col: string, vals: string[]) => {
+        if (!vals.length) return;
+        for (let i = 0; i < vals.length; i += 100) {
+          const { error, count } = await supa.from(table).delete({ count: "exact" }).in(col, vals.slice(i, i + 100));
+          if (error) {
+            if (!/does not exist|schema cache/i.test(error.message)) warnings.push(`${table}: ${error.message}`);
+            return;
+          }
+          removed[table] = (removed[table] || 0) + (count || 0);
+        }
+      };
+      const ids = async (table: string, col: string, vals: string[]) => {
+        if (!vals.length) return [] as string[];
+        const { data } = await supa.from(table).select("id").in(col, vals);
+        return (data || []).map((r: any) => String(r.id));
+      };
+
+      const auditIds = await ids("audits", "client_id", [cid]);
+      const packageIds = await ids("packages", "client_id", [cid]);
+      // topics hang off the client or its packages depending on their age
+      const topicIds = [...new Set([
+        ...await ids("content_topics", "client_id", [cid]),
+        ...await ids("content_topics", "package_id", packageIds),
+      ])];
+      const draftIds = await ids("content_drafts", "topic_id", topicIds);
+      const compIds = [...new Set([
+        ...await ids("competitors", "audit_id", auditIds),
+        ...await ids("competitors", "client_id", [cid]),
+      ])];
+
+      await zap("content_revisions", "draft_id", draftIds);
+      await zap("content_drafts", "id", draftIds);
+      await zap("content_topics", "id", topicIds);
+      await zap("fixes", "package_id", packageIds);
+      await zap("fixes", "audit_id", auditIds);
+      await zap("fixes", "client_id", [cid]);
+      await zap("audit_checks", "audit_id", auditIds);
+      await zap("findings", "audit_id", auditIds);
+      await zap("findings", "client_id", [cid]);
+      await zap("competitor_pages", "competitor_id", compIds);
+      await zap("competitor_pages", "audit_id", auditIds);
+      await zap("competitors", "id", compIds);
+      await zap("content_gaps", "audit_id", auditIds);
+      await zap("content_gaps", "client_id", [cid]);
+      await zap("keywords", "audit_id", auditIds);
+      await zap("keywords", "client_id", [cid]);
+      await zap("gsc_queries", "client_id", [cid]);
+      await zap("deliverables", "client_id", [cid]);
+      await zap("audit_jobs", "client_id", [cid]);
+      await zap("packages", "id", packageIds);
+      await zap("audits", "id", auditIds);
+
+      const { error: cErr2 } = await supa.from("clients").delete().eq("id", cid);
+      if (cErr2) return json({ error: `everything attached was removed but the client row itself failed: ${cErr2.message}`, removed, warnings }, 400);
+      console.log(`delete_client ${client.url || client.name} by ${caller.user.email}:`, JSON.stringify(removed), warnings.join("; "));
+      return json({ ok: true, client: client.url || client.name, removed, warnings });
     }
 
     return json({ error: "unknown action" }, 400);

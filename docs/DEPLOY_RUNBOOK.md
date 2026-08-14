@@ -77,11 +77,15 @@ For each, deploy the code from this repo (Deploy a new function → Via Editor, 
 
 `manage-users` powers the console's **Team & access** panel (sidebar, visible
 to Super Admins only): create users (auto-confirmed, no email round-trip),
-reset passwords, change roles, remove accounts. Until it is deployed the panel
-shows a "function not deployed" message. The caller's JWT is verified
-server-side and the action is refused unless their `profiles.role` is
-`super_admin` — regular strategists can't reach it even by calling the
-function directly.
+reset passwords, change roles, remove accounts. It also carries the
+**Remove client** action (Setup tab danger zone, Super Admins only) — a
+server-side deep delete of the client and every attached record (packages,
+audits & history, fixes, drafts, reports, keywords, competitors), since the
+browser's anon key can't be trusted with that. Until the function is deployed
+the panel shows a "function not deployed" message; after adding new actions,
+redeploy it. The caller's JWT is verified server-side and every action is
+refused unless their `profiles.role` is `super_admin` — regular strategists
+can't reach it even by calling the function directly.
 
 Secrets already set (`AHREFS_API_KEY`, `ANTHROPIC_API_KEY`, the GSC ones) carry
 over; `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` are auto-injected.
