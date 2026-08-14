@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.4.2";
+const ENGINE_VERSION = "5.4.3";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -469,7 +469,7 @@ Deno.serve(async (req) => {
         .map((r: any) => {
           const st = Array.isArray(r.jsonld_schema_types) ? r.jsonld_schema_types : String(r.jsonld_schema_types || "").split(/[,\s]+/).filter(Boolean);
           return { url: r.url, status: r.http_code ?? 200, ok: true, https: String(r.url||"").startsWith("https://"),
-            title: r.title || "", titleLen: r.titles_length ?? (r.title||"").length, metaDesc: r.meta_description || "", metaLen: r.meta_description_length ?? (r.meta_description||"").length,
+            title: String(r.title ?? ""), titleLen: r.titles_length ?? String(r.title ?? "").length, metaDesc: String(r.meta_description ?? ""), metaLen: r.meta_description_length ?? String(r.meta_description ?? "").length,
             h1: r.h1_length > 0 || r.h1 ? 1 : 0, words: r.content_nr_word ?? 0,
             imgs: r.links_count_images ?? 0, imgsNoAlt: r.links_count_images_without_alt ?? 0,
             schemaTypes: st, og: !!r.og_tags_valid, canonical: !!r.canonical, viewport: true, noindex: !!r.page_is_noindex,
@@ -748,7 +748,7 @@ Deno.serve(async (req) => {
     const thin    = okPages.filter((p: any) => p.words < 300);
     const noAlt   = okPages.filter((p: any) => p.imgsNoAlt > 0);
     const dupOf = (get: (p: any) => string) => { const m = new Map<string, number>();
-      okPages.forEach((p: any) => { const t = get(p).trim().toLowerCase(); if (t) m.set(t, (m.get(t) || 0) + 1); });
+      okPages.forEach((p: any) => { const t = String(get(p) ?? "").trim().toLowerCase(); if (t) m.set(t, (m.get(t) || 0) + 1); });
       return [...m.values()].filter((n) => n > 1).reduce((a, n) => a + n, 0); };
     const dupTitles = dupOf((p) => p.title || ""), dupMetas = dupOf((p) => p.metaDesc || "");
     const badUrls = okPages.filter((p: any) => /[A-Z_]|\?[^ ]*=/.test(String(p.url).replace(/^https?:\/\/[^/]*/, "")) || String(p.url).length > 115);
