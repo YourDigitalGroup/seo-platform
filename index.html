@@ -309,6 +309,16 @@ button{cursor:pointer;font-family:inherit}
 .ifield label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.3px;text-transform:uppercase}
 .ifield input,.ifield select{font-family:inherit;font-size:15px;padding:11px 14px;border:1px solid var(--line);border-radius:var(--r-sm);color:var(--ink);background:var(--s-card)}
 .ifield input:focus,.ifield select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.15)}
+.team-form{display:grid;grid-template-columns:1.2fr 1.4fr 1fr 1fr auto;gap:14px;align-items:end}
+@media (max-width:980px){.team-form{grid-template-columns:1fr 1fr}}
+.team-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.team-tbl th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line)}
+.team-tbl td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.team-tbl tr:last-child td{border-bottom:none}
+.team-tbl select{font-family:inherit;font-size:12.5px;font-weight:600;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--s-card);color:var(--ink)}
+.tbtn{font-family:inherit;font-size:12px;font-weight:700;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--s-card);color:var(--ink);cursor:pointer}
+.tbtn:hover{border-color:var(--blue);color:var(--blue)}
+.tbtn.danger:hover{border-color:#c0392b;color:#c0392b}
 .tiers{display:flex;gap:8px;margin-top:6px}
 .tsel{flex:1;text-align:center;padding:10px 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);transition:.12s;user-select:none}
 .tsel:hover{border-color:var(--blue)} .tsel.on{background:var(--blue);border-color:var(--blue);color:#fff}
@@ -889,7 +899,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.4.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.5.0</div>
   </div>
   </div>
 </div>
@@ -921,6 +931,10 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <button class="sb-item" onclick="sideGo('reports')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
       Reports</button>
+    <div class="sb-label" id="nav-team-label" style="display:none">Admin</div>
+    <button class="sb-item" id="nav-team" style="display:none" onclick="navigate('team')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+      Team &amp; access</button>
     <div class="sb-spacer"></div>
     <button class="sb-cta" onclick="newPackage()">New package →</button>
     <div class="sb-user">
@@ -970,7 +984,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.4.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.5.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1018,7 +1032,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.4.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.5.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1172,7 +1186,35 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.4.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.5.0 · draft outputs require specialist review</span>
+      <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
+    </footer>
+  </div>
+
+  <!-- ── TEAM & ACCESS (Super Admins only) ── -->
+  <div id="v-team" class="wrap" style="display:none">
+    <div class="widget">
+      <div class="widget-h"><div><h2>Add a console user.</h2>
+        <div class="wmeta">Accounts are created ready to sign in — no confirmation email is sent.</div></div></div>
+      <div class="team-form">
+        <div class="ifield"><label>Full name</label><input id="tu-name" type="text" placeholder="Jon Smith"></div>
+        <div class="ifield"><label>Email</label><input id="tu-email" type="email" placeholder="jon@44interactive.com"></div>
+        <div class="ifield"><label>Password <span style="font-weight:400;text-transform:none">(min 6 chars)</span></label><input id="tu-pass" type="text" placeholder="••••••" autocomplete="off"></div>
+        <div class="ifield"><label>Role</label><select id="tu-role">
+          <option value="strategist">SEO/AEO Strategist</option>
+          <option value="account_manager">Account Manager</option>
+          <option value="super_admin">Super Admin</option>
+        </select></div>
+        <button class="add-btn" id="tu-btn" onclick="teamCreate()">＋ Create user</button>
+      </div>
+    </div>
+    <div class="widget" style="margin-top:18px">
+      <div class="widget-h"><div><h2>Console users.</h2><div class="wmeta" id="team-sub">—</div></div>
+        <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="loadTeam()">↻ Refresh</button></div>
+      <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
+    </div>
+    <footer>
+      <span>44i, Inc. · Internal Ops Console · V5.5.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1451,6 +1493,102 @@ async function loadMe(uid){
   me={ id:uid, name:data.name, email:data.email, role:roleMap[data.role]||'strategist',
        initials:(data.name||'?').replace(/[^A-Za-z]/g,'').slice(0,2).toUpperCase()||'··' };
   return true;
+}
+
+// ════════════════════════════════════════════════════════════
+//  TEAM & ACCESS — admin user management via the manage-users
+//  Edge Function (the browser never holds the service-role key)
+// ════════════════════════════════════════════════════════════
+const TEAM_ROLE_LABEL={super_admin:'Super Admin', account_manager:'Account Manager', strategist:'SEO/AEO Strategist'};
+let TEAM_USERS=[];
+async function teamInvoke(payload){
+  const {data,error}=await sb.functions.invoke('manage-users',{body:payload});
+  if(error){
+    let msg=error.message||'request failed';
+    try{ if(error.context){ const b=await error.context.json(); msg=b.error||b.detail||msg; } }catch(_){}
+    if(/Failed to send|not found|404/i.test(msg)) msg='manage-users function not deployed — deploy it in Supabase → Edge Functions first';
+    throw new Error(msg);
+  }
+  if(data?.error) throw new Error(data.error);
+  return data;
+}
+async function loadTeam(){
+  const list=document.getElementById('team-list');
+  list.innerHTML='<div class="wmeta" style="padding:18px 0">Loading…</div>';
+  try{
+    const d=await teamInvoke({action:'list'});
+    TEAM_USERS=d.users||[];
+    renderTeam();
+  }catch(e){
+    list.innerHTML=`<div class="wmeta" style="padding:18px 0;color:#c0392b">Could not load users — ${esc(String(e.message||e))}</div>`;
+  }
+}
+function renderTeam(){
+  const list=document.getElementById('team-list');
+  document.getElementById('team-sub').textContent=`${TEAM_USERS.length} account(s) with console access`;
+  if(!TEAM_USERS.length){ list.innerHTML='<div class="wmeta" style="padding:18px 0">No users yet.</div>'; return; }
+  const fmt=d=>d?new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'never';
+  list.innerHTML=`<table class="team-tbl"><thead><tr>
+      <th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th style="text-align:right">Actions</th>
+    </tr></thead><tbody>${TEAM_USERS.map((u,i)=>`<tr>
+      <td><b>${esc(u.name||'—')}</b>${u.id===me.id?' <span class="wmeta">(you)</span>':''}</td>
+      <td>${esc(u.email||'')}</td>
+      <td><select onchange="teamSetRole(${i},this)">${Object.entries(TEAM_ROLE_LABEL).map(([v,l])=>
+        `<option value="${v}"${u.role===v?' selected':''}>${l}</option>`).join('')}
+        ${u.role&&!TEAM_ROLE_LABEL[u.role]?`<option value="${esc(u.role)}" selected>${esc(u.role)}</option>`:''}
+        ${!u.role?'<option value="" selected>— no profile —</option>':''}</select></td>
+      <td>${fmt(u.last_sign_in_at)}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="tbtn" onclick="teamSetPw(${i})">Set password</button>
+        ${u.id===me.id?'':`<button class="tbtn danger" onclick="teamDelete(${i})" style="margin-left:6px">Remove</button>`}
+      </td></tr>`).join('')}</tbody></table>`;
+}
+async function teamCreate(){
+  const name=document.getElementById('tu-name').value.trim();
+  const email=document.getElementById('tu-email').value.trim();
+  const pass=document.getElementById('tu-pass').value;
+  const role=document.getElementById('tu-role').value;
+  if(!email){ showToast('Enter an email address',true); return; }
+  if(pass.length<6){ showToast('Password must be at least 6 characters',true); return; }
+  const btn=document.getElementById('tu-btn'); btn.disabled=true; btn.textContent='Creating…';
+  try{
+    const d=await teamInvoke({action:'create', email, password:pass, name, role});
+    showToast(d.warning?`User created — ${d.warning}`:`✓ ${email} can sign in now`);
+    ['tu-name','tu-email','tu-pass'].forEach(id=>document.getElementById(id).value='');
+    await loadTeam();
+  }catch(e){ showToast('Could not create user — '+String(e.message||e),true); }
+  btn.disabled=false; btn.textContent='＋ Create user';
+}
+async function teamSetPw(i){
+  const u=TEAM_USERS[i]; if(!u) return;
+  const pw=prompt(`New password for ${u.email} (min 6 characters):`);
+  if(pw==null) return;
+  if(pw.length<6){ showToast('Password must be at least 6 characters',true); return; }
+  try{
+    await teamInvoke({action:'set_password', user_id:u.id, password:pw});
+    showToast(`✓ Password updated for ${u.email}`);
+  }catch(e){ showToast('Could not set password — '+String(e.message||e),true); }
+}
+async function teamSetRole(i,sel){
+  const u=TEAM_USERS[i]; if(!u) return;
+  const role=sel.value;
+  try{
+    await teamInvoke({action:'update_profile', user_id:u.id, role});
+    u.role=role;
+    showToast(`✓ ${u.email} is now ${TEAM_ROLE_LABEL[role]||role}`);
+  }catch(e){
+    showToast('Could not change role — '+String(e.message||e),true);
+    sel.value=u.role||'';
+  }
+}
+async function teamDelete(i){
+  const u=TEAM_USERS[i]; if(!u) return;
+  if(!confirm(`Remove ${u.email}? They will no longer be able to sign in.`)) return;
+  try{
+    await teamInvoke({action:'delete', user_id:u.id});
+    showToast(`✓ ${u.email} removed`);
+    await loadTeam();
+  }catch(e){ showToast('Could not remove user — '+String(e.message||e),true); }
 }
 
 function genClients(n){
@@ -1873,6 +2011,9 @@ function onAuth(){
   document.getElementById('h-name').textContent=me.name;
   document.getElementById('h-av').textContent=me.initials;
   const rc=document.getElementById('h-role'); rc.textContent=ROLE_LABEL[me.role]; rc.className='role-chip role-'+me.role;
+  const isAdmin=me.role==='admin';
+  document.getElementById('nav-team').style.display=isAdmin?'':'none';
+  document.getElementById('nav-team-label').style.display=isAdmin?'':'none';
   navigate('groups');
 }
 function showErr(m){ const e=document.getElementById('l-err'); e.textContent=m; e.style.display='block'; }
@@ -1883,7 +2024,7 @@ function showErr(m){ const e=document.getElementById('l-err'); e.textContent=m; 
 let currentView='login';
 function navigate(view){
   currentView=view;
-  ['v-login','v-app','v-groups','v-group','v-package'].forEach(id=>document.getElementById(id).style.display='none');
+  ['v-login','v-app','v-groups','v-group','v-package','v-team'].forEach(id=>document.getElementById(id).style.display='none');
   document.querySelectorAll('.sidebar .sb-item').forEach(b=>b.classList.remove('active'));
   if(view==='login'){ document.getElementById('v-login').style.display=''; return; }
   document.getElementById('v-app').style.display='';
@@ -1909,6 +2050,13 @@ function navigate(view){
     setTB(activeClient?activeClient.url:'Package', activeClient?`${activeClient.name} · ${planLabel(activeClient.tier)} plan`:'');
     sw.style.display='none';
     renderPackage(); renderCrumb('package');
+  } else if(view==='team'){
+    document.getElementById('v-team').style.display='';
+    document.getElementById('nav-team').classList.add('active');
+    setTB('Team & access','console users · roles · passwords');
+    sw.style.display='none';
+    document.getElementById('crumb').style.display='none';
+    loadTeam();
   }
   const cv=document.getElementById('canvas');
   cv.classList.remove('view-enter'); void cv.offsetWidth; cv.classList.add('view-enter');
