@@ -74,6 +74,19 @@ For each, deploy the code from this repo (Deploy a new function → Via Editor, 
 | `generate-report`| `supabase/functions/generate-report/index.ts`    |
 | `run-scheduled`  | `supabase/functions/run-scheduled/index.ts`      |
 | `manage-users`   | `supabase/functions/manage-users/index.ts`       |
+| `advice-local`   | `supabase/functions/advice-local/index.ts`       |
+
+`advice-local` is the LLO fulfillment bridge (Advice Local partner API).
+Before deploying: run `supabase/migrations/advice_local.sql` (adds
+`clients.al_client_id / al_order_id / al_synced_at`), then set the function
+secret `ADVICE_LOCAL_API_KEY` to the partner key from Advice Local
+(Edge Functions → advice-local → Secrets — never commit it to the repo).
+`ADVICE_LOCAL_PRODUCT_ID` is optional and defaults to 4114 (the LLO product).
+The LLO accordion on the Setup tab then gets Sync / Place order / Fulfillment
+status buttons. Sync is idempotent (creates the Advice Local location once,
+updates it after); the order action is billable, so it is limited to Super
+Admins and Account Managers server-side and refuses to double-order a client
+that already has an order id on file.
 
 `manage-users` powers the console's **Team & access** panel (sidebar, visible
 to Super Admins only): create users (auto-confirmed, no email round-trip),

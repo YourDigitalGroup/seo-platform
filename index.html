@@ -903,7 +903,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.6.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.7.0</div>
   </div>
   </div>
 </div>
@@ -988,7 +988,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.6.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.7.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1036,7 +1036,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.6.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.7.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1195,7 +1195,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.6.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.7.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1223,7 +1223,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.6.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.7.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3871,7 +3871,82 @@ async function renderBizFacts(){
     <button class="ds-save" style="background:var(--blue)" onclick="downloadCitationPack()">📇 Citation pack</button>
     <button class="ds-save" style="background:#6FA53C" onclick="downloadCitationCSV()">⬇ Citations CSV</button>
     </div>
+    <div class="al-panel" id="al-panel"></div>
   </details>`;
+  renderALPanel();
+}
+// ── ADVICE LOCAL — automated citation submission (LLO fulfillment) ──────────
+// The advice-local Edge Function holds the partner API key and does the
+// talking; the console just drives it. Sync pushes the approved business
+// facts to Advice Local (create once, update thereafter); the order button
+// activates the LLO product — that one is billable and AM/admin-gated
+// server-side.
+async function alInvoke(payload){
+  const {data,error}=await sb.functions.invoke('advice-local',{body:payload});
+  if(error){
+    let msg=error.message||'request failed';
+    try{ if(error.context){ const b=await error.context.json(); msg=b.error||b.detail||msg; } }catch(_){}
+    if(/Failed to send|not found|404/i.test(msg)) msg='advice-local function not deployed — deploy it in Supabase → Edge Functions (see runbook)';
+    throw new Error(msg);
+  }
+  if(data?.error) throw new Error(data.error);
+  return data;
+}
+async function renderALPanel(){
+  const el=document.getElementById('al-panel'); if(!el||OFFLINE||!activeClient) return;
+  if(activeClient._al===undefined){
+    try{ const {data,error}=await sb.from('clients').select('al_client_id, al_order_id, al_synced_at').eq('id',activeClient.id).single();
+      activeClient._al=(!error&&data)||{}; }catch(_){ activeClient._al={}; }
+  }
+  const a=activeClient._al||{};
+  const linked=a.al_client_id?`Linked — Advice Local location #${a.al_client_id}`+
+      (a.al_synced_at?` · synced ${fmtDate(String(a.al_synced_at).slice(0,10))}`:'')
+    :'Not linked yet — Sync sends the approved business facts to Advice Local';
+  const ordered=a.al_order_id?` · LLO order #${a.al_order_id} on file`:'';
+  el.innerHTML=`<div style="border-top:1px solid var(--line);padding:12px 14px 14px">
+    <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Advice Local — automated citation submission</div>
+    <div class="wmeta" id="al-state" style="margin:6px 0 10px">${esc(linked+ordered)}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="tbtn" id="al-sync-btn" onclick="alSync()">${a.al_client_id?'↻ Re-sync listing':'🚀 Sync to Advice Local'}</button>
+      <button class="tbtn" id="al-order-btn" onclick="alOrder()" ${a.al_order_id?'disabled title="Order already on file"':''}>🧾 Place LLO order</button>
+      <button class="tbtn" onclick="alStatus()">📡 Fulfillment status</button>
+    </div>
+    <div id="al-status" style="margin-top:10px"></div>
+  </div>`;
+}
+async function alSync(){
+  const miss=intakeMissing();
+  if(miss.length){ showToast('Complete + save the business facts first — missing: '+miss.join(', '),true); return; }
+  const b=document.getElementById('al-sync-btn'); if(b){ b.disabled=true; b.textContent='Syncing…'; }
+  try{
+    const d=await alInvoke({action:'sync', client_id:activeClient.id});
+    activeClient._al={...(activeClient._al||{}), al_client_id:d.al_client_id, al_synced_at:new Date().toISOString()};
+    showToast(`✓ Listing ${d.mode} on Advice Local — location #${d.al_client_id}`+(d.warning?` · ⚠ ${d.warning}`:''), false, true);
+    renderALPanel();
+  }catch(e){ showToast('Advice Local sync failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.textContent='🚀 Sync to Advice Local'; } }
+}
+async function alOrder(){
+  if(!confirm('Place the LLO order with Advice Local?\n\nThis activates the Local Listing Optimization product on the 44i account and BILLS it (monthly per their contract). The listing syncs first if needed.')) return;
+  const b=document.getElementById('al-order-btn'); if(b){ b.disabled=true; b.textContent='Ordering…'; }
+  try{
+    const d=await alInvoke({action:'order', client_id:activeClient.id});
+    activeClient._al={...(activeClient._al||{}), al_client_id:d.al_client_id, al_order_id:d.order_id};
+    showToast(`✓ LLO order placed — order #${d.order_id||'—'}${d.price!=null?` · $${d.price}`:''}. Directory submissions start on Advice Local's side; check Fulfillment status in a day or two.`, false, true);
+    renderALPanel();
+  }catch(e){ showToast('Order failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.textContent='🧾 Place LLO order'; } }
+}
+async function alStatus(){
+  const el=document.getElementById('al-status'); if(el) el.innerHTML='<div class="wmeta">Checking fulfillment…</div>';
+  try{
+    const d=await alInvoke({action:'status', client_id:activeClient.id});
+    const dirs=d.directories||[];
+    if(!dirs.length){ el.innerHTML='<div class="wmeta">No directory submissions reported yet — Advice Local typically starts within a couple of business days of the order.</div>'; return; }
+    const nice=s=>String(s||'—').replace(/_/g,' ');
+    el.innerHTML=`<div style="overflow-x:auto"><table class="team-tbl"><thead><tr><th>Directory</th><th>Status</th><th>Was</th><th>Live URL</th><th>Updated</th></tr></thead><tbody>${
+      dirs.map(f=>`<tr><td><b>${esc(f.directory||'—')}</b></td><td>${esc(nice(f.status))}</td><td>${esc(nice(f.initial))}</td>
+        <td>${f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener">open ↗</a>`:'—'}</td>
+        <td>${f.updated?fmtDate(String(f.updated).slice(0,10)):'—'}</td></tr>`).join('')}</tbody></table></div>`;
+  }catch(e){ if(el) el.innerHTML=`<div class="wmeta" style="color:#c0392b">${esc(String(e.message||e))}</div>`; }
 }
 async function saveBizFacts(){
   const iv={}; INTAKE_FIELDS.forEach(([k])=>{ const e=document.getElementById('bf-'+k); if(e) iv[k]=e.value.trim(); });
