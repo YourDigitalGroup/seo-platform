@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.7.1
+ * Version: 1.8.0
  * Author: 44i Digital
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -24,7 +24,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.7.1');
+define('SEOP_VERSION', '1.8.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -221,6 +221,18 @@ function seop_upsert_content($p) {
     if (is_wp_error($id)) return $id;
     if ($external) update_post_meta($id, '_seoplatform_external_id', $external);
     if (!empty($p['focus_keyword'])) update_post_meta($id, '_seoplatform_focus_keyword', sanitize_text_field($p['focus_keyword']));
+    // v1.8: featured image picked in the platform (Pexels). Sideloaded once —
+    // a re-import never re-downloads or replaces an existing thumbnail.
+    if (!empty($p['image_url']) && !has_post_thumbnail($id) && filter_var($p['image_url'], FILTER_VALIDATE_URL)) {
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        $att = media_sideload_image(esc_url_raw($p['image_url']), $id, sanitize_text_field($p['image_alt'] ?? $title), 'id');
+        if (!is_wp_error($att)) {
+            set_post_thumbnail($id, $att);
+            if (!empty($p['image_alt'])) update_post_meta($att, '_wp_attachment_image_alt', sanitize_text_field($p['image_alt']));
+        }
+    }
     if (!empty($p['seo_title']) || !empty($p['seo_description'])) {
         seop_write_meta($id, $p['seo_title'] ?? null, $p['seo_description'] ?? null, null);
     }
@@ -704,6 +716,7 @@ function seop_apply_package($pkg) {
             'schedule' => $cItem['schedule'] ?? null, 'external_id' => $cItem['external_id'] ?? '',
             'focus_keyword' => $cItem['focus_keyword'] ?? '', 'slug' => $cItem['slug'] ?? '',
             'seo_title' => $cItem['seo_title'] ?? '', 'seo_description' => $cItem['seo_description'] ?? '',
+            'image_url' => $cItem['image_url'] ?? '', 'image_alt' => $cItem['image_alt'] ?? '',
         ]);
         if (is_wp_error($res)) $skip('Content "' . ($cItem['title'] ?? '?') . '"', $res->get_error_message());
         elseif (($res['status'] ?? '') === 'future') { $scheduled++; $ok('Scheduled "' . ($cItem['title'] ?? '?') . '" → publishes ' . ($res['scheduled_for'] ?: 'per campaign')); }

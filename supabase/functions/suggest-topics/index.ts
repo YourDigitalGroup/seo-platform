@@ -69,9 +69,19 @@ Deno.serve(async (req) => {
     const claimed = (exT || []).filter((t: any) => t.status !== "retired").map((t: any) => kwKey(t.target_keyword || t.title));
 
     const desc = (client.intake && client.intake.description) || "";
+    // Owner-specified target keywords (intake kw1..kw5 + location) rank first.
+    const ivS = (client.intake || {}) as Record<string, string>;
+    const targetKw: string[] = [];
+    for (let i = 1; i <= 5; i++) {
+      const k = String(ivS["kw" + i] || "").trim();
+      if (k) targetKw.push(k + (ivS["kwl" + i] ? ` (${String(ivS["kwl" + i]).trim()})` : ""));
+    }
+    const landingT = String(ivS.landing_targets || "").split(/\n+/).map((s) => s.trim()).filter(Boolean);
     const context = [
       `Business: ${client.name || client.url} (${client.url}) in ${ta.primary || client.market || ""}.`,
       desc ? `OWNER'S DESCRIPTION (authoritative): ${desc}` : "",
+      targetKw.length ? `OWNER'S TARGET KEYWORDS (highest priority — suggest topics that win these first): ${targetKw.join("; ")}.` : "",
+      landingT.length ? `OWNER'S TARGETED LANDING PAGES (plan these as landings first): ${landingT.join("; ")}.` : "",
       biz.type ? `Classified type: ${biz.type}. Services: ${(biz.services || []).join(", ")}.` : "",
       (ta.secondary || []).length ? `Trade-area towns: ${(ta.secondary || []).join(", ")}.` : "",
       (raw.opportunities || []).length ? `Keyword opportunities (proven demand): ${(raw.opportunities || []).slice(0, 8).map((o: any) => `${o.keyword} (vol ${o.volume})`).join("; ")}.` : "",

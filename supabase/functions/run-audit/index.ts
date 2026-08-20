@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.6.0";
+const ENGINE_VERSION = "5.7.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -778,12 +778,12 @@ async function runAuditPipeline(body: any): Promise<Response> {
     check("analytics", "technical", 1, "Analytics/measurement installed", homeHtmlRaw ? B(analytics) : "na", analytics ? "" : "no GA4/GTM/pixel detected", null, "Install GA4 (or equivalent) so results are measurable.", "Monthly Reporting", "reporting");
 
     // PERFORMANCE (Core Web Vitals)
-    check("psi_perf", "performance", 3, "PageSpeed performance (mobile)", psi.score == null ? "na" : (psi.score >= 90 ? "pass" : psi.score >= 50 ? "warn" : "fail"), psi.score != null ? `score ${psi.score}/100` : "", null, "Work the PageSpeed opportunity list until the mobile score is 90+.", "Site Health Scan");
-    check("lcp", "performance", 2, "Largest Contentful Paint ≤ 2.5s", psi.lcp_ms == null ? "na" : (psi.lcp_ms <= 2500 ? "pass" : psi.lcp_ms <= 4000 ? "warn" : "fail"), psi.lcp_ms != null ? `${(psi.lcp_ms / 1000).toFixed(1)}s` : "", null, "Preload + compress the hero image; serve modern formats (WebP/AVIF).", "Site Health Scan");
+    check("psi_perf", "performance", 3, "PageSpeed performance (mobile 80+)", psi.score == null ? "na" : (psi.score >= 80 ? "pass" : psi.score >= 45 ? "warn" : "fail"), psi.score != null ? `score ${psi.score}/100` : "", null, "Work the PageSpeed opportunity list until the mobile score is 80+.", "Site Health Scan");
+    check("lcp", "performance", 2, "Largest Contentful Paint ≤ 3.0s", psi.lcp_ms == null ? "na" : (psi.lcp_ms <= 3000 ? "pass" : psi.lcp_ms <= 4500 ? "warn" : "fail"), psi.lcp_ms != null ? `${(psi.lcp_ms / 1000).toFixed(1)}s` : "", null, "Preload + compress the hero image; serve modern formats (WebP/AVIF).", "Site Health Scan");
     check("cls", "performance", 2, "Cumulative Layout Shift ≤ 0.1", psi.cls == null ? "na" : (psi.cls <= 0.1 ? "pass" : psi.cls <= 0.25 ? "warn" : "fail"), psi.cls != null ? String(Math.round(psi.cls * 100) / 100) : "", null, "Reserve space for images/embeds; avoid layout-shifting injections.", "Site Health Scan");
-    check("inp", "performance", 2, "Interactivity (INP ≤ 200ms / TBT ≤ 200ms)", (psi.inp_ms ?? psi.tbt_ms) == null ? "na" : ((psi.inp_ms ?? psi.tbt_ms) <= 200 ? "pass" : (psi.inp_ms ?? psi.tbt_ms) <= 500 ? "warn" : "fail"), (psi.inp_ms ?? psi.tbt_ms) != null ? `${psi.inp_ms ?? psi.tbt_ms}ms` : "", null, "Defer/trim JavaScript; break up long main-thread tasks.", "Site Health Scan");
-    check("ttfb", "performance", 1, "Server response ≤ 800ms", (psi.ttfb_ms ?? ttfbMs) == null ? "na" : ((psi.ttfb_ms ?? ttfbMs) <= 800 ? "pass" : (psi.ttfb_ms ?? ttfbMs) <= 1800 ? "warn" : "fail"), `${psi.ttfb_ms ?? ttfbMs}ms`, null, "Enable page caching / a CDN, or upgrade hosting, to cut TTFB.", "Site Health Scan");
-    check("perf_fixables", "performance", 1, "No major PageSpeed opportunities", psi.score == null ? "na" : (psi.fixables.length === 0 ? "pass" : psi.fixables.length <= 2 ? "warn" : "fail"), psi.fixables.slice(0, 4).join("; "), null, "Fix the flagged items: compression, image formats, render-blocking resources, caching.", "Site Health Scan");
+    check("inp", "performance", 2, "Interactivity (INP ≤ 200ms / TBT ≤ 200ms)", (psi.inp_ms ?? psi.tbt_ms) == null ? "na" : ((psi.inp_ms ?? psi.tbt_ms) <= 250 ? "pass" : (psi.inp_ms ?? psi.tbt_ms) <= 600 ? "warn" : "fail"), (psi.inp_ms ?? psi.tbt_ms) != null ? `${psi.inp_ms ?? psi.tbt_ms}ms` : "", null, "Defer/trim JavaScript; break up long main-thread tasks.", "Site Health Scan");
+    check("ttfb", "performance", 1, "Server response ≤ 1.0s", (psi.ttfb_ms ?? ttfbMs) == null ? "na" : ((psi.ttfb_ms ?? ttfbMs) <= 1000 ? "pass" : (psi.ttfb_ms ?? ttfbMs) <= 2000 ? "warn" : "fail"), `${psi.ttfb_ms ?? ttfbMs}ms`, null, "Enable page caching / a CDN, or upgrade hosting, to cut TTFB.", "Site Health Scan");
+    check("perf_fixables", "performance", 1, "No major PageSpeed opportunities", psi.score == null ? "na" : (psi.fixables.length === 0 ? "pass" : psi.fixables.length <= 3 ? "warn" : "fail"), psi.fixables.slice(0, 4).join("; "), null, "Fix the flagged items: compression, image formats, render-blocking resources, caching.", "Site Health Scan");
 
     // ON-PAGE
     check("titles_ok", "onpage", 3, "Title tags well-formed site-wide", pctStatus(okPages.length - noTitle.length, okPages.length), noTitle.length ? `${noTitle.length}/${okPages.length} pages weak/missing` : "", "title_tag", "Rewrite to unique 50–60 char titles with keyword + location.", "Core SEO Monitoring");
@@ -858,7 +858,21 @@ async function runAuditPipeline(body: any): Promise<Response> {
     const auditScore = _w ? Math.round(_s / _w) : 0;
 
     const grades = { grade_technical: grade(techScore), grade_onpage: grade(onpageScore), grade_schema: grade(schemaScore), grade_aeo: grade(aeoScore), grade_eeat: grade(eeatScore), grade_local: grade(localScore) };
-    const grade_performance = perfScore == null ? null : grade(perfScore);
+    let grade_performance = perfScore == null ? null : grade(perfScore);
+    // Partner-built WordPress sites get a performance floor of C: a footer
+    // credit like "site by CF Digital" means one of our own white-label
+    // partners built it, and policy is not to grade partner builds below C.
+    // Names come live from partner_groups (the dashboard's 42-partner list).
+    if (grade_performance && ["D", "F"].includes(grade_performance) && /wp-content|wp-includes|wp-json/i.test(homeHtmlRaw)) {
+      try {
+        const { data: pgs } = await supa.from("partner_groups").select("name");
+        const footer = homeHtmlRaw.slice(-12000).toLowerCase();
+        const hit = (pgs || []).map((g: any) => String(g.name || "").trim())
+          .filter((n) => n.length > 3 && n.toLowerCase() !== "44i digital")
+          .find((n) => footer.includes(n.toLowerCase()));
+        if (hit) { grade_performance = "C"; note.push(`Performance graded C (partner floor): WordPress build credited to “${hit}” in the site footer.`); }
+      } catch (_) { /* best-effort */ }
+    }
 
     // ── 12. FINDINGS ENGINE ───────────────────────────────────────────────────
     const FN: any[] = [];
@@ -1256,12 +1270,40 @@ async function runAuditPipeline(body: any): Promise<Response> {
         }
         return null;
       };
+      // Owner-specified TARGET KEYWORDS (intake kw1..kw5 + per-keyword
+      // location) and TARGETED LANDING PAGES lead every pool — the client
+      // told us exactly what to rank for, so those get written first. Still
+      // gate-checked and intent-deduped like everything else.
+      const ivT = (client.intake || {}) as Record<string, string>;
+      const intakeKw: string[] = [];
+      for (let i = 1; i <= 5; i++) {
+        const k = String(ivT["kw" + i] || "").trim();
+        if (!k) continue;
+        const loc = String(ivT["kwl" + i] || "").trim() || (primaryCity ? String(primaryCity).split(",")[0] : "");
+        intakeKw.push(loc && !k.toLowerCase().includes(loc.toLowerCase().split(",")[0].trim()) ? `${k} ${loc}` : k);
+      }
+      const intakeLanding = String(ivT.landing_targets || "").split(/\n+/)
+        .map((s) => s.trim().replace(/^https?:\/\/[^\s/]+\/?/i, "").replace(/[-_/]+/g, " ").trim())
+        .filter(Boolean);
+      // Auto internal-link target: the sampled page that best matches the
+      // keyword (services page beats home). The strategist can change it in
+      // the queue; the deploy package links the focus keyword to it.
+      const bestLinkFor = (kw: string): string => {
+        const words = String(kw || "").toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+        let best = ""; let bestScore = 0;
+        for (const p of okPages) {
+          const hay = `${p.url || ""} ${p.title || ""}`.toLowerCase();
+          const sc = words.reduce((a, w) => a + (hay.includes(w) ? 1 : 0), 0);
+          if (sc > bestScore) { best = p.url; bestScore = sc; }
+        }
+        return best || home;
+      };
       const pickFor = (kind: string): string | null => {
-        if (kind === "gbp_post") return nextFrom(localServices, oppKwPool, coreUnowned);
-        if (kind === "blog") return nextFrom(gapPool, coreUnowned, oppKwPool);
-        if (kind === "pillar") return nextFrom(oppKwPool, gapPool, coreUnowned);
-        if (kind === "landing") return nextFrom(townPages, coreUnowned);
-        return nextFrom(coreUnowned, oppKwPool, gapPool);
+        if (kind === "gbp_post") return nextFrom(intakeKw, localServices, oppKwPool, coreUnowned);
+        if (kind === "blog") return nextFrom(intakeKw, gapPool, coreUnowned, oppKwPool);
+        if (kind === "pillar") return nextFrom(intakeKw, oppKwPool, gapPool, coreUnowned);
+        if (kind === "landing") return nextFrom(intakeLanding, townPages, coreUnowned);
+        return nextFrom(intakeKw, coreUnowned, oppKwPool, gapPool);
       };
       // current engagement cycle from the client's start date, clamped to the
       // contract length (contract_length_months / contract_is_evergreen on clients;
@@ -1289,9 +1331,14 @@ async function runAuditPipeline(body: any): Promise<Response> {
           const kw = pickFor(kind);
           if (!kw) continue;
           const town = kind === "landing" ? (secondaryTowns.find((t: any) => kw.includes(t)) || null) : (primaryCity || null);
-          const { data: t, error: tErr } = await supa.from("content_topics").insert({
-            package_id, title: titleCase(kw), target_keyword: kw, kind, model: MODEL[kind] || "sonnet-4-6",
-            status: "queued", source: "campaign", location: town }).select("id").single();
+          const tRow: any = { package_id, title: titleCase(kw), target_keyword: kw, kind, model: MODEL[kind] || "sonnet-4-6",
+            status: "queued", source: "campaign", location: town,
+            link_target: (kind === "blog" || kind === "gbp_post" || kind === "pillar") ? bestLinkFor(kw) : null };
+          let { data: t, error: tErr } = await supa.from("content_topics").insert(tRow).select("id").single();
+          if (tErr && /link_target|column/i.test(tErr.message || "")) {
+            delete tRow.link_target;   // platform_extras.sql not run yet
+            ({ data: t, error: tErr } = await supa.from("content_topics").insert(tRow).select("id").single());
+          }
           if (tErr) { errors.push(`content_topics: ${tErr.message}`); continue; }
           if (t?.id) { await supa.from("deliverables").update({ state: "generating", topic_id: t.id }).eq("id", d.id); topicCount++; topicsCreated.push({ kind, keyword: kw, town }); consumeAlloc(kind); }
         }
@@ -1309,7 +1356,8 @@ async function runAuditPipeline(body: any): Promise<Response> {
           if (why) { claimKw(keyword); rejectedKw.push({ keyword, reason: why }); return; }
           if (allocRemaining(kind) <= 0) { allocShort.push(kind); return; }
           claimKw(keyword); consumeAlloc(kind);
-          topicRows.push({ package_id, title: titleCase(keyword), target_keyword: keyword, kind, model, status: "queued", source, location: town });
+          topicRows.push({ package_id, title: titleCase(keyword), target_keyword: keyword, kind, model, status: "queued", source, location: town,
+            link_target: (kind === "blog" || kind === "gbp_post" || kind === "pillar") ? bestLinkFor(keyword) : null });
         };
         // Blog formats that always clear the gate and invent no facts —
         // used when the gap/keyword pools can't fund the contracted blogs.
@@ -1326,11 +1374,12 @@ async function runAuditPipeline(body: any): Promise<Response> {
           pace.push([kind, cc.perCycle ? rem : (kind === "landing" ? Math.min(2, rem) : 1)]);
         });
         for (const [kind, n] of pace) for (let i = 0; i < n && topicRows.length < TOPIC_CAP; i++) {
-          const kw = kind === "blog" ? nextFrom(gapPool, coreUnowned, blogIdeas) : pickFor(kind);
+          const kw = kind === "blog" ? nextFrom(intakeKw, gapPool, coreUnowned, blogIdeas) : pickFor(kind);
           if (!kw || allocRemaining(kind) <= 0) break;
           const town = kind === "landing" ? (secondaryTowns.find((t: any) => kw.toLowerCase().includes(String(t).split(",")[0].trim().toLowerCase())) || null) : (primaryCity || null);
           consumeAlloc(kind);
-          topicRows.push({ package_id, title: titleCase(kw), target_keyword: kw, kind, model: MODEL[kind] || "sonnet-4-6", status: "queued", source: "plan", location: town });
+          topicRows.push({ package_id, title: titleCase(kw), target_keyword: kw, kind, model: MODEL[kind] || "sonnet-4-6", status: "queued", source: "plan", location: town,
+            link_target: (kind === "blog" || kind === "gbp_post" || kind === "pillar") ? bestLinkFor(kw) : null });
         }
         // generic recommendations fill whatever capacity remains
         opportunities.slice(0, 2).forEach((o: any) => pushTopic(o.keyword, "service", "sonnet-4-6", "opportunity", primaryCity || null));
@@ -1341,7 +1390,11 @@ async function runAuditPipeline(body: any): Promise<Response> {
         services.slice(0, 2).forEach((svc: any) => secondaryTowns.slice(0, 2).forEach((town: any) => pushTopic(`${svc} ${town}`, "landing", "sonnet-4-6", "secondary_town", town)));
         gaps.slice(0, 1).forEach((g: any) => pushTopic(g.keyword, "blog", "sonnet-4-6", "content_gap", primaryCity || null));
         if (!hasFAQ) pushTopic(coreKeywords[0]?.keyword || ownKw[0]?.keyword || serpSeed || (businessType || "services"), "faq", "haiku-4-5", "aeo", primaryCity || null);
-        if (topicRows.length) { const { error: tErr } = await supa.from("content_topics").insert(topicRows); if (tErr) errors.push(`content_topics: ${tErr.message}`);
+        if (topicRows.length) { let { error: tErr } = await supa.from("content_topics").insert(topicRows);
+          if (tErr && /link_target|column/i.test(tErr.message || "")) {
+            ({ error: tErr } = await supa.from("content_topics").insert(topicRows.map(({ link_target, ...r }: any) => r)));
+          }
+          if (tErr) errors.push(`content_topics: ${tErr.message}`);
           else { topicCount = topicRows.length; topicsCreated.push(...topicRows.map((r: any) => ({ kind: r.kind, keyword: r.target_keyword, town: r.location }))); } }
       }
       if (allocShort.length) note.push(`Plan allocation ceiling reached for: ${[...new Set(allocShort)].join(", ")} — deliverables beyond the signed plan were NOT generated (recommend an upgrade or narrower scope).`);
