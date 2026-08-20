@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.7.0
+ * Version: 1.7.1
  * Author: 44i Digital
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -12,6 +12,11 @@
 
 if (!defined('ABSPATH')) exit;
 
+// If another copy of this plugin is already loaded (e.g. the folder was
+// uploaded twice during an update), bail instead of fataling on
+// "Cannot redeclare seop_authed()" — the first copy keeps working.
+if (defined('SEOP_VERSION')) return;
+
 // 44i hosting blocks outbound HTTP by default, which breaks the AI auto-fix
 // (api.anthropic.com). wp-config.php loads before plugins, so this only takes
 // effect when the constant isn't already defined there.
@@ -19,7 +24,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.7.0');
+define('SEOP_VERSION', '1.7.1');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
