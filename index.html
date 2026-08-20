@@ -322,6 +322,9 @@ button{cursor:pointer;font-family:inherit}
 .dangerzone{margin-top:26px;padding:16px 18px;border:1px solid rgba(192,57,43,.35);border-radius:var(--r-sm);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .dangerzone>div{flex:1 1 320px}
 .dangerzone b{color:#c0392b}
+.month-pill{font-size:10.5px;font-weight:800;letter-spacing:.03em;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--mist);white-space:nowrap}
+.month-pill.end{border-color:#C9A227;color:#8a6d14;background:#FFFDF2}
+body[data-theme=dark] .month-pill.end{background:rgba(201,162,39,.12);color:#e3c65b;border-color:rgba(201,162,39,.45)}
 .dangerzone .tbtn{flex-shrink:0}
 .tiers{display:flex;gap:8px;margin-top:6px}
 .tsel{flex:1;text-align:center;padding:10px 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);cursor:pointer;font-weight:600;font-size:13px;color:var(--muted);transition:.12s;user-select:none}
@@ -903,7 +906,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.8.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.9.0</div>
   </div>
   </div>
 </div>
@@ -988,7 +991,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.8.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.9.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1036,7 +1039,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.8.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.9.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1195,7 +1198,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.8.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.9.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1223,7 +1226,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.8.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.9.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1887,13 +1890,19 @@ function seedNow(){
   seedCampaign(activeClient.id, activeClient.tier, activeClient.engagement_start_date||new Date().toISOString().slice(0,10), horizonOf(activeClient))
     .then(loadCampaign).then(()=>{ renderRoadmap(); showToast(`${cap(lab)} campaign generated`,false,true); });
 }
-function currentCycle(){
-  const c=activeClient; if(!c||!c.engagement_start_date) return 1;
+function cycleOf(c){
+  if(!c||!c.engagement_start_date) return 1;
   const s=new Date(c.engagement_start_date+'T00:00:00Z'), n=new Date();
   const raw=(n.getUTCFullYear()-s.getUTCFullYear())*12 + (n.getUTCMonth()-s.getUTCMonth()) + 1;
   const len=contractLengthOf(c);
   return Math.max(1, len?Math.min(len,raw):raw);
 }
+function currentCycle(){ return cycleOf(activeClient); }
+// "Month 3 of 6" (or "Month 3 · evergreen") — shown on the content tab and
+// the dashboard cards so nobody has to do date math to know where a
+// campaign stands.
+function campaignMonthLabel(c){ const len=contractLengthOf(c), m=cycleOf(c); return len?`Month ${m} of ${len}`:`Month ${m} · evergreen`; }
+function nearContractEnd(c){ const len=contractLengthOf(c); return !!len && cycleOf(c)>=len-1; }
 // legacy deliverable rows (pre-catalog) carry only a cadence string — infer a type
 function inferCadenceType(d){
   if(d.cadence_type) return d.cadence_type;
@@ -2352,6 +2361,7 @@ function renderRows(rows){
       </div>
       <div class="ccard-foot">
         <span class="tier-pill ${c.tier}">${planLabel(c.tier)}</span>${pkgBadge(c.pkg_status)}
+        <span class="month-pill ${nearContractEnd(c)?'end':''}" title="${nearContractEnd(c)?'Contract wrapping up — time to talk renewal':'Campaign month'}">${campaignMonthLabel(c).replace('Month ','M').replace(' of ','/').replace(' · evergreen','∞')}${nearContractEnd(c)?' · renew?':''}</span>
         <span class="cdate ${stale?'stale':''}">${c.last_audit?'Audit '+fmtDate(c.last_audit):'No audit yet'}</span>
       </div>
     </div>`;
@@ -3319,7 +3329,7 @@ function renderQueue(){
         return n?`<button class="qgen" style="background:#C0392B;margin-right:8px" onclick="autoFixFlagged()" title="Rewrite every flagged draft with its violations as explicit removal instructions">⚠ Auto-fix ${n} flagged →</button>`:'';})()}
       <button class="qgen" id="sugbtn" style="background:var(--navy);margin-right:8px" onclick="suggestTopics()" title="Claude combines the owner's business description with the audit data and proposes topics — you pick what to queue">💡 Suggest topics</button>
       <button class="qgen" onclick="generateDrafts()">Generate drafts →</button></div>`;
-  document.getElementById('queue-tag').textContent=`${PK.topics.length} queued · Engine 2`;
+  document.getElementById('queue-tag').textContent=`${campaignMonthLabel(activeClient)} · ${PK.topics.length} queued · Engine 2`;
 }
 // ── TOPIC SUGGESTIONS — Claude proposes, deterministic gates filter, a human
 //    picks what to queue. Fed by the owner's business description in intake.
@@ -3332,15 +3342,33 @@ const KIND_MODEL={gbp_post:'haiku-4-5',blog:'sonnet-4-6',pillar:'opus-4-8',landi
 async function autoFillTopics(){
   if(OFFLINE||!activeClient||!PK.package_id) return 0;
   const tier=(activeClient&&activeClient.tier)||activeTier||'pro';
-  const totals={};
+  // Contract totals are PACED by campaign month: at month m of len only
+  // round(total·m/len) pieces may exist. A client imported at month 3 of 6
+  // gets half the contract's content (earlier months were delivered
+  // elsewhere), and on-platform clients no longer front-load the whole
+  // contract in month 1. Recurring kinds stay per-cycle.
+  const m=currentCycle(), len=contractLengthOf(activeClient);
+  const caps={};   // kind -> {cap, perCycle}
   planServices(tier).forEach(s=>{
     if(!s.kind||s.kind==='gbp_post') return;
-    if(s.cadence==='fixed_quantity'&&s.total!=null) totals[s.kind]=(totals[s.kind]||0)+s.total;
-    else if(s.cadence==='recurring'&&(s.per||0)>0) totals[s.kind]=(totals[s.kind]||0)+s.per;
+    if(s.cadence==='fixed_quantity'&&s.total!=null){
+      const paced=len?Math.max(0,Math.round(s.total*Math.min(m,len)/len)):s.total;
+      caps[s.kind]={cap:((caps[s.kind]||{}).cap||0)+paced, perCycle:false};
+    } else if(s.cadence==='recurring'&&(s.per||0)>0){
+      caps[s.kind]={cap:((caps[s.kind]||{}).cap||0)+s.per, perCycle:true};
+    }
   });
-  const counts={}; (PK.topics||[]).forEach(t=>{ counts[t.kind]=(counts[t.kind]||0)+1; });
+  // per-cycle kinds count against the current package; contract totals count
+  // against everything the client has ever had (matches run-audit's ledger)
+  const countsCycle={}; (PK.topics||[]).forEach(t=>{ countsCycle[t.kind]=(countsCycle[t.kind]||0)+1; });
+  let countsAll=countsCycle;
+  try{
+    const {data:allT}=await sb.from('content_topics').select('kind,status,packages!inner(client_id)').eq('packages.client_id',activeClient.id);
+    if(allT){ countsAll={}; allT.filter(t=>t.status!=='retired').forEach(t=>{ countsAll[t.kind]=(countsAll[t.kind]||0)+1; }); }
+  }catch(_){}
   const short={}; let need=0;
-  Object.entries(totals).forEach(([k,cap])=>{ const s=Math.max(0,cap-(counts[k]||0)); if(s>0){ short[k]=s; need+=s; } });
+  Object.entries(caps).forEach(([k,v])=>{ const used=v.perCycle?(countsCycle[k]||0):(countsAll[k]||0);
+    const s=Math.max(0,v.cap-used); if(s>0){ short[k]=s; need+=s; } });
   if(!need) return 0;
   showToast(`Auto-filling ${need} open content slot${need>1?'s':''} from gate-checked suggestions…`);
   try{

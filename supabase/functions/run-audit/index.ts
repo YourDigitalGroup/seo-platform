@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.5.0";
+const ENGINE_VERSION = "5.6.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -1229,7 +1229,17 @@ async function runAuditPipeline(body: any): Promise<Response> {
       }
       const allocRemaining = (kind: string): number => {
         const c = capOf[kind]; if (!c || c.cap == null) return 99;
-        return Math.max(0, c.cap - (c.perCycle ? (usedOf["cycle:" + kind] || 0) : (usedOf[kind] || 0)));
+        if (c.perCycle) return Math.max(0, c.cap - (usedOf["cycle:" + kind] || 0));
+        // Contract totals are PACED by campaign month: at month m of len only
+        // round(total·m/len) pieces may exist. A client imported mid-campaign
+        // (backdated engagement_start_date) gets only the remainder — months
+        // delivered elsewhere never regenerate — and on-platform clients no
+        // longer front-load the whole contract in month 1. cycleMonth is set
+        // before any topic creation runs; 0 (no start date) leaves the cap
+        // unpaced.
+        const len = client.contract_is_evergreen ? 0 : (client.contract_length_months || 6);
+        const paced = len && cycleMonth ? Math.max(0, Math.round(c.cap * Math.min(cycleMonth, len) / len)) : c.cap;
+        return Math.max(0, paced - (usedOf[kind] || 0));
       };
       const consumeAlloc = (kind: string) => { usedOf[kind] = (usedOf[kind] || 0) + 1; usedOf["cycle:" + kind] = (usedOf["cycle:" + kind] || 0) + 1; };
       const allocShort: string[] = [];
