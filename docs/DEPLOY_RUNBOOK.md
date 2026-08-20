@@ -47,6 +47,15 @@ competitor discovery outliving the API gateway timeout). Requires
 complete (the console falls back to polling the audits list), but failures
 surface with no error message.
 
+## 1a-4. Campaign suspension  (Supabase → SQL Editor)
+
+Paste `supabase/migrations/suspend.sql` and Run (idempotent). Adds
+`clients.suspended_at / suspend_reason` for the "Suspend campaign" control on
+the package Setup tab, and folds the old onboarding/paused statuses into
+'active' (status is now just active vs suspended; the scheduler only
+automates 'active' clients). Without it, suspending still works but the date
+and reason aren't stored.
+
 ## 1b. Service catalog + contract model  (Supabase → SQL Editor)
 
 Paste the full contents of `supabase/migrations/service_catalog.sql` and Run

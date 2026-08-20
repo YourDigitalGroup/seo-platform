@@ -232,6 +232,11 @@ button{cursor:pointer;font-family:inherit}
 .status-dot i{width:8px;height:8px;border-radius:50%;display:inline-block;font-style:normal}
 .sd-active i{background:var(--st-active)} .sd-onboarding i{background:var(--st-onboard)}
 .sd-paused i{background:var(--st-paused)} .sd-churned i{background:var(--st-churned)}
+.sd-suspended i{background:var(--st-paused)}
+.ctrlzone{margin-top:26px;padding:16px 18px;border:1px solid var(--line);border-radius:var(--r-sm);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.ctrlzone>div{flex:1 1 320px}
+.ctrlzone.suspended{border-color:#C9A227;background:#FFFDF2}
+body[data-theme=dark] .ctrlzone.suspended{background:rgba(201,162,39,.10)}
 .tier-pill{display:inline-block;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px}
 .tier-pill.starter{background:var(--s-tint-blue);color:var(--s-blue-text)} .tier-pill.builder{background:var(--mint);color:var(--s-green-text)} .tier-pill.pro{background:var(--navy);color:#fff}
 .pbadges{display:flex;gap:4px}
@@ -906,7 +911,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.9.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.10.0</div>
   </div>
   </div>
 </div>
@@ -991,7 +996,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.9.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.10.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1020,7 +1025,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </select>
         <select class="fsel" id="f-status" onchange="onFilter()">
           <option value="all">All statuses</option><option value="active">Active</option>
-          <option value="onboarding">Onboarding</option><option value="paused">Paused</option><option value="churned">Churned</option>
+          <option value="suspended">Suspended</option>
         </select>
         <select class="fsel" id="f-sort" onchange="onFilter()">
           <option value="created.desc">Newest first</option><option value="name.asc">Name A–Z</option>
@@ -1039,7 +1044,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.9.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.10.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1101,6 +1106,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
       <div class="acp" id="access-panel"></div>
       <div class="datasrc" id="datasrc"></div>
+      <div class="ctrlzone" id="campaign-controls" style="display:none"></div>
       <div class="dangerzone" id="dangerzone" style="display:none">
         <div><b>Remove this client</b>
           <div class="wmeta">Permanently deletes the client and everything attached — package, audit history, fixes, drafts and reports. This cannot be undone.</div></div>
@@ -1198,7 +1204,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.9.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.10.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1226,7 +1232,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.9.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.10.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1277,11 +1283,6 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <div class="mrow">
       <div class="mfield"><label>SEO/AEO Strategist</label>
         <select id="m-strat"></select>
-      </div>
-      <div class="mfield"><label>Status</label>
-        <select id="m-status">
-          <option value="onboarding">Onboarding</option><option value="active">Active</option><option value="paused">Paused</option>
-        </select>
       </div>
     </div>
     <div class="gen-note" id="gen-note">On save, the system generates the full deployment package — audit, competition, fixes, deliverables, and the white-labeled report.</div>
@@ -1472,6 +1473,7 @@ function mapClient(r){
     audit_score: la && la.score!=null ? la.score : null,
     tier:r.tier, status:r.status, strategist_id:r.strategist_id,
     gsc:r.gsc_connected, gbp:r.gbp_connected, wp:r.wp_connected, ga4:r.ga4_connected,
+    suspended_at:r.suspended_at||null, suspend_reason:r.suspend_reason||null,
     wp_api_key:r.wp_api_key||null,
     last_audit: r.last_audit_at ? r.last_audit_at.slice(0,10) : null,
     engagement_start_date: r.engagement_start_date || null,
@@ -1604,6 +1606,53 @@ async function teamSetRole(i,sel){
     showToast('Could not change role — '+String(e.message||e),true);
     sel.value=u.role||'';
   }
+}
+// ── SUSPEND / RESUME — a frontend status flag, nothing more. The only
+// side effect is inherited: the scheduler only auto-audits/reports clients
+// whose status is 'active', so suspended clients drop out of automation.
+function renderCampaignControls(){
+  const el=document.getElementById('campaign-controls'); if(!el) return;
+  const c=activeClient; if(!c||OFFLINE){ el.style.display='none'; return; }
+  el.style.display='';
+  el.classList.toggle('suspended', c.status==='suspended');
+  if(c.status==='suspended'){
+    el.innerHTML=`<div><b style="color:#8a6d14">Campaign suspended${c.suspended_at?` since ${fmtDate(String(c.suspended_at).slice(0,10))}`:''}</b>
+      <div class="wmeta">${c.suspend_reason?esc(c.suspend_reason)+' · ':''}Scheduled daily audits and weekly reports skip this client; everything manual still works.</div></div>
+      <button class="tbtn" onclick="resumeCampaign()">▶ Resume campaign</button>`;
+  } else {
+    el.innerHTML=`<div><b>Suspend campaign</b>
+      <div class="wmeta">Marks the client suspended with a date and reason — the dashboard then shows who's active vs suspended. Scheduled audits and reports skip suspended clients.</div></div>
+      <button class="tbtn" onclick="suspendCampaign()">⏸ Suspend campaign…</button>`;
+  }
+}
+async function suspendCampaign(){
+  const c=activeClient; if(!c) return;
+  let date=prompt('Suspension date (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+  if(date==null) return;
+  date=date.trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ showToast('Use YYYY-MM-DD for the date',true); return; }
+  const reason=prompt('Reason for suspension:');
+  if(reason==null) return;
+  if(!reason.trim()){ showToast('A reason is required to suspend',true); return; }
+  let {error}=await sb.from('clients').update({status:'suspended', suspended_at:date, suspend_reason:reason.trim()}).eq('id',c.id);
+  if(error&&/column/i.test(error.message||'')){
+    ({error}=await sb.from('clients').update({status:'suspended'}).eq('id',c.id));
+    if(!error) showToast('Suspended — but the date/reason could not be saved: run suspend.sql (see runbook)',true);
+  } else if(!error) showToast(`Campaign suspended as of ${fmtDate(date)}`,false,true);
+  if(error){ showToast('Could not suspend: '+error.message,true); return; }
+  c.status='suspended'; c.suspended_at=date; c.suspend_reason=reason.trim();
+  const gc=groupClients.find(x=>x.id===c.id); if(gc){ gc.status='suspended'; gc.suspended_at=date; gc.suspend_reason=c.suspend_reason; }
+  renderPackage();
+}
+async function resumeCampaign(){
+  const c=activeClient; if(!c) return;
+  if(!confirm('Resume this campaign? The client returns to Active and scheduled audits/reports include them again.')) return;
+  let {error}=await sb.from('clients').update({status:'active', suspended_at:null, suspend_reason:null}).eq('id',c.id);
+  if(error&&/column/i.test(error.message||'')) ({error}=await sb.from('clients').update({status:'active'}).eq('id',c.id));
+  if(error){ showToast('Could not resume: '+error.message,true); return; }
+  c.status='active'; c.suspended_at=null; c.suspend_reason=null;
+  const gc=groupClients.find(x=>x.id===c.id); if(gc){ gc.status='active'; gc.suspended_at=null; gc.suspend_reason=null; }
+  renderPackage(); showToast('Campaign resumed — client is Active again',false,true);
 }
 // Deleting a client wipes real history (audits, drafts, reports), so it's
 // Super Admin only, requires re-typing the URL, and runs server-side via
@@ -2389,7 +2438,7 @@ function syncClear(){ const a=filters.search||filters.tier!=='all'||filters.stat
 // ════════════════════════════════════════════════════════════
 function openAddModal(){
   ['m-name','m-url','m-market'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('m-tier').value='starter'; document.getElementById('m-status').value='onboarding';
+  document.getElementById('m-tier').value='starter';
   document.getElementById('m-contract').value='6';
   document.getElementById('m-started').checked=false;
   document.getElementById('m-startmonth-wrap').style.display='none';
@@ -2403,7 +2452,7 @@ async function saveClient(){
   const name=document.getElementById('m-name').value.trim();
   const url=document.getElementById('m-url').value.trim().replace(/^https?:\/\//,'');
   const market=document.getElementById('m-market').value.trim();
-  const tier=document.getElementById('m-tier').value, status=document.getElementById('m-status').value;
+  const tier=document.getElementById('m-tier').value, status='active';  // clients start active; "Suspend campaign" on the package flips it
   const contract=document.getElementById('m-contract').value;
   const evergreen=contract==='evergreen', lengthMonths=evergreen?6:(+contract||6);
   const strat=document.getElementById('m-strat').value||null;
@@ -2523,6 +2572,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=planLabel(c.tier)+' plan';
 
+  renderCampaignControls();
   renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderAuditHistory(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
