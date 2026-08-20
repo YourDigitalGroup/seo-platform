@@ -42,17 +42,34 @@ Deno.serve(async (req) => {
     if (!client.wp_api_key) return json({ error: "WordPress not connected — install the connector plugin on the site and save its API key on the client" }, 400);
 
     const host = String(client.url || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
-    const base = `https://${host}/wp-json/seo-platform/v1`;
+    // Two ways to reach the WP REST API: pretty permalinks serve /wp-json/…;
+    // sites on "Plain" permalinks 404 there and only answer ?rest_route=….
+    // Try pretty first, remember whichever works for the rest of this run.
+    let restStyle: "pretty" | "plain" | null = null;
+    const urlFor = (style: "pretty" | "plain", path: string) =>
+      style === "pretty"
+        ? `https://${host}/wp-json/seo-platform/v1${path}`
+        : `https://${host}/?rest_route=${encodeURIComponent(`/seo-platform/v1${path}`)}`;
     const call = async (path: string, payload: unknown) => {
-      const r = await fetch(base + path, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${client.wp_api_key}`, "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const txt = await r.text();
-      let j: any; try { j = JSON.parse(txt); } catch { j = { raw: txt }; }
-      if (!r.ok) throw new Error(`WordPress ${r.status}: ${(j && (j.message || j.error)) || txt.slice(0, 200)}`);
-      return j;
+      const styles: ("pretty" | "plain")[] = restStyle ? [restStyle] : ["pretty", "plain"];
+      let lastErr = "";
+      for (const style of styles) {
+        const r = await fetch(urlFor(style, path), {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${client.wp_api_key}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const txt = await r.text();
+        let j: any; try { j = JSON.parse(txt); } catch { j = { raw: txt }; }
+        // A 404 or an HTML page on the pretty route = plain permalinks; retry.
+        const routeMiss = !restStyle && style === "pretty" &&
+          (r.status === 404 || (!r.ok && typeof j?.raw === "string" && /<html/i.test(j.raw)) || j?.code === "rest_no_route");
+        if (routeMiss) { lastErr = `pretty route ${r.status}`; continue; }
+        if (!r.ok) throw new Error(`WordPress ${r.status}: ${(j && (j.message || j.error)) || txt.slice(0, 200)}`);
+        restStyle = style;
+        return j;
+      }
+      throw new Error(`WordPress REST unreachable (${lastErr}) — is the connector plugin active?`);
     };
 
     // ── Mode 1: push a written content draft (as a DRAFT post/page) ──
