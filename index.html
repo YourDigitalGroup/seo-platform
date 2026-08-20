@@ -294,6 +294,16 @@ body[data-theme=dark] .ctrlzone.suspended{background:rgba(201,162,39,.10)}
 .mfoot{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
 .mbtn{font-weight:700;font-size:14px;padding:11px 22px;border-radius:999px;border:1px solid var(--line);background:var(--s-card);color:var(--muted);transition:.12s}
 .mbtn.primary{background:var(--blue);color:#fff;border-color:var(--blue)} .mbtn:hover{border-color:var(--blue-d);color:var(--ink)} .mbtn.primary:hover{background:var(--blue-bright)}
+.mbtn.primary.danger{background:#c0392b;border-color:#c0392b} .mbtn.primary.danger:hover{background:#a93226;border-color:#a93226;color:#fff}
+.modal.dlg{max-width:440px}
+.modal.dlg h2{margin:0 0 8px}
+.dlg-desc{font-size:13.5px;color:var(--muted);line-height:1.55}
+.dlg-desc b{color:var(--ink)}
+#dlg-fields .ifield{margin-top:14px}
+#dlg-fields textarea{font-family:inherit;font-size:14px;padding:11px 14px;border:1px solid var(--line);border-radius:var(--r-sm);color:var(--ink);background:var(--s-card);resize:vertical}
+#dlg-fields textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.15)}
+.ctrlzone.bare{border:none;padding:0;background:none;justify-content:flex-end}
+.tbtn.danger{border-color:rgba(192,57,43,.4);color:#c0392b}
 
 /* ── PACKAGE VIEW ───────────────────────────────────────────── */
 .pkg-hero{display:flex;align-items:center;gap:16px;padding:16px 0 6px}
@@ -356,7 +366,7 @@ body[data-theme=dark] .month-pill.end{background:rgba(201,162,39,.12);color:#e3c
 .section-h .ln{flex:1;height:1px;background:var(--line)}
 .section-h .tag{font-size:12px;color:var(--muted);font-weight:600}
 
-.acp{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.acp{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
 .apc{border:1px solid var(--line);border-radius:var(--r-sm);padding:14px 16px;position:relative}
 .apc.on.gsc{background:var(--gsc-l);border-color:rgba(66,133,244,.2)} .apc.on.gbp{background:var(--gbp-l);border-color:rgba(52,168,83,.2)}
 .apc.on.wp{background:var(--wp-l);border-color:rgba(33,117,155,.2)} .apc.on.ga4{background:var(--ga4-l);border-color:rgba(232,113,10,.2)}
@@ -366,11 +376,12 @@ body[data-theme="dark"] .apc.on.gbp{background:rgba(52,168,83,.14);border-color:
 body[data-theme="dark"] .apc.on.wp{background:rgba(75,155,215,.12);border-color:rgba(75,155,215,.38)}
 body[data-theme="dark"] .apc.on.ga4{background:rgba(232,113,10,.13);border-color:rgba(232,113,10,.38)}
 .apc.off{background:var(--mist)}
-.apc-status{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;margin-bottom:3px}
+.apc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;flex-wrap:wrap}
+.apc-status{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
 .apc.on .apc-status{color:var(--grow-d)} .apc.off .apc-status{color:var(--muted)}
 .apc-name{font-size:13px;font-weight:800;margin-bottom:3px;letter-spacing:-.2px} .apc.off .apc-name{color:var(--muted)}
 .apc-desc{font-size:11px;color:var(--muted);line-height:1.45}
-.apc-btn{position:absolute;top:10px;right:12px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid;background:none;cursor:pointer;transition:.12s}
+.apc-btn{flex-shrink:0;white-space:nowrap;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid;background:none;cursor:pointer;transition:.12s}
 .apc.on .apc-btn{color:var(--grow-d);border-color:var(--grow-d)} .apc.off .apc-btn{color:var(--blue);border-color:var(--blue)}
 .apc-pull{display:block;width:100%;box-sizing:border-box;margin-top:10px;font-size:11px;font-weight:700;padding:7px 10px;border-radius:8px;border:none;background:#1A3C5E;color:#fff;cursor:pointer;transition:background .12s}
 .apc-pull:hover{background:#142f4a}
@@ -911,7 +922,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.11.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.12.0</div>
   </div>
   </div>
 </div>
@@ -996,7 +1007,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.11.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.12.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1044,7 +1055,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.11.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.12.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1107,11 +1118,6 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div class="acp" id="access-panel"></div>
       <div class="datasrc" id="datasrc"></div>
       <div class="ctrlzone" id="campaign-controls" style="display:none"></div>
-      <div class="dangerzone" id="dangerzone" style="display:none">
-        <div><b>Remove this client</b>
-          <div class="wmeta">Permanently deletes the client and everything attached — package, audit history, fixes, drafts and reports. This cannot be undone.</div></div>
-        <button class="tbtn danger" onclick="removeClient()">Remove client…</button>
-      </div>
     </div>
 
     <div class="ptab" id="ptab-2">
@@ -1204,7 +1210,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.11.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.12.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1232,7 +1238,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.11.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.12.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1289,6 +1295,19 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <div class="mfoot">
       <button class="mbtn" onclick="closeAddModal()">Cancel</button>
       <button class="mbtn primary" onclick="saveClient()">Add &amp; generate</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ CONFIRM / INPUT DIALOG — replaces alert()/prompt() popups ═══════════ -->
+<div class="overlay" id="dlg-overlay">
+  <div class="modal dlg">
+    <h2 id="dlg-title">—</h2>
+    <div class="dlg-desc" id="dlg-desc"></div>
+    <div id="dlg-fields"></div>
+    <div class="mfoot">
+      <button class="mbtn" onclick="closeDlg(null)">Cancel</button>
+      <button class="mbtn primary" id="dlg-ok">Confirm</button>
     </div>
   </div>
 </div>
@@ -1585,13 +1604,56 @@ async function teamCreate(){
   }catch(e){ showToast('Could not create user — '+String(e.message||e),true); }
   btn.disabled=false; btn.textContent='＋ Create user';
 }
+// ── DIALOG — the console's confirm/input popup (no more alert-style
+// prompt()/confirm()). Returns a promise: null on cancel, else an object of
+// field values ({} when there are no fields).
+let _dlgResolve=null;
+function dialog(opts){
+  return new Promise(res=>{
+    if(_dlgResolve) _dlgResolve(null);   // a dialog interrupted by another cancels
+    _dlgResolve=res;
+    document.getElementById('dlg-title').textContent=opts.title||'Confirm';
+    document.getElementById('dlg-desc').innerHTML=opts.body||'';
+    const F=opts.fields||[];
+    document.getElementById('dlg-fields').innerHTML=F.map(f=>`<div class="ifield"><label>${esc(f.label||'')}</label>${
+      f.type==='textarea'
+        ?`<textarea id="dlg-f-${f.id}" rows="3" placeholder="${esc(f.placeholder||'')}">${esc(f.value||'')}</textarea>`
+        :`<input id="dlg-f-${f.id}" type="${f.type||'text'}" placeholder="${esc(f.placeholder||'')}" value="${esc(f.value||'')}">`}</div>`).join('');
+    const ok=document.getElementById('dlg-ok');
+    ok.textContent=opts.okLabel||'Confirm';
+    ok.className='mbtn primary'+(opts.danger?' danger':'');
+    ok.onclick=()=>{
+      const values={};
+      for(const f of F){
+        const el=document.getElementById('dlg-f-'+f.id);
+        const v=f.notrim?el.value:el.value.trim();
+        if(f.required&&!v){ showToast((f.label||'This field')+' is required',true); el.focus(); return; }
+        if(f.pattern&&v&&!f.pattern.test(v)){ showToast(f.invalid||('Check the '+(f.label||'field')),true); el.focus(); return; }
+        values[f.id]=v;
+      }
+      closeDlg(values);
+    };
+    document.getElementById('dlg-overlay').classList.add('open');
+    const first=document.querySelector('#dlg-fields input, #dlg-fields textarea');
+    if(first) setTimeout(()=>first.focus(),60);
+  });
+}
+function closeDlg(v){
+  document.getElementById('dlg-overlay').classList.remove('open');
+  const r=_dlgResolve; _dlgResolve=null; if(r) r(v);
+}
+document.getElementById('dlg-overlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeDlg(null); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&document.getElementById('dlg-overlay').classList.contains('open')) closeDlg(null); });
 async function teamSetPw(i){
   const u=TEAM_USERS[i]; if(!u) return;
-  const pw=prompt(`New password for ${u.email} (min 6 characters):`);
-  if(pw==null) return;
-  if(pw.length<6){ showToast('Password must be at least 6 characters',true); return; }
+  const v=await dialog({ title:'Set password',
+    body:`Sets a new sign-in password for <b>${esc(u.email)}</b>. It takes effect immediately — share it with them securely.`,
+    okLabel:'Set password',
+    fields:[{id:'pw', label:'New password', placeholder:'min 6 characters', required:true, notrim:true,
+             pattern:/^.{6,}$/, invalid:'Password must be at least 6 characters'}]});
+  if(!v) return;
   try{
-    await teamInvoke({action:'set_password', user_id:u.id, password:pw});
+    await teamInvoke({action:'set_password', user_id:u.id, password:v.pw});
     showToast(`✓ Password updated for ${u.email}`);
   }catch(e){ showToast('Could not set password — '+String(e.message||e),true); }
 }
@@ -1615,38 +1677,43 @@ function renderCampaignControls(){
   const c=activeClient; if(!c||OFFLINE){ el.style.display='none'; return; }
   el.style.display='';
   el.classList.toggle('suspended', c.status==='suspended');
+  el.classList.toggle('bare', c.status!=='suspended');
   if(c.status==='suspended'){
-    el.innerHTML=`<div><b style="color:#8a6d14">Campaign suspended${c.suspended_at?` since ${fmtDate(String(c.suspended_at).slice(0,10))}`:''}</b>
-      <div class="wmeta">${c.suspend_reason?esc(c.suspend_reason)+' · ':''}Scheduled daily audits and weekly reports skip this client; everything manual still works.</div></div>
+    el.innerHTML=`<div><b style="color:#8a6d14">⏸ Suspended${c.suspended_at?` since ${fmtDate(String(c.suspended_at).slice(0,10))}`:''}</b>${c.suspend_reason?`<div class="wmeta">${esc(c.suspend_reason)}</div>`:''}</div>
       <button class="tbtn" onclick="resumeCampaign()">▶ Resume campaign</button>`;
   } else {
-    el.innerHTML=`<div><b>Suspend campaign</b>
-      <div class="wmeta">Marks the client suspended with a date and reason — the dashboard then shows who's active vs suspended. Scheduled audits and reports skip suspended clients.</div></div>
-      <button class="tbtn" onclick="suspendCampaign()">⏸ Suspend campaign…</button>`;
+    el.innerHTML=`<button class="tbtn" onclick="suspendCampaign()">⏸ Suspend campaign…</button>`+
+      (me.role==='admin'?`<button class="tbtn danger" onclick="removeClient()">🗑 Delete client…</button>`:'');
   }
 }
 async function suspendCampaign(){
   const c=activeClient; if(!c) return;
-  let date=prompt('Suspension date (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
-  if(date==null) return;
-  date=date.trim();
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ showToast('Use YYYY-MM-DD for the date',true); return; }
-  const reason=prompt('Reason for suspension:');
-  if(reason==null) return;
-  if(!reason.trim()){ showToast('A reason is required to suspend',true); return; }
-  let {error}=await sb.from('clients').update({status:'suspended', suspended_at:date, suspend_reason:reason.trim()}).eq('id',c.id);
+  const v=await dialog({ title:'Suspend campaign',
+    body:`Puts <b>${esc(c.url||c.name)}</b> on hold: scheduled daily audits and weekly reports stop, and the dashboard shows the client as Suspended. Nothing is deleted — resume any time.`,
+    okLabel:'Suspend campaign',
+    fields:[
+      {id:'date', label:'Suspension date', type:'date', value:new Date().toISOString().slice(0,10), required:true,
+       pattern:/^\d{4}-\d{2}-\d{2}$/, invalid:'Use YYYY-MM-DD for the date'},
+      {id:'reason', label:'Reason', type:'textarea', placeholder:'e.g. client requested a hold during the site rebuild', required:true},
+    ]});
+  if(!v) return;
+  const date=v.date, reason=v.reason;
+  let {error}=await sb.from('clients').update({status:'suspended', suspended_at:date, suspend_reason:reason}).eq('id',c.id);
   if(error&&/column/i.test(error.message||'')){
     ({error}=await sb.from('clients').update({status:'suspended'}).eq('id',c.id));
     if(!error) showToast('Suspended — but the date/reason could not be saved: run suspend.sql (see runbook)',true);
   } else if(!error) showToast(`Campaign suspended as of ${fmtDate(date)}`,false,true);
   if(error){ showToast('Could not suspend: '+error.message,true); return; }
-  c.status='suspended'; c.suspended_at=date; c.suspend_reason=reason.trim();
+  c.status='suspended'; c.suspended_at=date; c.suspend_reason=reason;
   const gc=groupClients.find(x=>x.id===c.id); if(gc){ gc.status='suspended'; gc.suspended_at=date; gc.suspend_reason=c.suspend_reason; }
   renderPackage();
 }
 async function resumeCampaign(){
   const c=activeClient; if(!c) return;
-  if(!confirm('Resume this campaign? The client returns to Active and scheduled audits/reports include them again.')) return;
+  const ok=await dialog({ title:'Resume campaign',
+    body:'Returns the client to <b>Active</b> — scheduled daily audits and weekly reports include them again.',
+    okLabel:'Resume campaign'});
+  if(!ok) return;
   let {error}=await sb.from('clients').update({status:'active', suspended_at:null, suspend_reason:null}).eq('id',c.id);
   if(error&&/column/i.test(error.message||'')) ({error}=await sb.from('clients').update({status:'active'}).eq('id',c.id));
   if(error){ showToast('Could not resume: '+error.message,true); return; }
@@ -1663,9 +1730,11 @@ async function removeClient(){
   if(OFFLINE){ showToast('Live mode only',true); return; }
   const norm=s=>String(s||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/+$/,'');
   const label=c.url||c.name;
-  const typed=prompt(`This permanently deletes ${label} — package, audit history, fixes, drafts and reports. It cannot be undone.\n\nType the client ${c.url?'URL':'name'} to confirm:`);
-  if(typed==null) return;
-  if(norm(typed)!==norm(label)){ showToast('Didn’t match — nothing was deleted',true); return; }
+  const v=await dialog({ title:'Delete client', danger:true, okLabel:'Delete permanently',
+    body:`Permanently deletes <b>${esc(label)}</b> and everything attached — package, audit history, fixes, drafts and reports. <b>This cannot be undone.</b>`,
+    fields:[{id:'confirm', label:`Type the client ${c.url?'URL':'name'} to confirm`, placeholder:label, required:true}]});
+  if(!v) return;
+  if(norm(v.confirm)!==norm(label)){ showToast('Didn’t match — nothing was deleted',true); return; }
   showToast('Removing client and all attached data…');
   try{
     const d=await teamInvoke({action:'delete_client', client_id:c.id});
@@ -1683,7 +1752,9 @@ async function removeClient(){
 }
 async function teamDelete(i){
   const u=TEAM_USERS[i]; if(!u) return;
-  if(!confirm(`Remove ${u.email}? They will no longer be able to sign in.`)) return;
+  const ok=await dialog({ title:'Remove user', danger:true, okLabel:'Remove user',
+    body:`<b>${esc(u.email)}</b> loses console access immediately and can no longer sign in.`});
+  if(!ok) return;
   try{
     await teamInvoke({action:'delete', user_id:u.id});
     showToast(`✓ ${u.email} removed`);
@@ -2120,7 +2191,6 @@ function onAuth(){
   const isAdmin=me.role==='admin';
   document.getElementById('nav-team').style.display=isAdmin?'':'none';
   document.getElementById('nav-team-label').style.display=isAdmin?'':'none';
-  document.getElementById('dangerzone').style.display=isAdmin?'':'none';
   navigate('groups');
 }
 function showErr(m){ const e=document.getElementById('l-err'); e.textContent=m; e.style.display='block'; }
@@ -2754,9 +2824,10 @@ function renderAccessPanel(){
     const pull = (p.key==='gsc' && !OFFLINE)
       ? `<button class="apc-pull" onclick="pullGSC()">Pull Search Console data →</button>` : '';
     const key = p.key==='wp' ? wpKeyRow(c) : '';
-    return `<div class="apc ${on?'on':'off'} ${p.key}"><div class="apc-status">${on?'✓ Connected':'✗ Not connected'}</div>
-      <div class="apc-name">${p.name}</div><div class="apc-desc">${on?p.on_desc:p.off_desc}</div>
-      <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button>${key}${pull}</div>`;
+    return `<div class="apc ${on?'on':'off'} ${p.key}">
+      <div class="apc-head"><div class="apc-status">${on?'✓ Connected':'✗ Not connected'}</div>
+        <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button></div>
+      <div class="apc-name">${p.name}</div><div class="apc-desc">${on?p.on_desc:p.off_desc}</div>${key}${pull}</div>`;
   }).join('');
 }
 // The connector plugin (tab ④) issues a per-site API key; publish-wp can't push
@@ -3493,7 +3564,9 @@ async function addSelectedTopics(){
 // swallowed — that silence is how 11 phantom retirements shipped).
 async function retireTopic(i){
   const t=PK.topics[i]; if(!t||!t._id) return;
-  if(!confirm(`Retire “${t.title}”? It leaves the campaign, deploy file and documents permanently.`)) return;
+  const ok=await dialog({ title:'Retire piece', danger:true, okLabel:'Retire',
+    body:`“<b>${esc(t.title)}</b>” leaves the campaign, the deploy file and all documents permanently.`});
+  if(!ok) return;
   const { error } = await sb.from('content_topics').update({ status:'retired' }).eq('id', t._id);
   if(error){ showToast('Retire failed: '+error.message+' — run content_status_text.sql in the SQL editor', true); return; }
   try{ await sb.from('deliverables').update({ state:'planned', topic_id:null }).eq('topic_id', t._id); }catch(_){}
@@ -4027,7 +4100,9 @@ async function alSync(){
 }
 async function alOrder(){
   await bfFlush();
-  if(!confirm('Place the LLO order with Advice Local?\n\nThis activates the Local Listing Optimization product on the 44i account and BILLS it (monthly per their contract). The listing syncs first if needed.')) return;
+  const ok=await dialog({ title:'Place LLO order', okLabel:'Place order',
+    body:'Activates the Local Listing Optimization product with Advice Local for this client — directory submissions start on their side. <b>This bills the 44i account</b> (monthly, per their contract). The listing syncs first if needed.'});
+  if(!ok) return;
   const b=document.getElementById('al-order-btn'); if(b){ b.disabled=true; b.textContent='Ordering…'; }
   try{
     const d=await alInvoke({action:'order', client_id:activeClient.id});
