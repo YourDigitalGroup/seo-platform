@@ -2,9 +2,12 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.5.4
+ * Version: 1.6.0
  * Author: 44i Digital
  * License: GPL-2.0+
+ * Requires at least: 5.0
+ * Requires PHP: 7.0
+ * Tested up to: 6.7
  */
 
 if (!defined('ABSPATH')) exit;
@@ -16,7 +19,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.5.4');
+define('SEOP_VERSION', '1.6.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -72,8 +75,22 @@ add_action('rest_api_init', function () {
     }]);
 });
 
-/* Weekly self-healing: cron re-runs the auto-fix so NEW pages get metas too. */
+/* Weekly self-healing: cron re-runs the auto-fix so NEW pages get metas too.
+ * WordPress only ships a built-in 'weekly' interval since 5.4, so we register
+ * our own — works on every version. */
+add_filter('cron_schedules', function ($s) {
+    if (!isset($s['seop_weekly'])) $s['seop_weekly'] = ['interval' => WEEK_IN_SECONDS, 'display' => 'Once Weekly (44i SEO)'];
+    return $s;
+});
 add_action('seop_ai_autofix_event', 'seop_ai_autofix');
+/* Self-heal: if the weekly toggle is on but no event is queued (e.g. the old
+ * 'weekly' interval silently failed on WP < 5.4, or cron was cleared),
+ * re-arm it. */
+add_action('init', function () {
+    if (get_option(SEOP_OPT_AI_CRON) && !wp_next_scheduled('seop_ai_autofix_event')) {
+        wp_schedule_event(time() + HOUR_IN_SECONDS, 'seop_weekly', 'seop_ai_autofix_event');
+    }
+});
 register_deactivation_hook(__FILE__, function () { wp_clear_scheduled_hook('seop_ai_autofix_event'); });
 
 function seop_status() {
@@ -1008,7 +1025,7 @@ function seop_settings_page() {
         $cron = !empty($_POST['seop_ai_cron']);
         update_option(SEOP_OPT_AI_CRON, $cron ? 1 : 0);
         wp_clear_scheduled_hook('seop_ai_autofix_event');
-        if ($cron) wp_schedule_event(time() + HOUR_IN_SECONDS, 'weekly', 'seop_ai_autofix_event');
+        if ($cron) wp_schedule_event(time() + HOUR_IN_SECONDS, 'seop_weekly', 'seop_ai_autofix_event');
         echo '<div class="notice notice-success"><p>AI settings saved.</p></div>';
     }
     if (isset($_POST['seop_ai_run']) && check_admin_referer('seop_ai_go')) {
@@ -1020,7 +1037,7 @@ function seop_settings_page() {
     echo '<p><strong>SEO-only.</strong> This connector never changes your site\'s appearance, theme, layout, or settings. Unapproved content arrives as drafts; approved content publishes on its schedule.</p>';
 
     echo '<h2>Import package</h2>';
-    echo '<p>Upload the <code>deploy-*.json</code> file exported from the 44i platform (the “⬇ Deploy file” button). It applies SEO meta, schema, social tags, robots.txt, llms.txt, redirects, security headers, and creates/schedules the content — all in one shot.</p>';
+    echo '<p>Upload the <code>deploy-*.json</code> file exported from the 44i platform (the “Deploy file” button). It applies SEO meta, schema, social tags, robots.txt, llms.txt, redirects, security headers, and creates/schedules the content — all in one shot.</p>';
     echo '<form method="post" enctype="multipart/form-data">' . wp_nonce_field('seop_import', '_wpnonce', true, false);
     echo '<p><input type="file" name="seop_pkg" accept="application/json,.json" required> ';
     echo '<button class="button button-primary">Import &amp; apply</button></p></form>';
