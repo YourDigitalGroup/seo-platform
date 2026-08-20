@@ -305,6 +305,16 @@ body[data-theme=dark] .ctrlzone.suspended{background:rgba(201,162,39,.10)}
 #dlg-fields textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.15)}
 .ctrlzone.bare{border:none;padding:0;background:none;justify-content:flex-end}
 .tbtn.danger{border-color:rgba(192,57,43,.4);color:#c0392b}
+.sctile{position:relative}
+.sctile[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 10px);width:250px;background:#1a2b4a;color:#fff;font-size:11.5px;line-height:1.5;font-weight:500;text-align:left;padding:10px 12px;border-radius:10px;box-shadow:0 8px 24px rgba(10,20,40,.25);z-index:60;pointer-events:none}
+.sctile[data-tip]:hover::before{content:'';position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 4px);border:6px solid transparent;border-top-color:#1a2b4a;z-index:61;pointer-events:none}
+body[data-theme=dark] .sctile[data-tip]:hover::after{background:#0d1728;border:1px solid rgba(255,255,255,.14)}
+.img-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-height:380px;overflow-y:auto}
+.img-grid img{width:100%;height:92px;object-fit:cover;border-radius:8px;cursor:pointer;border:2px solid transparent;transition:.12s}
+.img-grid img:hover{border-color:var(--blue);transform:scale(1.02)}
+.qlink{display:block;font-size:11px;color:var(--muted);padding-left:10px;margin-top:2px}
+.qlink input{font-family:inherit;font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:7px;background:var(--mist);color:var(--ink);width:230px}
+.qlink .fa-image{color:var(--grow-d);margin-left:6px}
 
 /* ── PACKAGE VIEW ───────────────────────────────────────────── */
 .pkg-hero{display:flex;align-items:center;gap:16px;padding:16px 0 6px}
@@ -923,7 +933,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.14.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.15.0</div>
   </div>
   </div>
 </div>
@@ -1008,7 +1018,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.14.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.15.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1056,7 +1066,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.14.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.15.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1118,6 +1128,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
       <div class="acp" id="access-panel"></div>
       <div class="datasrc" id="datasrc"></div>
+      <div class="ctrlzone" id="kickoff-submit" style="display:none"></div>
       <div class="ctrlzone" id="campaign-controls" style="display:none"></div>
     </div>
 
@@ -1211,7 +1222,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.14.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.15.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1239,7 +1250,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.14.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.15.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1313,6 +1324,20 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
   </div>
 </div>
 
+<!-- ═══════════ IMAGE PICKER (Pexels via image-search function) ═══════════ -->
+<div class="overlay" id="img-overlay">
+  <div class="modal" style="max-width:720px">
+    <h2 style="margin:0 0 10px">Find an image</h2>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input id="img-q" type="text" placeholder="search stock photos…" style="flex:1;font-family:inherit;font-size:14px;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);color:var(--ink)" onkeydown="if(event.key==='Enter')imgSearch()">
+      <button class="mbtn primary" onclick="imgSearch()">Search</button>
+    </div>
+    <div id="img-grid" class="img-grid"></div>
+    <div class="wmeta" style="margin-top:10px">Photos from Pexels — free to use commercially.</div>
+    <div class="mfoot"><button class="mbtn" onclick="imgClose()">Cancel</button></div>
+  </div>
+</div>
+
 <!-- ═══════════ DRAFT EDITOR MODAL ═══════════ -->
 <div class="overlay" id="draft-modal">
   <div class="modal draft">
@@ -1333,6 +1358,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
     <div class="dm-foot">
       <button class="dm-btn rewrite" id="dm-rewrite-btn" onclick="requestRewrite()">↻ Request rewrite</button>
+      <button class="dm-btn" id="dm-img-btn" onclick="imgOpen()" title="Pick a stock photo (Pexels) — becomes the featured image on WordPress, or the post photo for GBP"><i class="fa-solid fa-image"></i> <span id="dm-img-lab">Find image</span></button>
       <div class="spacer"></div>
       <button class="dm-btn save" id="dm-save-btn" onclick="saveDraft()">Save edits</button>
       <button class="dm-btn approve" id="dm-approve-btn" onclick="approveDraft()">Approve ✓</button>
@@ -1494,6 +1520,7 @@ function mapClient(r){
     tier:r.tier, status:r.status, strategist_id:r.strategist_id,
     gsc:r.gsc_connected, gbp:r.gbp_connected, wp:r.wp_connected, ga4:r.ga4_connected,
     suspended_at:r.suspended_at||null, suspend_reason:r.suspend_reason||null,
+    trello_card_id:r.trello_card_id||null,
     wp_api_key:r.wp_api_key||null,
     last_audit: r.last_audit_at ? r.last_audit_at.slice(0,10) : null,
     engagement_start_date: r.engagement_start_date || null,
@@ -2149,14 +2176,16 @@ async function loadLiveAudit(){
   PK.topics=[];
   if(PK.package_id){
     const M2K={'sonnet-4-6':'sonnet','opus-4-8':'opus','haiku-4-5':'haiku'};
-    const [tr, drf] = await Promise.all([
+    let [tr, drf] = await Promise.all([
       sb.from('content_topics').select('*').eq('package_id', PK.package_id),
-      sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', PK.package_id),
+      sb.from('content_drafts').select('id,topic_id,body,revision,approved,image_url,image_alt').eq('package_id', PK.package_id),
     ]);
+    if(drf.error) drf = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', PK.package_id); // platform_extras.sql not run yet
     const byTopic={}; (drf.data||[]).forEach(d=>{ const c=byTopic[d.topic_id]; if(!c||(d.revision||1)>(c.revision||1)) byTopic[d.topic_id]=d; });
     PK.topics=(tr.data||[]).filter(t=>t.status!=='retired').map(t=>{ const d=byTopic[t.id];
       return { _id:t.id, title:t.title, keyword:t.target_keyword||'', kind:t.kind||'blog', model:M2K[t.model]||'sonnet',
-        status: d?(t.status==='approved'?'approved':'drafted'):(t.status||'queued'), source:t.source||'', body:d?d.body:'', revision:d?d.revision:1 }; });
+        status: d?(t.status==='approved'?'approved':'drafted'):(t.status||'queued'), source:t.source||'', body:d?d.body:'', revision:d?d.revision:1,
+        link:t.link_target||'', image:(d&&d.image_url)||'', image_alt:(d&&d.image_alt)||'' }; });
   }
 }
 let _topicSeq=0;
@@ -2649,7 +2678,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=planLabel(c.tier)+' plan';
 
-  renderCampaignControls();
+  renderCampaignControls(); renderKickoffSubmit();
   renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderAuditHistory(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
@@ -2753,6 +2782,7 @@ function openDraft(i){
   renderDraftScore();
   const instr=document.getElementById('dm-instr'); instr.value=''; instr.disabled=!edit;
   ['dm-rewrite-btn','dm-save-btn','dm-approve-btn'].forEach(id=>document.getElementById(id).disabled=!edit);
+  const il=document.getElementById('dm-img-lab'); if(il) il.textContent=t.image?'Image ✓':'Find image';
   document.getElementById('draft-modal').classList.add('open');
 }
 function closeDraft(){ document.getElementById('draft-modal').classList.remove('open'); _draftIdx=null; }
@@ -2784,6 +2814,13 @@ function qaScan(text){
   if(stock.length) warnings.push(`agency boilerplate: ${stock.map(s=>'“'+s+'”').join(', ')}`);
   return {blocking, warnings};
 }
+async function setLinkTarget(i,v){
+  const t=PK.topics[i]; if(!t) return; t.link=v.trim();
+  if(!OFFLINE&&t._id){
+    const {error}=await sb.from('content_topics').update({link_target:t.link||null}).eq('id',t._id);
+    if(error&&/column/i.test(error.message||'')) showToast('Link target not saved — run platform_extras.sql (see runbook)',true);
+  }
+}
 function approveDraft(){
   if(_draftIdx==null||!canEditContent()) return;
   const t=PK.topics[_draftIdx]; t.body=document.getElementById('dm-body').value;
@@ -2792,6 +2829,11 @@ function approveDraft(){
   if(qa.warnings.length) showToast('Approved with a style note: '+qa.warnings[0]);
   t.status='approved';
   if(!OFFLINE&&t._id){ sb.from('content_drafts').update({approved:true, body:t.body}).eq('topic_id', t._id).then(()=>{}); }
+  // Approval trail: post to the client's Trello card (best-effort, silent).
+  if(!OFFLINE&&activeClient&&activeClient.trello_card_id){
+    sb.functions.invoke('trello',{body:{action:'comment', client_id:activeClient.id,
+      text:`Approved by ${me.name}: “${t.title}” (${t.kind}) — ships with this month's package.`}}).then(()=>{},()=>{});
+  }
   renderQueue(); closeDraft(); showToast('Draft approved ✓', false, true);
 }
 function requestRewrite(){
@@ -3016,6 +3058,19 @@ const GRADE_C={A:'var(--s-green-text)',B:'#4B9BD7',C:'var(--s-warn-text)',D:'#C0
 const gradeColor=g=>GRADE_C[g]||'#9AA';
 const num0=v=>v==null?'—':Number(v).toLocaleString();
 const gradeOf=n=>n==null?null:(n>=90?'A':n>=78?'B':n>=65?'C':n>=50?'D':'F');
+// Hover tooltips: what each grade measures + the grading bands. Hover-only
+// so nothing sits in the way of the grade itself.
+const GRADE_SCALE='Grading: A 90+ · B 78–89 · C 65–77 · D 50–64 · F below 50.';
+const PILLAR_TIPS={
+ 'Audit score':'Weighted blend of every graded check across all pillars. Target: 90+ (an A).',
+ 'Technical':'Crawlability & site hygiene — indexing, sitemap, robots.txt, redirects, broken links, crawl health.',
+ 'Performance':'Mobile speed from Google PageSpeed — overall score (80+ passes), load speed (LCP), visual stability (CLS), interactivity, server response. Partner-built WordPress sites are never graded below C.',
+ 'On-page':'Titles, meta descriptions, heading structure, image alt text and internal linking across the sampled pages.',
+ 'Schema':'Structured data machines read — LocalBusiness, FAQ, breadcrumbs, article & organization markup.',
+ 'AEO':'Answer-engine readiness — question headings, direct answers, FAQ coverage, llms.txt: what gets the business cited by AI search.',
+ 'E-E-A-T':'Trust signals — a real about page, credentials, reviews & ratings, named people behind the business.',
+ 'Local':'Local presence — name/address/phone on-site, Google Business Profile link, service-area pages, local schema.'};
+const tipFor=lab=>esc((PILLAR_TIPS[lab]||'')+' '+GRADE_SCALE);
 function renderScorecard(){
   const el=document.getElementById('scorecard'); if(!el)return;
   if(OFFLINE||!PK.grades){ el.innerHTML=''; return; }
@@ -3032,7 +3087,7 @@ function renderScorecard(){
   const oc=gradeColor(gradeOf(overall));
   const ov=Math.max(0,Math.min(100,overall||0));
   const overallTile=overall==null?'':`
-    <div class="sctile">
+    <div class="sctile" data-tip="${tipFor('Audit score')}">
       <div class="scring">
         <svg width="96" height="96" viewBox="0 0 96 96">
           <circle class="trk" cx="48" cy="48" r="40"/>
@@ -3043,7 +3098,7 @@ function renderScorecard(){
       <div class="sclab">Audit score</div>
     </div>`;
   el.innerHTML=overallTile+tiles.map(([lab,g,sc])=>`
-    <div class="sctile">
+    <div class="sctile" data-tip="${tipFor(lab)}">
       <div class="scgrade" style="color:${gradeColor(g)}">${g||'—'}</div>
       <div class="sclab">${lab}</div>
       <div class="scbar"><i style="width:${Math.max(0,Math.min(100,sc||0))}%;background:${gradeColor(g)}"></i></div>
@@ -3437,7 +3492,8 @@ function renderQueue(){
   let rows=PK.topics.map((t,i)=>{
     const openable=(t.status==='drafted'||t.status==='approved');
     return `<div class="qrow qedit">
-      <span><input class="qtitle" value="${esc(t.title)}" oninput="editTopicTitle(${i},this.value)"><span class="qkw" style="font-size:11px;color:var(--muted);padding-left:10px">↳ ${esc(t.keyword)}${t.source==='manual'?' · manual':''}</span></span>
+      <span><input class="qtitle" value="${esc(t.title)}" oninput="editTopicTitle(${i},this.value)"><span class="qkw" style="font-size:11px;color:var(--muted);padding-left:10px">↳ ${esc(t.keyword)}${t.source==='manual'?' · manual':''}</span>
+        ${(t.kind==='blog'||t.kind==='gbp_post'||t.kind==='pillar')?`<span class="qlink">links to <input value="${esc(t.link||'')}" placeholder="/page-to-link-back-to" onchange="setLinkTarget(${i},this.value)" title="The piece links its focus keyword back to this page — auto-picked, change it if the engine guessed wrong">${t.image?`<i class="fa-solid fa-image" title="image attached"></i>`:''}</span>`:''}</span>
       <span><select class="qsel" onchange="changeKind(${i},this.value)">${kindOpts(t.kind)}</select></span>
       <span><select class="qsel" onchange="changeModel(${i},this.value)">${modelOpts(t.model)}</select></span>
       <span><span class="qstatus qs-${t.status}">${cap(t.status)}</span></span>
@@ -3455,9 +3511,110 @@ function renderQueue(){
     `<div class="qbar"><span class="qsum">${PK.topics.length} piece${PK.topics.length===1?'':'s'} · ${summary}</span>
       ${(()=>{const n=PK.topics.filter(t=>t.body&&qaScan(t.body).blocking.length).length;
         return n?`<button class="qgen" style="background:#C0392B;margin-right:8px" onclick="autoFixFlagged()" title="Rewrite every flagged draft with its violations as explicit removal instructions"><i class="fa-solid fa-triangle-exclamation"></i> Auto-fix ${n} flagged →</button>`:'';})()}
-      <button class="qgen" id="sugbtn" style="background:var(--navy);margin-right:8px" onclick="suggestTopics()" title="Claude combines the owner's business description with the audit data and proposes topics — you pick what to queue"><i class="fa-solid fa-lightbulb"></i> Suggest topics</button>
+      <button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="downloadClientDoc()" title="Download a clean, partner-branded summary of the approved pieces to send to the client"><i class="fa-solid fa-file-export"></i> Client doc</button><button class="qgen" id="sugbtn" style="background:var(--navy);margin-right:8px" onclick="suggestTopics()" title="Claude combines the owner's business description with the audit data and proposes topics — you pick what to queue"><i class="fa-solid fa-lightbulb"></i> Suggest topics</button>
       <button class="qgen" onclick="generateDrafts()">Generate drafts →</button></div>`;
   document.getElementById('queue-tag').textContent=`${campaignMonthLabel(activeClient)} · ${PK.topics.length} queued · Engine 2`;
+}
+
+// ── IMAGE PICKER — Pexels via the image-search Edge Function; the pick is
+// saved on the draft and ships as the WordPress featured image / GBP photo.
+let _imgPhotos=[];
+function imgOpen(){
+  if(_draftIdx==null) return; const t=PK.topics[_draftIdx];
+  document.getElementById('img-q').value=t.keyword||t.title||'';
+  document.getElementById('img-overlay').classList.add('open');
+  imgSearch();
+}
+function imgClose(){ document.getElementById('img-overlay').classList.remove('open'); }
+async function imgSearch(){
+  const q=document.getElementById('img-q').value.trim(); if(!q) return;
+  const g=document.getElementById('img-grid'); g.innerHTML='<div class="wmeta">Searching…</div>';
+  try{
+    const {data,error}=await sb.functions.invoke('image-search',{body:{query:q, per_page:12}});
+    if(error||(data&&data.error)){
+      let m=(data&&data.error)||error.message;
+      try{ if(error&&error.context){ const b=await error.context.json(); m=b.error||m; } }catch(_){}
+      if(/not found|Failed to send|404/i.test(String(m))) m='image-search function not deployed — deploy it and set PEXELS_API_KEY (free key from pexels.com/api)';
+      g.innerHTML=`<div class="wmeta" style="color:#c0392b">${esc(String(m))}</div>`; return;
+    }
+    _imgPhotos=(data&&data.photos)||[];
+    g.innerHTML=_imgPhotos.length
+      ? _imgPhotos.map((p,i)=>`<img src="${esc(p.thumb)}" loading="lazy" title="${esc(p.alt)}${p.photographer?' — '+esc(p.photographer):''}" onclick="imgPick(${i})">`).join('')
+      : '<div class="wmeta">No results — try a broader search.</div>';
+  }catch(e){ g.innerHTML=`<div class="wmeta" style="color:#c0392b">${esc(String(e.message||e))}</div>`; }
+}
+async function imgPick(i){
+  const p=_imgPhotos[i]; if(p==null||_draftIdx==null) return;
+  const t=PK.topics[_draftIdx];
+  t.image=p.url; t.image_alt=p.alt||t.keyword||t.title;
+  if(!OFFLINE&&t._id){
+    const {error}=await sb.from('content_drafts').update({image_url:t.image, image_alt:t.image_alt}).eq('topic_id',t._id);
+    if(error&&/column/i.test(error.message||'')) showToast('Image chosen but not saved — run platform_extras.sql (see runbook)',true);
+  }
+  const lab=document.getElementById('dm-img-lab'); if(lab) lab.textContent='Image ✓';
+  imgClose(); renderQueue(); showToast('Image attached — it ships as the featured image / post photo',false,true);
+}
+// ── HANDOFF — "Submit to SEO/AEO specialist": Trello card in the
+// strategist's list with a 2-day deadline, described with the kickoff facts.
+function renderKickoffSubmit(){
+  const el=document.getElementById('kickoff-submit'); if(!el) return;
+  const c=activeClient; if(!c||OFFLINE){ el.style.display='none'; return; }
+  el.style.display='';
+  if(c.trello_card_id){
+    el.innerHTML=`<div><b>Submitted to the SEO/AEO team</b><div class="wmeta">A Trello card tracks this package (2-day turnaround). Approvals post to it automatically.</div></div>
+      <a class="tbtn" href="https://trello.com/c/${esc(c.trello_card_id)}" target="_blank" rel="noopener">Open Trello card</a>`;
+  } else {
+    el.innerHTML=`<div><b>Hand off to an SEO/AEO specialist</b><div class="wmeta">Creates a Trello card in their list on the web board with a 2-day deadline and the kickoff facts from this page.</div></div>
+      <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="fsel" id="ks-strat">${STRATEGISTS.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')||'<option value="">— no strategists —</option>'}</select>
+        <button class="tbtn" id="ks-btn" onclick="submitToSpecialist()">Submit to specialist</button></span>`;
+  }
+}
+async function submitToSpecialist(){
+  const c=activeClient; if(!c) return;
+  const sel=document.getElementById('ks-strat'), name=sel&&sel.value;
+  if(!name){ showToast('Add a strategist account in Team & access first',true); return; }
+  await bfFlush();
+  const b=document.getElementById('ks-btn'); if(b){ b.disabled=true; b.textContent='Submitting…'; }
+  try{
+    const {data,error}=await sb.functions.invoke('trello',{body:{action:'submit', client_id:c.id, strategist_name:name}});
+    if(error||(data&&data.error)){
+      let m=(data&&data.error)||error?.message;
+      try{ if(error&&error.context){ const x=await error.context.json(); m=x.error||m; } }catch(_){}
+      if(/not found|Failed to send|404/i.test(String(m))) m='trello function not deployed — deploy it and set TRELLO_KEY / TRELLO_TOKEN / TRELLO_BOARD_ID';
+      throw new Error(String(m));
+    }
+    c.trello_card_id=(String(data.card_url||'').split('/c/')[1])||'pending';
+    const gc=groupClients.find(x=>x.id===c.id); if(gc) gc.trello_card_id=c.trello_card_id;
+    renderKickoffSubmit();
+    showToast(`Handed to ${name} — card in “${data.list}”, due in 2 days`+(data.warning?` · ${data.warning}`:''), false, true);
+  }catch(e){ showToast('Submit failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.textContent='Submit to specialist'; } }
+}
+// ── CLIENT DOC — a clean, partner-branded summary of the approved content,
+// ready to email to the client for sign-off.
+function downloadClientDoc(){
+  if(OFFLINE||!activeClient) return;
+  const appr=(PK.topics||[]).filter(t=>t.status==='approved'&&t.body);
+  if(!appr.length){ showToast('Nothing approved yet — approve drafts first',true); return; }
+  const g=groupOf(activeClient)||{}, today=new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  const KINDLBL={blog:'Blog article',landing:'Landing page',service:'Service page',pillar:'Cornerstone guide',faq:'FAQ',gbp_post:'Google Business Profile post'};
+  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Content for approval — ${esc(activeClient.name||activeClient.url)}</title>
+<style>body{font-family:Arial,Helvetica,sans-serif;max-width:820px;margin:34px auto;padding:0 22px;color:#16202e;line-height:1.6}
+h1{font-size:23px;margin-bottom:4px}h2{font-size:16px;margin:26px 0 6px;border-bottom:1px solid #e0e5ec;padding-bottom:5px}
+.meta{color:#5a6675;font-size:13px;margin-bottom:22px}.kind{display:inline-block;background:#eef2f7;border-radius:999px;padding:2px 10px;font-size:11px;color:#4a5468;margin-left:8px;vertical-align:middle}
+.body{border-left:3px solid #e3e7ee;padding-left:16px;margin:10px 0 4px;color:#2a3542;font-size:14px;white-space:pre-wrap}
+footer{margin-top:36px;border-top:1px solid #e0e5ec;padding-top:10px;color:#5a6675;font-size:12px}</style></head><body>
+<h1>Content prepared for ${esc(activeClient.name||activeClient.url)}</h1>
+<div class="meta">${esc(today)} · ${appr.length} piece${appr.length>1?'s':''} reviewed &amp; approved by your SEO team${g.name?' at '+esc(g.name):''} · publishing on this month's schedule</div>
+${appr.map(t=>`<h2>${esc(t.title)}<span class="kind">${esc(KINDLBL[t.kind]||t.kind)}</span></h2>
+<div class="body">${esc(String(t.body).slice(0,1400))}${String(t.body).length>1400?'…':''}</div>`).join('')}
+<footer>Prepared${g.name?' by '+esc(g.name):''} · Reply with any changes; otherwise these publish as scheduled.</footer>
+</body></html>`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+  a.download='content-approval-'+String(activeClient.url||'client').replace(/[^a-z0-9.-]/gi,'_')+'-'+new Date().toISOString().slice(0,10)+'.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  showToast('Client approval doc downloaded — open it, print to PDF or paste into an email',false,true);
 }
 // ── TOPIC SUGGESTIONS — Claude proposes, deterministic gates filter, a human
 //    picks what to queue. Fed by the owner's business description in intake.
@@ -3983,7 +4140,29 @@ const INTAKE_FIELDS=[['phone','Phone'],['email','Email'],['street','Street addre
   ['credentials','Credentials — real licenses, certifications, awards, years in business'],
   ['gbp_rating','Google rating value (e.g. 4.8 — from their GBP)'],['gbp_reviews','Google review count'],
   ['facebook','Facebook URL'],['instagram','Instagram URL'],['linkedin','LinkedIn URL'],['gbp','Google Business Profile URL'],
-  ['description','Business description — services, specialties, who they serve (feeds the audit + topic suggestions)']];
+  ['description','Business description — services, specialties, who they serve (feeds the audit + topic suggestions)'],
+  // Kickoff fields mirrored from the web intake form (LLO), all optional:
+  ['category_primary','Primary category (Google category list)'],
+  ['category_secondary','Secondary categories (comma-separated)'],
+  ['services','Services offered (comma-separated)'],
+  ['service_areas','Service areas — cities/ZIPs (comma-separated)'],
+  ['products','Products offered (comma-separated)'],
+  ['specialties','Specialties (comma-separated)'],
+  ['associations','Associations / memberships'],
+  ['brands','Brands carried'],
+  ['languages','Languages spoken'],
+  ['year_established','Year established'],
+  ['payment_types','Payment types accepted'],
+  ['license','Business license #'],
+  ['appointment_url','Appointment / quote link (URL)'],
+  ['gbp_shortname','GBP shortname'],
+  // Target keywords (drive topic + content generation) — up to 5, w/ location
+  ['kw1','Target keyword 1'],['kwl1','Keyword 1 location'],
+  ['kw2','Target keyword 2'],['kwl2','Keyword 2 location'],
+  ['kw3','Target keyword 3'],['kwl3','Keyword 3 location'],
+  ['kw4','Target keyword 4'],['kwl4','Keyword 4 location'],
+  ['kw5','Target keyword 5'],['kwl5','Keyword 5 location'],
+  ['landing_targets','Targeted landing pages — one per line (topic or URL); the plan builds these first']];
 const DIRECTORIES=[
   ['Google Business Profile','https://business.google.com/create','Owner verification required (postcard/phone/video) — schedule with the client'],
   ['Bing Places','https://www.bingplaces.com/','Fastest path: “Import from Google Business Profile”'],
@@ -4024,7 +4203,7 @@ async function renderBizFacts(){
     ${INTAKE_FIELDS.map(([k,l])=>{
       const isSug=!iv[k]&&sug[k];
       const hint=isSug?' <span style="color:var(--s-warn-text);text-transform:none;letter-spacing:0">· from site — verify</span>':'';
-      if(k==='description') return `<div class="ds-field" style="flex-basis:100%"><label>${l}${hint}</label>
+      if(k==='description'||k==='landing_targets') return `<div class="ds-field" style="flex-basis:100%"><label>${l}${hint}</label>
         <textarea id="bf-${k}" rows="3" oninput="bfAutoSave()" style="font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;color:var(--ink);background:var(--s-card);resize:vertical">${esc(iv[k]||sug[k]||'')}</textarea></div>`;
       return `<div class="ds-field"><label>${l}${hint}</label>
         <input id="bf-${k}" value="${esc(iv[k]||sug[k]||'')}" oninput="bfAutoSave()" ${isSug?'style="border-color:#C9A227;background:#FFFDF2"':''}></div>`;}).join('')}
@@ -4407,7 +4586,7 @@ function buildCampaignDoc(){
 </style></head><body>
 <header>
   <h1>SEO/AEO Campaign — ${esc(c.name||c.url||'')}</h1>
-  <div class="meta">${esc(c.url||'')} · ${esc(c.market||'')} · <b>${esc(planLabel(tier))}</b> plan · ${contractLabel(c)} contract · Prepared ${today} · 44i Digital, Inc.</div>
+  <div class="meta">${esc(c.url||'')} · ${esc(c.market||'')} · <b>${esc(planLabel(tier))}</b> plan · ${contractLabel(c)} contract · Prepared ${today}${(groupOf(c)||{}).name?' · '+esc(groupOf(c).name):''}</div>
   ${score!=null?`<div class="scorebig">${score}<span style="font-size:16px;color:#5a6675">/100 audit score · target 90+ ${cl.length?`· ${clPass} checks pass / ${clWarn} warn / ${clFail} fail`:''}</span></div>`:''}
 </header>
 ${changeSummary}
@@ -4425,7 +4604,7 @@ ${sec('5 · Content this cycle ('+cTopics.length+' pieces)',contentSummary)}
 ${sec('6 · Manual / off-site work (GBP, server-level)',manual)}
 ${sec('7 · Site-build punch list — for the designer / developer',punch)}
 ${contentAppendix?sec('Appendix A · Full content drafts',contentAppendix):''}
-<footer style="margin-top:40px;border-top:1px solid #d6dee8;padding-top:10px;color:#5a6675;font-size:12px">Prepared by 44i Digital, Inc.</footer>
+<footer style="margin-top:40px;border-top:1px solid #d6dee8;padding-top:10px;color:#5a6675;font-size:12px">Prepared${(groupOf(activeClient)||{}).name?' by '+esc(groupOf(activeClient).name):''}</footer>
 </body></html>`;
 }
 function saveHtml(html,name){
@@ -4544,18 +4723,29 @@ function buildDeployPackage(){
   const DAY=24*3600*1000;
   const step=approvedN>1?Math.min(7*DAY, Math.max(2*DAY, Math.floor((cycleEnd.getTime()-start.getTime())/(approvedN-1)))):0;
   let si=0;
+  // Auto internal link: the focus keyword's first natural mention links back
+  // to the strategist-editable target (queue row "links to").
+  const linkify=(html,kw,href)=>{
+    if(!href||!kw||html.indexOf('href="'+href)>=0) return html;
+    const re=new RegExp('(>[^<]*?)('+String(kw).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','i');
+    return re.test(html)?html.replace(re,(m,pre,k)=>pre+'<a href="'+href+'">'+k+'</a>'):html;
+  };
   const content=deployable.map(t=>{
     const approved=t.status==='approved';
     const when=approved?new Date(start.getTime()+(si++)*step).toISOString():null;
     const d=splitDraft(t.body);
-    return { external_id:t._id||null, title:d.h1||t.title, body_html:md2html(d.body),
+    return { external_id:t._id||null, title:d.h1||t.title, body_html:linkify(md2html(d.body), t.keyword, t.link),
       slug:d.slug, seo_title:d.seo_title, seo_description:d.seo_desc,
       post_type:(t.kind==='landing'||t.kind==='service'||t.kind==='pillar')?'page':'post',
       kind:t.kind, focus_keyword:t.keyword||'', location:t.town||null,
+      image_url:t.image||null, image_alt:t.image_alt||null, link_target:t.link||null,
       approved, status:approved?'schedule':'draft', schedule:when,
       qa:(q=>[...q.blocking,...q.warnings])(qaScan(t.body)) };
   });
-  (PK.topics||[]).filter(t=>t.kind==='gbp_post'&&t.body&&t.status==='approved').forEach(t=>manual.push({ title:'GBP post: '+t.title, action:t.body, kind:'gbp_post' }));
+  (PK.topics||[]).filter(t=>t.kind==='gbp_post'&&t.body&&t.status==='approved').forEach(t=>manual.push({
+    title:'GBP post: '+t.title,
+    action:t.body+(t.link?'\n\nLink the post button to: '+t.link:'')+(t.image?'\nPhoto (download & attach): '+t.image:''),
+    kind:'gbp_post' }));
   const manualCheckIds=new Set();
   ((PK.directive&&PK.directive.items)||[]).filter(i=>i.in_plan&&i.status==='todo'&&!i.fix_kind).forEach(i=>{
     manualCheckIds.add(i.check_id); manual.push({ title:i.title, action:i.action, kind:'directive' }); });

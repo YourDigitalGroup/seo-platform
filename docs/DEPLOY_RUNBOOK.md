@@ -84,6 +84,19 @@ For each, deploy the code from this repo (Deploy a new function → Via Editor, 
 | `run-scheduled`  | `supabase/functions/run-scheduled/index.ts`      |
 | `manage-users`   | `supabase/functions/manage-users/index.ts`       |
 | `advice-local`   | `supabase/functions/advice-local/index.ts`       |
+| `image-search`   | `supabase/functions/image-search/index.ts`       |
+| `trello`         | `supabase/functions/trello/index.ts`             |
+
+`image-search` (secret: `PEXELS_API_KEY` — free from pexels.com/api) powers
+the Find-image picker in the draft editor; the pick ships as the WordPress
+featured image / GBP post photo. `trello` (secrets: `TRELLO_KEY`,
+`TRELLO_TOKEN`, `TRELLO_BOARD_ID`) powers "Submit to SEO/AEO specialist"
+(card in the strategist's list, 2-day due date) and posts approval comments.
+Both need `supabase/migrations/platform_extras.sql` run first (draft image
+columns, topic link_target, clients.trello_card_id). For Looker Studio, run
+`looker_views.sql` and see docs/LOOKER_INTEGRATION.md. Reserved for the
+reputation-monitoring integration: secret `REP_MONITORING_API_KEY` (key
+coming from Scott's provider).
 
 `advice-local` is the LLO fulfillment bridge (Advice Local partner API).
 Before deploying: run `supabase/migrations/advice_local.sql` (adds

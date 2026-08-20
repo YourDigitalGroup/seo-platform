@@ -82,7 +82,9 @@ Deno.serve(async (req) => {
     const { data: currentAudit } = await supa.from("audits").select("*").eq("id", pkg.audit_id).single();
     if (!client || !currentAudit) return json({ error: "client or audit not found" }, 404);
 
-    let brand = { name: "44i Digital", color: "#4B9BD7", logo: "" };
+    // Fully whitelabeled: the partner group IS the brand. A client with no
+    // group renders with no agency name at all — never 44i.
+    let brand = { name: "", color: "#4B9BD7", logo: "" };
     if (client.partner_group_id) {
       const { data: grp } = await supa.from("partner_groups").select("name, brand_color, logo_url").eq("id", client.partner_group_id).maybeSingle();
       if (grp?.name) brand = { name: grp.name, color: grp.brand_color || "#4B9BD7", logo: grp.logo_url || "" };
@@ -375,7 +377,7 @@ function renderHTML(d: any): string {
   const cover = `
   <section class="cover">
     ${brand.logo ? `<img class="logo" src="${esc(brand.logo)}" alt="${esc(brand.name)}">` : ""}
-    <div class="brand">${esc(brand.name)} · SEO &amp; AEO Progress Report</div>
+    <div class="brand">${brand.name ? esc(brand.name) + " · " : ""}SEO &amp; AEO Progress Report</div>
     <h1>${esc(clientName)}</h1>
     <div class="sub">${market ? esc(market) + " · " : ""}Program month ${programMonth} · ${esc(phase[0].toUpperCase() + phase.slice(1))} phase</div>
     <div class="callout">${isFirstCycle
@@ -465,7 +467,7 @@ function renderHTML(d: any): string {
   const trafCells = laggingDelta(currentAudit.org_traffic, baseline.org_traffic, programDays);
   const lagging = `
   <section>
-    <h2>5 · Rankings &amp; Traffic <span class="tag tag-estimate">modeled estimates · Ahrefs</span></h2>
+    <h2>5 · Rankings &amp; Traffic <span class="tag tag-estimate">modeled estimates · search index</span></h2>
     <p>These are third-party estimates useful for direction, not precise counts — on small bases a single keyword shifting position swings them heavily, so percentages are suppressed below a base of ${PCT_FLOOR} and windows under ${MIN_WINDOW_DAYS} days report absolute values only.</p>
     <div class="grid grid-3" style="margin-top:10pt;">
       <div class="card"><div class="label">Ranking keywords</div><div class="value">${num(currentAudit.org_keywords)}</div><div class="sub">${kwCells} vs program baseline</div></div>
@@ -541,7 +543,7 @@ function renderHTML(d: any): string {
 <title>${esc(clientName)} — SEO &amp; AEO Progress Report — ${esc(reportDate)}</title>
 <style>${css}</style></head><body><div class="wrap">
 ${cover}${context}${ledger}${work}${leading}${lagging}${aeoHtml}${gradeTable}${plan}
-<div class="footer">Prepared by ${esc(brand.name)} · ${esc(reportDate)} · Sources are labeled per metric: measured (Google Search Console), modeled estimate (third-party index), or proprietary rubric. Unavailable data is reported as unavailable.</div>
+<div class="footer">Prepared${brand.name ? " by " + esc(brand.name) : ""} · ${esc(reportDate)} · Sources are labeled per metric: measured (Google Search Console), modeled estimate (third-party index), or proprietary rubric. Unavailable data is reported as unavailable.</div>
 </div></body></html>`;
 }
 
