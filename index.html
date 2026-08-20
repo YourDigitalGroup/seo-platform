@@ -911,7 +911,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.10.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.11.0</div>
   </div>
   </div>
 </div>
@@ -996,7 +996,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.10.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.11.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1044,7 +1044,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.10.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.11.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1204,7 +1204,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.10.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.11.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1232,7 +1232,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.10.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.11.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2497,6 +2497,12 @@ async function saveClient(){
   closeAddModal(); showToast(`${name||url} added — building ${lab} campaign${started?` from month ${startMonth}`:''}…`);
   if(ins&&ins.id) await seedCampaign(ins.id, tier, engStart, evergreen?EVERGREEN_HORIZON:lengthMonths);
   await loadGroupClients(); page=0; loadPage(); renderTriage();
+  // "Add & generate" means GENERATE: open the new client and kick off the
+  // full package build immediately — no second click required.
+  if(ins&&ins.id&&groupClients.find(x=>x.id===ins.id)){
+    await openClient(ins.id);
+    generatePackage().catch(e=>{ console.error('auto-generate',e); showToast('Auto-generate failed — click Generate package on the Setup tab',true); });
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -3931,25 +3937,23 @@ async function renderBizFacts(){
       activeClient._intake=(!error&&data&&data.intake)||{}; }catch(_){ activeClient._intake={}; }
   }
   const iv=activeClient._intake||{};
-  // Suggestions scraped from the live site by the audit — prefilled but NOT
-  // saved until a human clicks "Approve & save" (that click is the approval).
+  // Fields auto-save as they're edited — the real "approval" moment is when
+  // the facts get downloaded (citation pack) or sent to Advice Local.
+  // Scraped-from-site suggestions prefill amber until a save touches them.
   const sug=((PK.raw||{}).intake_suggested)||{};
-  const saved=INTAKE_FIELDS.filter(([k])=>iv[k]).length;
   const suggested=INTAKE_FIELDS.filter(([k])=>!iv[k]&&sug[k]).length;
   const missReq=intakeMissing().length;
-  const summary=`📍 Local Listing Optimization (LLO) — business facts & citation pack · ${5-missReq}/5 required saved`
-    +(suggested?` · ${suggested} scraped from the site — review & approve`:'');
-  el.innerHTML=`<details ${suggested&&missReq?'open':''} style="border:1px dashed var(--line);border-radius:var(--r-sm);background:var(--mist)">
-    <summary style="cursor:pointer;padding:11px 14px;font-size:12px;font-weight:700;color:${missReq?'var(--muted)':'var(--s-green-text)'}">${esc(summary)}</summary>
+  const open=activeClient._bfOpen!==undefined ? activeClient._bfOpen : !!(suggested&&missReq);
+  el.innerHTML=`<details ${open?'open':''} ontoggle="if(activeClient)activeClient._bfOpen=this.open" style="border:1px dashed var(--line);border-radius:var(--r-sm);background:var(--mist)">
+    <summary style="cursor:pointer;padding:11px 14px;font-size:12px;font-weight:700;color:${missReq?'var(--muted)':'var(--s-green-text)'}"><span id="bf-summary">${esc(bfSummaryText())}</span> <span id="bf-state" style="font-weight:600;color:var(--muted)"></span></summary>
     <div class="ds-row" style="border:none;background:none">
     ${INTAKE_FIELDS.map(([k,l])=>{
       const isSug=!iv[k]&&sug[k];
       const hint=isSug?' <span style="color:var(--s-warn-text);text-transform:none;letter-spacing:0">· from site — verify</span>':'';
       if(k==='description') return `<div class="ds-field" style="flex-basis:100%"><label>${l}${hint}</label>
-        <textarea id="bf-${k}" rows="3" style="font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;color:var(--ink);background:var(--s-card);resize:vertical">${esc(iv[k]||sug[k]||'')}</textarea></div>`;
+        <textarea id="bf-${k}" rows="3" oninput="bfAutoSave()" style="font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;color:var(--ink);background:var(--s-card);resize:vertical">${esc(iv[k]||sug[k]||'')}</textarea></div>`;
       return `<div class="ds-field"><label>${l}${hint}</label>
-        <input id="bf-${k}" value="${esc(iv[k]||sug[k]||'')}" ${isSug?'style="border-color:#C9A227;background:#FFFDF2"':''}></div>`;}).join('')}
-    <button class="ds-save" onclick="saveBizFacts()">Approve &amp; save</button>
+        <input id="bf-${k}" value="${esc(iv[k]||sug[k]||'')}" oninput="bfAutoSave()" ${isSug?'style="border-color:#C9A227;background:#FFFDF2"':''}></div>`;}).join('')}
     <button class="ds-save" style="background:var(--blue)" onclick="downloadCitationPack()">📇 Citation pack</button>
     <button class="ds-save" style="background:#6FA53C" onclick="downloadCitationCSV()">⬇ Citations CSV</button>
     </div>
@@ -3957,6 +3961,19 @@ async function renderBizFacts(){
   </details>`;
   renderALPanel();
 }
+function bfSummaryText(){
+  const missReq=intakeMissing().length;
+  return `📍 Local Listing Optimization (LLO) — business facts & citation pack · ${5-missReq}/5 required saved`;
+}
+let _bfTimer=null;
+function bfAutoSave(){
+  clearTimeout(_bfTimer);
+  const st=document.getElementById('bf-state'); if(st) st.textContent='· saving…';
+  _bfTimer=setTimeout(()=>{ _bfTimer=null; saveBizFacts(true); }, 700);
+}
+// Downloads and Advice Local calls must never race the debounce — flush any
+// pending edit first.
+async function bfFlush(){ if(_bfTimer){ clearTimeout(_bfTimer); _bfTimer=null; await saveBizFacts(true); } }
 // ── ADVICE LOCAL — automated citation submission (LLO fulfillment) ──────────
 // The advice-local Edge Function holds the partner API key and does the
 // talking; the console just drives it. Sync pushes the approved business
@@ -3997,6 +4014,7 @@ async function renderALPanel(){
   </div>`;
 }
 async function alSync(){
+  await bfFlush();
   const miss=intakeMissing();
   if(miss.length){ showToast('Complete + save the business facts first — missing: '+miss.join(', '),true); return; }
   const b=document.getElementById('al-sync-btn'); if(b){ b.disabled=true; b.textContent='Syncing…'; }
@@ -4008,6 +4026,7 @@ async function alSync(){
   }catch(e){ showToast('Advice Local sync failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.textContent='🚀 Sync to Advice Local'; } }
 }
 async function alOrder(){
+  await bfFlush();
   if(!confirm('Place the LLO order with Advice Local?\n\nThis activates the Local Listing Optimization product on the 44i account and BILLS it (monthly per their contract). The listing syncs first if needed.')) return;
   const b=document.getElementById('al-order-btn'); if(b){ b.disabled=true; b.textContent='Ordering…'; }
   try{
@@ -4030,12 +4049,23 @@ async function alStatus(){
         <td>${f.updated?fmtDate(String(f.updated).slice(0,10)):'—'}</td></tr>`).join('')}</tbody></table></div>`;
   }catch(e){ if(el) el.innerHTML=`<div class="wmeta" style="color:#c0392b">${esc(String(e.message||e))}</div>`; }
 }
-async function saveBizFacts(){
+// Auto-saves on edit. Deliberately does NOT re-render the accordion — a
+// re-render would collapse it and steal focus mid-typing; the summary count
+// and save-state chip update in place instead.
+async function saveBizFacts(auto){
+  if(!activeClient) return;
   const iv={}; INTAKE_FIELDS.forEach(([k])=>{ const e=document.getElementById('bf-'+k); if(e) iv[k]=e.value.trim(); });
   activeClient._intake=iv;
   const {error}=await sb.from('clients').update({intake:iv}).eq('id',activeClient.id);
-  showToast(error?('Save failed: '+error.message+' — run client_intake.sql in the SQL editor'):'Business facts approved & saved ✓',!!error,!error);
-  if(!error) renderBizFacts();
+  const st=document.getElementById('bf-state');
+  if(error){
+    if(st) st.textContent='· ⚠ save failed';
+    showToast('Save failed: '+error.message+' — run client_intake.sql in the SQL editor',true);
+    return;
+  }
+  if(st) st.textContent='· saved ✓';
+  const sum=document.getElementById('bf-summary'); if(sum) sum.textContent=bfSummaryText();
+  if(!auto) showToast('Business facts saved ✓',false,true);
 }
 function intakeMissing(){ const iv=(activeClient&&activeClient._intake)||{}; return ['phone','street','city','state','zip'].filter(k=>!iv[k]); }
 function citationPayload(){
@@ -4048,7 +4078,8 @@ function citationPayload(){
     categories:iv.categories||biz.type||'', facebook:iv.facebook||'', instagram:iv.instagram||'', linkedin:iv.linkedin||'', gbp:iv.gbp||'',
     descLong, descShort:descLong.length>250?descLong.slice(0,247)+'…':descLong };
 }
-function downloadCitationPack(){
+async function downloadCitationPack(){
+  await bfFlush();
   if(OFFLINE||!activeClient){ showToast('Open a client first',true); return; }
   const miss=intakeMissing();
   if(miss.length){ showToast('Complete the business facts first — missing: '+miss.join(', '),true); return; }
@@ -4090,7 +4121,8 @@ ${lg.map(g=>`<tr><td>☐</td><td><b>${esc(g.domain)}</b></td><td>${g.dr??'—'}<
   saveHtml(html,'citation-pack-'+String(activeClient.url||'client').replace(/^https?:\/\//,'').replace(/[^a-z0-9.-]/gi,'_')+'.html');
   showToast('Citation pack downloaded — checklist + copy-exact payloads.', false, true);
 }
-function downloadCitationCSV(){
+async function downloadCitationCSV(){
+  await bfFlush();
   if(OFFLINE||!activeClient){ showToast('Open a client first',true); return; }
   const miss=intakeMissing();
   if(miss.length){ showToast('Complete the business facts first — missing: '+miss.join(', '),true); return; }
