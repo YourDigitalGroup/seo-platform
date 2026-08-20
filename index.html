@@ -923,7 +923,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.13.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.14.0</div>
   </div>
   </div>
 </div>
@@ -1008,7 +1008,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.13.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.14.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1056,7 +1056,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.13.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.14.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1167,7 +1167,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <ol>
           <li>Every queued piece drafts itself after Generate. Click <b>Open</b> on each one, read it, and edit anything you'd say differently.</li>
           <li>If a red <b>Auto-fix flagged</b> button appears, click it once — it rewrites any draft that broke a compliance rule (invented claims, placeholders) using the approved business facts.</li>
-          <li>Click <b>Approve</b> on drafts that are ready. <b>Approval is what puts a piece on the publishing schedule</b> — unapproved drafts deploy as WordPress drafts instead.</li>
+          <li>Click <b>Approve</b> on drafts that are ready. <b>Approval is what puts a piece on the publishing schedule</b> — and the deploy file won't export until every piece is approved.</li>
           <li>Want more options? <b>Suggest topics</b> proposes ideas from the business description — tick the good ones.</li>
         </ol>
       </div>
@@ -1211,7 +1211,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.13.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.14.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1239,7 +1239,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.13.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.14.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -4592,6 +4592,17 @@ function buildDeployPackage(){
 }
 function downloadDeployPackage(){
   if(OFFLINE||!PK.audit){ showToast('Generate the package first',true); return; }
+  // HARD GATE: an SEO strategist must read and approve every piece before
+  // the package can leave the platform — approval is also what puts a piece
+  // on the publishing schedule, so an unapproved export would land in the
+  // CMS as undated drafts.
+  const unapproved=(PK.topics||[]).filter(t=>t.status!=='approved'&&t.status!=='retired');
+  if(unapproved.length){
+    dialog({ title:'Approval required', okLabel:'Go to content queue',
+      body:`<b>${unapproved.length} piece${unapproved.length>1?'s':''} of content</b> ${unapproved.length>1?'are':'is'} not approved yet.<br><br>An SEO strategist needs to read and approve every piece — approval is what puts it on the publishing schedule. The deploy file can't be exported until the whole package is approved.`
+    }).then(ok=>{ if(ok) jumpToEngine('queue'); });
+    return;
+  }
   // Guardrail: staged-but-unwritten fixes would silently export empty
   // seo_meta/schema/site_files sections. Say so instead.
   const sug=(PK.fixes||[]).filter(f=>f.status==='suggested').length;
