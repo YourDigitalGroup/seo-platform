@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <!--
   44i SEO/AEO Delivery System — Internal Ops Console v8
   Stack: static front-end · secure cloud backend · search & authority data
@@ -922,7 +923,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.12.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.13.0</div>
   </div>
   </div>
 </div>
@@ -1007,7 +1008,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.12.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.13.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1055,7 +1056,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.12.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.13.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1093,7 +1094,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div class="howto"><b>Step 1 — Set the client up.</b> (Once per client, then only when something changes.)
         <ol>
           <li>Check the URL, target market and plan, then click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it.</li>
-          <li>Open <b>📍 Local Listing Optimization</b> below and fill in the business facts. Amber fields were read off the client's website — verify them, then click <b>Approve &amp; save</b>.</li>
+          <li>Open <b>Local Listing Optimization</b> below and fill in the business facts. Amber fields were read off the client's website — verify them, then click <b>Approve &amp; save</b>.</li>
           <li>In Platform Access, connect what you have: the WordPress key (from the client site's connector plugin — see tab ④), Search Console, Business Profile.</li>
         </ol>
       </div>
@@ -1165,9 +1166,9 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div class="howto"><b>Step 3 — Review and approve the writing.</b>
         <ol>
           <li>Every queued piece drafts itself after Generate. Click <b>Open</b> on each one, read it, and edit anything you'd say differently.</li>
-          <li>If a red <b>⚠ Auto-fix flagged</b> button appears, click it once — it rewrites any draft that broke a compliance rule (invented claims, placeholders) using the approved business facts.</li>
+          <li>If a red <b>Auto-fix flagged</b> button appears, click it once — it rewrites any draft that broke a compliance rule (invented claims, placeholders) using the approved business facts.</li>
           <li>Click <b>Approve</b> on drafts that are ready. <b>Approval is what puts a piece on the publishing schedule</b> — unapproved drafts deploy as WordPress drafts instead.</li>
-          <li>Want more options? <b>💡 Suggest topics</b> proposes ideas from the business description — tick the good ones.</li>
+          <li>Want more options? <b>Suggest topics</b> proposes ideas from the business description — tick the good ones.</li>
         </ol>
       </div>
       <div class="section-h"><h2>Content Plan</h2><div class="ln"></div><span class="tag" id="queue-tag">Engine 2 · AI Writer</span></div>
@@ -1181,9 +1182,9 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <ol>
           <li>The fixes below are already written — schema, titles, robots.txt, all of it. Nothing here changes how the site <i>looks</i>.</li>
           <li><b>One-time per site:</b> wp-admin → Plugins → Add New → Upload → <i>seo-platform-connector.zip</i> → Activate. Then Settings → SEO Platform → copy the <b>API key</b> into this client's Platform Access on tab ①.</li>
-          <li><b>Deploy everything in one shot:</b> click <b>⬇ Deploy file (.json)</b> in the header above, then in wp-admin go to <b>Settings → SEO Platform → Import package</b>, choose the file, click <b>Import &amp; apply</b>. It applies every fix and schedules the approved content, then prints a report — anything listed under <i>Manual follow-ups</i> is yours to do by hand.</li>
+          <li><b>Deploy everything in one shot:</b> click <b>Deploy file (.json)</b> in the header above, then in wp-admin go to <b>Settings → SEO Platform → Import package</b>, choose the file, click <b>Import &amp; apply</b>. It applies every fix and schedules the approved content, then prints a report — anything listed under <i>Manual follow-ups</i> is yours to do by hand.</li>
           <li><b>Google Business Profile posts</b> can't be automated: copy each post's text from the campaign doc (tab ⑤) into business.google.com → Add update.</li>
-          <li><b>Citations (LLO):</b> on tab ① open 📍 LLO → <b>📇 Citation pack</b> — work the checklist top to bottom, pasting the NAP block <i>exactly</i>. For bulk, import the <b>⬇ Citations CSV</b> into BrightLocal/Whitespark.</li>
+          <li><b>Citations (LLO):</b> on tab ① open LLO → <b>Citation pack</b> — work the checklist top to bottom, pasting the NAP block <i>exactly</i>. For bulk, import the <b>Citations CSV</b> into BrightLocal/Whitespark.</li>
         </ol>
       </div>
       <div class="section-h"><h2>Technical Fixes</h2><div class="ln"></div><span class="tag" id="fix-tag">paste-ready</span></div>
@@ -1193,7 +1194,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <div class="ptab" id="ptab-5">
       <div class="howto"><b>Step 5 — Prove it, and plan next month.</b>
         <ol>
-          <li><b>📄 Campaign doc</b> (header button) downloads the full work plan — the client-safe copy only generates when every compliance check passes; the INTERNAL file lists anything left to resolve.</li>
+          <li><b>Campaign doc</b> (header button) downloads the full work plan — the client-safe copy only generates when every compliance check passes; the INTERNAL file lists anything left to resolve.</li>
           <li>The client progress report below: <b>Rebuild</b> after big changes, <b>Open</b> to check it, <b>Print to PDF</b> to send.</li>
           <li>The roadmap shows the whole contract month by month. <b>Seed campaign</b> (once per client) schedules every deliverable; each month you repeat steps ①→④ and the platform paces the plan for you.</li>
         </ol>
@@ -1210,7 +1211,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.12.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.13.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1238,7 +1239,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.12.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.13.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1679,11 +1680,11 @@ function renderCampaignControls(){
   el.classList.toggle('suspended', c.status==='suspended');
   el.classList.toggle('bare', c.status!=='suspended');
   if(c.status==='suspended'){
-    el.innerHTML=`<div><b style="color:#8a6d14">⏸ Suspended${c.suspended_at?` since ${fmtDate(String(c.suspended_at).slice(0,10))}`:''}</b>${c.suspend_reason?`<div class="wmeta">${esc(c.suspend_reason)}</div>`:''}</div>
-      <button class="tbtn" onclick="resumeCampaign()">▶ Resume campaign</button>`;
+    el.innerHTML=`<div><b style="color:#8a6d14"><i class="fa-solid fa-pause"></i> Suspended${c.suspended_at?` since ${fmtDate(String(c.suspended_at).slice(0,10))}`:''}</b>${c.suspend_reason?`<div class="wmeta">${esc(c.suspend_reason)}</div>`:''}</div>
+      <button class="tbtn" onclick="resumeCampaign()"><i class="fa-solid fa-play"></i> Resume campaign</button>`;
   } else {
-    el.innerHTML=`<button class="tbtn" onclick="suspendCampaign()">⏸ Suspend campaign…</button>`+
-      (me.role==='admin'?`<button class="tbtn danger" onclick="removeClient()">🗑 Delete client…</button>`:'');
+    el.innerHTML=`<button class="tbtn" onclick="suspendCampaign()"><i class="fa-solid fa-pause"></i> Suspend campaign…</button>`+
+      (me.role==='admin'?`<button class="tbtn danger" onclick="removeClient()"><i class="fa-solid fa-trash-can"></i> Delete client…</button>`:'');
   }
 }
 async function suspendCampaign(){
@@ -1743,7 +1744,7 @@ async function removeClient(){
     activeClient=null;
     navigate(activeGroup?'group':'groups');
     showToast(`✓ ${d.client||label} removed — ${n} related record(s) deleted`+
-      (d.warnings&&d.warnings.length?` · ⚠ ${d.warnings.length} table(s) reported errors — see function logs`:''), false, true);
+      (d.warnings&&d.warnings.length?` · ${d.warnings.length} table(s) reported errors — see function logs`:''), false, true);
   }catch(e){
     const msg=String(e.message||e);
     showToast('Could not remove client — '+(/unknown action/i.test(msg)
@@ -2835,7 +2836,7 @@ function renderAccessPanel(){
 let _wpKeyEdit=false;
 function wpKeyRow(c){
   if(c.wp_api_key && !_wpKeyEdit){
-    return `<div class="apc-key"><span class="apc-key-on">🔑 API key on file ····${esc(String(c.wp_api_key).slice(-4))}</span>
+    return `<div class="apc-key"><span class="apc-key-on"><i class="fa-solid fa-key"></i> API key on file ····${esc(String(c.wp_api_key).slice(-4))}</span>
       <button class="apc-key-btn" onclick="_wpKeyEdit=true;renderAccessPanel()">Replace</button></div>`;
   }
   return `<div class="apc-key"><input id="wp-key-in" type="password" placeholder="Paste API key from Settings → SEO Platform"
@@ -2952,8 +2953,8 @@ async function reRunAudit(){
       await loadLiveAudit(); renderPackage();
       showToast(`Audit re-run — score ${data.score}/100 (${delta})`+
         (pr.fixed?` · ${pr.fixed} check${pr.fixed>1?'s':''} fixed ✓`:'')+
-        (pr.regressed?` · ${pr.regressed} regressed ⚠`:'')+
-        (data.engine_version?` · engine v${data.engine_version}`:' · ⚠ OLD AUDIT ENGINE — redeploy run-audit in Supabase'), false, true);
+        (pr.regressed?` · ${pr.regressed} regressed`:'')+
+        (data.engine_version?` · engine v${data.engine_version}`:' · OLD AUDIT ENGINE — redeploy run-audit in Supabase'), false, true);
     }
   }catch(e){ console.error(e); showToast('Re-audit error — see console', true); }
   finally{ const b=document.getElementById('reaudit-btn'); if(b){ b.disabled=false; b.innerHTML='↻ Re-run audit'; } }
@@ -3076,7 +3077,7 @@ const DIR_HOWTO={
   h1:'Each page must have exactly one “Heading 1”. In the editor, the page title is already the H1 — click any extra H1 blocks in the body and change them to Heading 2 (select the block → heading-level dropdown).',
   image_alt:'Media → Library → click each image → fill <b>Alternative Text</b>: describe the photo in ≤12 words (e.g. “Technician installing a network switch”). Note: the connector plugin’s weekly AI pass also fills missing alts automatically — check back after Sunday before doing these by hand.',
   page_copy:'The pages below are too thin for Google to take seriously. Add real, useful copy — what the service includes, who it’s for, the area served — until the page passes 300 words. No filler; write what a customer would actually ask.',
-  internal_link:'Open each page below, find the first natural mention of the keyword, highlight it, click the link button (🔗), and link it to the target page. One link per page is enough. The WordPress plugin also adds these automatically on its weekly pass.',
+  internal_link:'Open each page below, find the first natural mention of the keyword, highlight it, click the link button, and link it to the target page. One link per page is enough. The WordPress plugin also adds these automatically on its weekly pass.',
   gbp_post:'business.google.com → select the profile → <b>Add update</b> → paste the post text from the campaign doc. Weekly posts are a documented local-pack ranking signal.',
   faq_schema:'This resolves through content: approve the FAQ piece on tab ③ (it’s drafted) and import the deploy file — the schema is generated automatically from the published questions.',
   robots_txt:'Deployed automatically by the deploy file — import the latest file on the site (Settings → SEO Platform → Import package), then re-run the audit. No hand-editing.',
@@ -3103,7 +3104,7 @@ function dirDetail(i){
     rows=`<table class="dd-table"><tr><th>Page</th><th>Current</th><th>Ready to paste</th></tr>`+
       pages.slice(0,12).map(p=>{
         const f=fixBy[String(p.url||'').replace(/\/+$/,'')];
-        const paste=f&&f.after?`<span class="dd-paste">${esc(String(f.after).slice(0,140))}</span> <button class="dd-copy" data-t="${esc(f.after)}" onclick="event.stopPropagation();navigator.clipboard.writeText(this.dataset.t);showToast('Copied — paste it in WordPress')">📋 Copy</button>`:'<span class="ev">write per the steps above</span>';
+        const paste=f&&f.after?`<span class="dd-paste">${esc(String(f.after).slice(0,140))}</span> <button class="dd-copy" data-t="${esc(f.after)}" onclick="event.stopPropagation();navigator.clipboard.writeText(this.dataset.t);showToast('Copied — paste it in WordPress')"><i class="fa-solid fa-clipboard"></i> Copy</button>`:'<span class="ev">write per the steps above</span>';
         return `<tr><td><a href="${esc(p.url)}" target="_blank" onclick="event.stopPropagation()">${esc(String(p.url||'').replace(/^https?:\/\/[^/]+/,'')||'/')}</a></td><td>${esc((DIR_CURRENT[i.fix_kind]||(()=>''))(p))}</td><td>${paste}</td></tr>`;
       }).join('')+`</table>`;
   }
@@ -3271,7 +3272,7 @@ function renderReportBar(){
   const review = meta.review_recommended ? ` · <b style="color:var(--high)">⚑ flagged for strategist review</b>` : '';
   const summary = has
     ? (stale
-      ? `<b style="color:var(--high)">⚠ Report predates the latest audit — its grades no longer match. Click Rebuild before sending.</b>`
+      ? `<b style="color:var(--high)"><i class="fa-solid fa-triangle-exclamation"></i> Report predates the latest audit — its grades no longer match. Click Rebuild before sending.</b>`
       : `Client progress report ready · ${baseline?`baseline ${esc(baseline)} · `:'baseline cycle · '}${esc(num0((meta.deltas||{}).improvements))} improvements · ${esc(num0((meta.deltas||{}).newlyRanking))} new rankings${review}`)
     : 'Client progress report not built yet';
   const pg=activeClient?groupOf(activeClient):{color:'#4B9BD7'};
@@ -3441,7 +3442,7 @@ function renderQueue(){
       <span><select class="qsel" onchange="changeModel(${i},this.value)">${modelOpts(t.model)}</select></span>
       <span><span class="qstatus qs-${t.status}">${cap(t.status)}</span></span>
       <span>${openable?`<button class="qopen" onclick="openDraft(${i})">Open</button>`:''}</span>
-      <span class="cx">${t._id&&t.status!=='approved'?`<button class="cxbtn" title="Retire — remove from the campaign permanently (logged in the internal review)" onclick="retireTopic(${i})">⛔</button>`:''}<button class="cxbtn" title="Remove from queue" onclick="removeTopic(${i})">✕</button></span>
+      <span class="cx">${t._id&&t.status!=='approved'?`<button class="cxbtn" title="Retire — remove from the campaign permanently (logged in the internal review)" onclick="retireTopic(${i})"><i class="fa-solid fa-ban"></i></button>`:''}<button class="cxbtn" title="Remove from queue" onclick="removeTopic(${i})">✕</button></span>
     </div>`;
   }).join('');
   if(!PK.topics.length) rows=`<div class="qempty">No content queued. Select gap keywords above, or add a topic.</div>`;
@@ -3453,8 +3454,8 @@ function renderQueue(){
     `<div class="addrow"><input class="dom" id="newtopic" type="text" placeholder="add a custom topic…"><button class="addbtn" onclick="addTopic()">＋ Add topic</button></div>`+
     `<div class="qbar"><span class="qsum">${PK.topics.length} piece${PK.topics.length===1?'':'s'} · ${summary}</span>
       ${(()=>{const n=PK.topics.filter(t=>t.body&&qaScan(t.body).blocking.length).length;
-        return n?`<button class="qgen" style="background:#C0392B;margin-right:8px" onclick="autoFixFlagged()" title="Rewrite every flagged draft with its violations as explicit removal instructions">⚠ Auto-fix ${n} flagged →</button>`:'';})()}
-      <button class="qgen" id="sugbtn" style="background:var(--navy);margin-right:8px" onclick="suggestTopics()" title="Claude combines the owner's business description with the audit data and proposes topics — you pick what to queue">💡 Suggest topics</button>
+        return n?`<button class="qgen" style="background:#C0392B;margin-right:8px" onclick="autoFixFlagged()" title="Rewrite every flagged draft with its violations as explicit removal instructions"><i class="fa-solid fa-triangle-exclamation"></i> Auto-fix ${n} flagged →</button>`:'';})()}
+      <button class="qgen" id="sugbtn" style="background:var(--navy);margin-right:8px" onclick="suggestTopics()" title="Claude combines the owner's business description with the audit data and proposes topics — you pick what to queue"><i class="fa-solid fa-lightbulb"></i> Suggest topics</button>
       <button class="qgen" onclick="generateDrafts()">Generate drafts →</button></div>`;
   document.getElementById('queue-tag').textContent=`${campaignMonthLabel(activeClient)} · ${PK.topics.length} queued · Engine 2`;
 }
@@ -3513,7 +3514,7 @@ async function autoFillTopics(){
         model:KIND_MODEL[k]||'sonnet-4-6', status:'queued', source:'suggested-auto',
         location:(activeClient&&activeClient.market)||null });
     }
-    if(!rows.length){ showToast('No gate-passing suggestions available for the open slots — 💡 Suggest topics or add manually.',true); return 0; }
+    if(!rows.length){ showToast('No gate-passing suggestions available for the open slots — use Suggest topics or add manually.',true); return 0; }
     const {error:iErr}=await sb.from('content_topics').insert(rows);
     if(iErr){ showToast('Topic auto-fill failed: '+iErr.message,true); return 0; }
     await loadLiveAudit();
@@ -3532,7 +3533,7 @@ async function suggestTopics(){
     renderSuggestions();
     showToast(_suggestions.length?`${_suggestions.length} topic ideas passed the gates — pick what to queue below.`:'No new suggestions cleared the gates — existing pieces may already cover the space.', !_suggestions.length, !!_suggestions.length);
   }catch(e){ showToast('Suggestions failed: '+e.message+' — is the suggest-topics function deployed?',true); }
-  finally{ if(btn){btn.disabled=false;btn.textContent='💡 Suggest topics';} }
+  finally{ if(btn){btn.disabled=false;btn.innerHTML='<i class="fa-solid fa-lightbulb"></i> Suggest topics';} }
 }
 function renderSuggestions(){
   const el=document.getElementById('suggestions'); if(!el) return;
@@ -3747,7 +3748,7 @@ function renderFixes(){
            <button class="fixregen" onclick="regenFix('${f.id}')">Rewrite</button>
            <button class="fixpush" onclick="markPushed('${f.id}')">${f.status==='pushed'?'✓ Pushed':'Mark pushed'}</button>
          </div>`;
-    const preview=(f.kind==='title_tag'||f.kind==='meta_description')?`<div class="serp-wrap"><div class="serp-lab">🔎 Google preview</div><div id="serp-${f.id}">${serpBox(f.target,(_pageSEO[serpKey(f.target)]||{}).title,(_pageSEO[serpKey(f.target)]||{}).meta)}</div></div>`:'';
+    const preview=(f.kind==='title_tag'||f.kind==='meta_description')?`<div class="serp-wrap"><div class="serp-lab"><i class="fa-solid fa-magnifying-glass"></i> Google preview</div><div id="serp-${f.id}">${serpBox(f.target,(_pageSEO[serpKey(f.target)]||{}).title,(_pageSEO[serpKey(f.target)]||{}).meta)}</div></div>`:'';
     return `<div class="fixrow">
       <div class="fixtop"><span class="fixkind k-${f.kind}">${f.label}</span>
         <span class="fixtarget">${esc(f.target)}</span>
@@ -3965,7 +3966,7 @@ async function generatePackage(){
       if(tasks.length) await Promise.all(tasks);
       await liveBuildReport(data.package_id || (PK && PK.package_id));
       await loadLiveAudit(); renderPackage();
-      showToast('Package complete — audit, directive, drafts, fixes and report all generated. Review + approve, then click “⬇ Deploy file” to export everything.', false, true);
+      showToast('Package complete — audit, directive, drafts, fixes and report all generated. Review + approve, then click “Deploy file” to export everything.', false, true);
     }
   }catch(e){ console.error(e); showToast('Audit error — see console', true); c.pkg_status='none'; renderPackage(); }
   finally{ const b=document.querySelector('#v-package .run'); if(b){ b.disabled=false; b.textContent='Generate package →'; } }
@@ -4018,7 +4019,7 @@ async function renderBizFacts(){
   const missReq=intakeMissing().length;
   const open=activeClient._bfOpen!==undefined ? activeClient._bfOpen : !!(suggested&&missReq);
   el.innerHTML=`<details ${open?'open':''} ontoggle="if(activeClient)activeClient._bfOpen=this.open" style="border:1px dashed var(--line);border-radius:var(--r-sm);background:var(--mist)">
-    <summary style="cursor:pointer;padding:11px 14px;font-size:12px;font-weight:700;color:${missReq?'var(--muted)':'var(--s-green-text)'}"><span id="bf-summary">${esc(bfSummaryText())}</span> <span id="bf-state" style="font-weight:600;color:var(--muted)"></span></summary>
+    <summary style="cursor:pointer;padding:11px 14px;font-size:12px;font-weight:700;color:${missReq?'var(--muted)':'var(--s-green-text)'}"><span id="bf-summary">${esc(bfSummaryText())}</span> <span id="bf-savestate" style="font-weight:600;color:var(--muted)"></span></summary>
     <div class="ds-row" style="border:none;background:none">
     ${INTAKE_FIELDS.map(([k,l])=>{
       const isSug=!iv[k]&&sug[k];
@@ -4027,8 +4028,8 @@ async function renderBizFacts(){
         <textarea id="bf-${k}" rows="3" oninput="bfAutoSave()" style="font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;color:var(--ink);background:var(--s-card);resize:vertical">${esc(iv[k]||sug[k]||'')}</textarea></div>`;
       return `<div class="ds-field"><label>${l}${hint}</label>
         <input id="bf-${k}" value="${esc(iv[k]||sug[k]||'')}" oninput="bfAutoSave()" ${isSug?'style="border-color:#C9A227;background:#FFFDF2"':''}></div>`;}).join('')}
-    <button class="ds-save" style="background:var(--blue)" onclick="downloadCitationPack()">📇 Citation pack</button>
-    <button class="ds-save" style="background:#6FA53C" onclick="downloadCitationCSV()">⬇ Citations CSV</button>
+    <button class="ds-save" style="background:var(--blue)" onclick="downloadCitationPack()"><i class="fa-solid fa-address-card"></i> Citation pack</button>
+    <button class="ds-save" style="background:#6FA53C" onclick="downloadCitationCSV()"><i class="fa-solid fa-download"></i> Citations CSV</button>
     </div>
     <div class="al-panel" id="al-panel"></div>
   </details>`;
@@ -4036,12 +4037,12 @@ async function renderBizFacts(){
 }
 function bfSummaryText(){
   const missReq=intakeMissing().length;
-  return `📍 Local Listing Optimization (LLO) — business facts & citation pack · ${5-missReq}/5 required saved`;
+  return `Local Listing Optimization (LLO) — business facts & citation pack · ${5-missReq}/5 required saved`;
 }
 let _bfTimer=null;
 function bfAutoSave(){
   clearTimeout(_bfTimer);
-  const st=document.getElementById('bf-state'); if(st) st.textContent='· saving…';
+  const st=document.getElementById('bf-savestate'); if(st) st.textContent='· saving…';
   _bfTimer=setTimeout(()=>{ _bfTimer=null; saveBizFacts(true); }, 700);
 }
 // Downloads and Advice Local calls act on what's ON SCREEN: flush any
@@ -4088,9 +4089,9 @@ async function renderALPanel(){
     <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Advice Local — automated citation submission</div>
     <div class="wmeta" id="al-state" style="margin:6px 0 10px">${esc(linked+ordered)}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="tbtn" id="al-sync-btn" onclick="alSync()">${a.al_client_id?'↻ Re-sync listing':'🚀 Sync to Advice Local'}</button>
-      <button class="tbtn" id="al-order-btn" onclick="alOrder()" ${a.al_order_id?'disabled title="Order already on file"':''}>🧾 Place LLO order</button>
-      <button class="tbtn" onclick="alStatus()">📡 Fulfillment status</button>
+      <button class="tbtn" id="al-sync-btn" onclick="alSync()">${a.al_client_id?'<i class="fa-solid fa-rotate"></i> Re-sync listing':'<i class="fa-solid fa-cloud-arrow-up"></i> Sync to Advice Local'}</button>
+      <button class="tbtn" id="al-order-btn" onclick="alOrder()" ${a.al_order_id?'disabled title="Order already on file"':''}><i class="fa-solid fa-file-invoice-dollar"></i> Place LLO order</button>
+      <button class="tbtn" onclick="alStatus()"><i class="fa-solid fa-tower-broadcast"></i> Fulfillment status</button>
     </div>
     <div id="al-status" style="margin-top:10px"></div>
   </div>`;
@@ -4103,9 +4104,9 @@ async function alSync(){
   try{
     const d=await alInvoke({action:'sync', client_id:activeClient.id});
     activeClient._al={...(activeClient._al||{}), al_client_id:d.al_client_id, al_synced_at:new Date().toISOString()};
-    showToast(`✓ Listing ${d.mode} on Advice Local — location #${d.al_client_id}`+(d.warning?` · ⚠ ${d.warning}`:''), false, true);
+    showToast(`✓ Listing ${d.mode} on Advice Local — location #${d.al_client_id}`+(d.warning?` · ${d.warning}`:''), false, true);
     renderALPanel();
-  }catch(e){ showToast('Advice Local sync failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.textContent='🚀 Sync to Advice Local'; } }
+  }catch(e){ showToast('Advice Local sync failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.innerHTML='<i class="fa-solid fa-cloud-arrow-up"></i> Sync to Advice Local'; } }
 }
 async function alOrder(){
   await bfFlush();
@@ -4118,7 +4119,7 @@ async function alOrder(){
     activeClient._al={...(activeClient._al||{}), al_client_id:d.al_client_id, al_order_id:d.order_id};
     showToast(`✓ LLO order placed — order #${d.order_id||'—'}${d.price!=null?` · $${d.price}`:''}. Directory submissions start on Advice Local's side; check Fulfillment status in a day or two.`, false, true);
     renderALPanel();
-  }catch(e){ showToast('Order failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.textContent='🧾 Place LLO order'; } }
+  }catch(e){ showToast('Order failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.innerHTML='<i class="fa-solid fa-file-invoice-dollar"></i> Place LLO order'; } }
 }
 async function alStatus(){
   const el=document.getElementById('al-status'); if(el) el.innerHTML='<div class="wmeta">Checking fulfillment…</div>';
@@ -4141,9 +4142,9 @@ async function saveBizFacts(auto){
   const iv={}; INTAKE_FIELDS.forEach(([k])=>{ const e=document.getElementById('bf-'+k); if(e) iv[k]=e.value.trim(); });
   activeClient._intake=iv;
   const {error}=await sb.from('clients').update({intake:iv}).eq('id',activeClient.id);
-  const st=document.getElementById('bf-state');
+  const st=document.getElementById('bf-savestate');
   if(error){
-    if(st) st.textContent='· ⚠ save failed';
+    if(st) st.textContent='· save failed';
     showToast('Save failed: '+error.message+' — run client_intake.sql in the SQL editor',true);
     return;
   }
