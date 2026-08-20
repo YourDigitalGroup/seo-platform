@@ -2,7 +2,7 @@
 /**
  * Plugin Name: 44i SEO Platform Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.6.0
+ * Version: 1.7.0
  * Author: 44i Digital
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -19,10 +19,22 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.6.0');
+define('SEOP_VERSION', '1.7.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
+// v1.7: BAKED-IN key — paste the agency's Anthropic API key between the
+// quotes below before zipping, and no one ever has to enter it on a site.
+// Resolution order: wp-config constant SEOP_ANTHROPIC_API_KEY (host-level
+// override) → this baked key → the per-site settings field.
+// NOTE: anyone with file access to a client site can read a baked key —
+// accepted trade-off per 44i; use a key with a spend limit.
+define('SEOP_BAKED_AI_KEY', '');
+function seop_ai_key() {
+    if (defined('SEOP_ANTHROPIC_API_KEY') && SEOP_ANTHROPIC_API_KEY) return SEOP_ANTHROPIC_API_KEY;
+    if (SEOP_BAKED_AI_KEY) return SEOP_BAKED_AI_KEY;
+    return (string) get_option(SEOP_OPT_AI_KEY);
+}
 define('SEOP_OPT_AI_CRON',   'seoplatform_ai_cron');
 define('SEOP_OPT_AI_REPORT', 'seoplatform_ai_last_report');
 define('SEOP_AI_MODEL', 'claude-haiku-4-5');
@@ -87,6 +99,12 @@ add_action('seop_ai_autofix_event', 'seop_ai_autofix');
  * 'weekly' interval silently failed on WP < 5.4, or cron was cleared),
  * re-arm it. */
 add_action('init', function () {
+    // A built-in key means fully hands-off: default the weekly pass ON for
+    // sites where the toggle has never been saved (an explicit uncheck
+    // stores 0 and is respected).
+    if (seop_ai_key() && get_option(SEOP_OPT_AI_CRON, null) === null) {
+        update_option(SEOP_OPT_AI_CRON, 1);
+    }
     if (get_option(SEOP_OPT_AI_CRON) && !wp_next_scheduled('seop_ai_autofix_event')) {
         wp_schedule_event(time() + HOUR_IN_SECONDS, 'seop_weekly', 'seop_ai_autofix_event');
     }
@@ -708,7 +726,7 @@ function seop_package_rest($request) {
  * work to keep each run cheap and fast, and records a report. Runs from the
  * settings button, the weekly cron, or the /ai-autofix REST endpoint. */
 function seop_claude($system, $user, $max = 600) {
-    $key = get_option(SEOP_OPT_AI_KEY);
+    $key = seop_ai_key();
     if (!$key) return new WP_Error('seop_ai', 'no Anthropic API key configured');
     $r = wp_remote_post('https://api.anthropic.com/v1/messages', [
         'timeout' => 60,
@@ -784,7 +802,7 @@ function seop_link_keyword($content, $kw, $url) {
     return null;
 }
 function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
-    if (!get_option(SEOP_OPT_AI_KEY)) return new WP_Error('seop_ai', 'Add an Anthropic API key on the SEO Platform settings page first.');
+    if (!seop_ai_key()) return new WP_Error('seop_ai', 'Add an Anthropic API key on the SEO Platform settings page first.');
     $report = ['ok' => true, 'ran_at' => current_time('mysql'), 'metas' => [], 'alts' => [], 'media_alts' => 0, 'skipped' => []];
     $site = get_bloginfo('name');
     // v1.5: the WHOLE site, not just posts/pages — themes and builders put real
@@ -1065,10 +1083,15 @@ function seop_settings_page() {
 
     echo '<h2>AI auto-fix</h2>';
     echo '<p>With an Anthropic API key saved, the connector fixes what the audit grades: missing <strong>and weak</strong> SEO titles/descriptions, image alt text (page content <em>and</em> the media library), internal links to the campaign\'s target pages, and a Privacy Policy page if the site has none. Default security headers, FAQ schema from existing Q&amp;A headings, and an llms.txt fallback are always on — on demand, on a weekly schedule, or triggered by the platform. It never overwrites values that already exist. Use a dedicated key with a spend limit; anyone with admin access to this site can read stored keys.</p>';
-    $hasAiKey = (bool) get_option(SEOP_OPT_AI_KEY);
+    $keyBuiltIn = (defined('SEOP_ANTHROPIC_API_KEY') && SEOP_ANTHROPIC_API_KEY) || SEOP_BAKED_AI_KEY;
+    $hasAiKey = $keyBuiltIn || (bool) get_option(SEOP_OPT_AI_KEY);
     echo '<form method="post">' . wp_nonce_field('seop_ai', '_wpnonce', true, false);
     echo '<table class="form-table">';
-    echo '<tr><th>Anthropic API key</th><td><input type="password" name="seop_ai_key" placeholder="' . ($hasAiKey ? '•••••••• (saved — enter to replace)' : 'sk-ant-…') . '" style="width:340px"> <em>' . ($hasAiKey ? 'configured' : 'not set') . '</em></td></tr>';
+    if ($keyBuiltIn) {
+        echo '<tr><th>Anthropic API key</th><td><em>Built into this plugin build — nothing to enter.</em></td></tr>';
+    } else {
+        echo '<tr><th>Anthropic API key</th><td><input type="password" name="seop_ai_key" placeholder="' . ($hasAiKey ? '•••••••• (saved — enter to replace)' : 'sk-ant-…') . '" style="width:340px"> <em>' . ($hasAiKey ? 'configured' : 'not set') . '</em></td></tr>';
+    }
     echo '<tr><th>Weekly auto-fix</th><td><label><input type="checkbox" name="seop_ai_cron" value="1"' . (get_option(SEOP_OPT_AI_CRON) ? ' checked' : '') . '> Run automatically every week (keeps new pages covered)</label></td></tr>';
     echo '</table><p><button class="button" name="seop_ai_save" value="1">Save AI settings</button></p></form>';
     if ($hasAiKey) {
