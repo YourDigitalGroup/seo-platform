@@ -903,7 +903,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.7.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.8.0</div>
   </div>
   </div>
 </div>
@@ -988,7 +988,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.7.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.8.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1036,7 +1036,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.7.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.8.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1195,7 +1195,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.7.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.8.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1223,7 +1223,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.7.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.8.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1242,7 +1242,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <div class="mrow">
       <div class="mfield"><label>Target market</label><input id="m-market" type="text" placeholder="Tulsa, OK"></div>
       <div class="mfield"><label>Plan</label>
-        <select id="m-tier" onchange="renderReqNote()">
+        <select id="m-tier">
           <option value="starter">SEO Starter — $199/mo</option>
           <option value="builder">SEO Pro — $599/mo</option>
           <option value="pro">AEO Pro — $799/mo</option>
@@ -1281,9 +1281,6 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </select>
       </div>
     </div>
-    <div class="access-label">Platform access granted</div>
-    <div class="atacc" id="access-toggles"></div>
-    <div class="req-note" id="req-note"></div>
     <div class="gen-note" id="gen-note">On save, the system generates the full deployment package — audit, competition, fixes, deliverables, and the white-labeled report.</div>
     <div class="mfoot">
       <button class="mbtn" onclick="closeAddModal()">Cancel</button>
@@ -1378,7 +1375,7 @@ const PAGE_SIZE = 25;
 // ════════════════════════════════════════════════════════════
 //  TEAM & ROLES  — //SB: from `profiles` table; auth via Supabase
 // ════════════════════════════════════════════════════════════
-const USERS = [
+let USERS = [
   {id:'u-james',  name:'James',  email:'james@44idigital.com',  role:'admin',      initials:'JA'},
   {id:'u-jon',    name:'Jon',    email:'jon@44idigital.com',    role:'admin',      initials:'JO'},
   {id:'u-carol',  name:'Carol',  email:'carol@44idigital.com',  role:'am',         initials:'CA'},
@@ -1389,7 +1386,21 @@ const USERS = [
 ];
 const DEMO_PASSWORD = '44idemo';   // //SB: demo only — replaced by Supabase Auth in prod
 const ROLE_LABEL = {admin:'Super Admin', am:'Account Manager', strategist:'SEO/AEO Strategist'};
-const STRATEGISTS = USERS.filter(u=>u.role==='strategist');
+let STRATEGISTS = USERS.filter(u=>u.role==='strategist');
+// LIVE: replace the built-in demo roster with the real profiles table, so the
+// strategist picker inserts real profile UUIDs (fake demo ids like 'u-sarah'
+// violate clients.strategist_id and made "Add & generate" fail).
+async function loadStaff(){
+  if(OFFLINE) return;
+  const {data,error}=await sb.from('profiles').select('id,name,email,role');
+  if(error||!data||!data.length){ console.warn('profiles list unavailable — strategist picker will be empty',error); USERS=[]; STRATEGISTS=[]; return; }
+  const roleMap={super_admin:'admin', account_manager:'am', strategist:'strategist'};
+  USERS=data.map(p=>({ id:p.id, name:p.name||String(p.email||'').split('@')[0], email:p.email,
+    role:roleMap[p.role]||p.role||'strategist',
+    initials:(p.name||'?').replace(/[^A-Za-z]/g,'').slice(0,2).toUpperCase()||'··' }));
+  // small team — everyone is assignable; actual strategists listed first
+  STRATEGISTS=[...USERS.filter(u=>u.role==='strategist'),...USERS.filter(u=>u.role!=='strategist')];
+}
 const userById = id => USERS.find(u=>u.id===id);
 const canAssign      = () => me.role==='am' || me.role==='admin';
 const canEditContent = () => me.role==='strategist' || me.role==='admin';
@@ -2038,7 +2049,7 @@ async function doLogin(){
     if(error || !data?.user){ showErr('Incorrect email or password.'); btn.disabled=false; btn.textContent='Sign in →'; return; }
     const ok=await loadMe(data.user.id);
     if(!ok){ showErr('No staff profile found for this account.'); await sb.auth.signOut(); btn.disabled=false; btn.textContent='Sign in →'; return; }
-    session={email:data.user.email}; await loadGroups(); onAuth();
+    session={email:data.user.email}; await Promise.all([loadGroups(),loadStaff()]); onAuth();
   }
   btn.disabled=false; btn.textContent='Sign in →';
 }
@@ -2375,21 +2386,9 @@ function openAddModal(){
   document.getElementById('m-startmonth').innerHTML=Array.from({length:23},(_,i)=>`<option value="${i+2}">Month ${i+2}</option>`).join('');
   document.getElementById('m-strat').innerHTML=`<option value="">— assign later —</option>`+STRATEGISTS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
   document.getElementById('modal-grp').innerHTML=`Adding to <b>${activeGroup.name}</b> — package deploys in this partner's brand. As ${ROLE_LABEL[me.role]||'staff'}, assign the SEO/AEO strategist here.`;
-  document.getElementById('access-toggles').innerHTML=PLATFORMS.map(p=>`
-    <div class="atrow" id="at-${p.key}" onclick="toggleAt('${p.key}')">
-      <div class="atleft"><div class="at-icon ${p.key}">${p.icon}</div>
-        <div><div class="at-name">${p.name}</div><div class="at-sub">${p.sub}</div></div></div>
-      <div class="at-chk" id="atchk-${p.key}"></div></div>`).join('');
-  renderReqNote(); document.getElementById('modal').classList.add('open');
+  document.getElementById('modal').classList.add('open');
 }
 function closeAddModal(){ document.getElementById('modal').classList.remove('open'); }
-function toggleAt(k){ const r=document.getElementById('at-'+k); const on=r.classList.toggle('on'); document.getElementById('atchk-'+k).textContent=on?'✓':''; renderReqNote(); }
-function renderReqNote(){
-  const tier=document.getElementById('m-tier').value, req=requiredFor(tier);
-  const miss=req.filter(k=>!document.getElementById('at-'+k)?.classList.contains('on'));
-  const n=document.getElementById('req-note');
-  n.textContent=miss.length?`The ${planLabel(tier)} plan needs ${miss.map(k=>PLATFORMS.find(p=>p.key===k).short).join(', ')} to clear the access gap — add now, grant access later.`:'';
-}
 async function saveClient(){
   const name=document.getElementById('m-name').value.trim();
   const url=document.getElementById('m-url').value.trim().replace(/^https?:\/\//,'');
@@ -2399,7 +2398,8 @@ async function saveClient(){
   const evergreen=contract==='evergreen', lengthMonths=evergreen?6:(+contract||6);
   const strat=document.getElementById('m-strat').value||null;
   if(!url){ showToast('Enter a domain URL',true); return; }
-  const a={}; PLATFORMS.forEach(p=>a[p.key]=document.getElementById('at-'+p.key).classList.contains('on'));
+  // Platform access is contractually required for every client — always granted.
+  const a={}; PLATFORMS.forEach(p=>a[p.key]=true);
   if(OFFLINE){
     const c={id:'c'+Date.now(), created_at:Date.now(), grpId:activeGroup.id, name:name||url, url, market, tier, status,
       contract_length_months:lengthMonths, contract_is_evergreen:evergreen,
@@ -2415,11 +2415,14 @@ async function saveClient(){
     strategist_id:strat, assigned_by: strat?me.id:null, assigned_at: strat?new Date().toISOString():null,
     gsc_connected:a.gsc, gbp_connected:a.gbp, wp_connected:a.wp, ga4_connected:a.ga4 };
   let {data:ins, error}=await sb.from('clients').insert(row).select('id').single();
-  if(error && /column/i.test(error.message||'')){
-    // service_catalog.sql not applied yet — retry without the contract columns
-    console.warn('clients missing contract columns — run supabase/migrations/service_catalog.sql');
-    const {contract_length_months,contract_is_evergreen,...legacy}=row;
-    ({data:ins, error}=await sb.from('clients').insert(legacy).select('id').single());
+  // Self-heal against a live DB missing optional columns (contract fields,
+  // assignment metadata…): drop whichever column the error names and retry.
+  for(let i=0;i<5 && error && /column/i.test(error.message||'');i++){
+    const m=(error.message||'').match(/column "?([a-z_]+)"?/i), bad=m&&m[1];
+    if(!bad || !(bad in row)) break;
+    console.warn('clients table missing column',bad,'— retrying without it (run the migrations in docs/DEPLOY_RUNBOOK.md)');
+    delete row[bad];
+    ({data:ins, error}=await sb.from('clients').insert(row).select('id').single());
   }
   if(error){ console.error(error); showToast('Could not save client: '+error.message,true); return; }
   // Mid-campaign import: backdating the engagement start is the single lever
@@ -4468,7 +4471,7 @@ async function init(){
     const {data}=await sb.auth.getSession();
     if(data?.session?.user){
       const ok=await loadMe(data.session.user.id);
-      if(ok){ session={email:data.session.user.email}; await loadGroups(); onAuth(); return; }
+      if(ok){ session={email:data.session.user.email}; await Promise.all([loadGroups(),loadStaff()]); onAuth(); return; }
     }
   }catch(e){ console.error(e); }
   navigate('login');
