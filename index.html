@@ -316,18 +316,18 @@ body[data-theme=dark] .sctile[data-tip]:hover::after{background:#0d1728;border:1
 .qlink input{font-family:inherit;font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:7px;background:var(--mist);color:var(--ink);width:230px}
 .qlink .fa-image{color:var(--grow-d);margin-left:6px}
 /* ── kickoff form (LLO accordion) — sectioned, not a wall of boxes ── */
-.bf-form{padding:6px 16px 16px}
-.bf-sec{margin-top:16px;padding:14px 16px;background:var(--s-card);border:1px solid var(--line);border-radius:var(--r-sm)}
+.bf-sec{margin-top:14px;padding:14px 16px;background:var(--mist);border:1px solid var(--line);border-radius:var(--r-sm)}
 .bf-sec h4{margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--s-head)}
 .bf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px 14px}
 .bf-field{display:flex;flex-direction:column;gap:5px;min-width:0}
 .bf-field.bf-wide{grid-column:1/-1}
 .bf-field label{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bf-field input,.bf-field textarea{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;color:var(--ink);background:var(--mist);resize:vertical}
-.bf-field input:focus,.bf-field textarea:focus{outline:none;border-color:var(--blue);background:var(--s-card)}
+.bf-field input,.bf-field textarea,.bf-kwrow input{font-family:inherit;font-size:13px;border:1px solid #b6c2d2;border-radius:var(--r-sm);padding:9px 11px;color:var(--ink);background:var(--s-card);resize:vertical;box-shadow:inset 0 1px 2px rgba(15,30,60,.05)}
+.bf-field input:focus,.bf-field textarea:focus,.bf-kwrow input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.15)}
+.bf-field input.bf-sug,.bf-kwrow input.bf-sug{border-color:#C9A227;background:#FFFDF2}
+body[data-theme=dark] .bf-field input,body[data-theme=dark] .bf-field textarea,body[data-theme=dark] .bf-kwrow input{border-color:rgba(255,255,255,.24);background:rgba(255,255,255,.05);box-shadow:none}
+body[data-theme=dark] .bf-field input.bf-sug,body[data-theme=dark] .bf-kwrow input.bf-sug{background:rgba(201,162,39,.12);border-color:rgba(201,162,39,.5)}
 .bf-kwrow{display:grid;grid-template-columns:22px 1fr auto 1fr;gap:8px;align-items:center;margin-bottom:8px}
-.bf-kwrow input{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;color:var(--ink);background:var(--mist)}
-.bf-kwrow input:focus{outline:none;border-color:var(--blue);background:var(--s-card)}
 .bf-kwn{font-size:11px;font-weight:800;color:var(--muted);text-align:center}
 .bf-kwin{font-size:12px;color:var(--muted)}
 .bf-actions{display:flex;gap:10px;margin-top:16px;justify-content:flex-end}
@@ -949,7 +949,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.15.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.15.2</div>
   </div>
   </div>
 </div>
@@ -1034,7 +1034,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.15.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.15.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1082,7 +1082,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.15.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.15.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1141,6 +1141,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <button class="run" onclick="generatePackage()">Generate package →</button>
       </div>
       <div class="datasrc" id="bizfacts" style="margin-top:14px"></div>
+      <div class="datasrc" id="content-targets"></div>
       <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
       <div class="acp" id="access-panel"></div>
       <div class="datasrc" id="datasrc"></div>
@@ -1238,7 +1239,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.15.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.15.2 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1266,7 +1267,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.15.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.15.2</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -4221,7 +4222,6 @@ async function renderBizFacts(){
   const sug=((PK.raw||{}).intake_suggested)||{};
   const suggested=INTAKE_FIELDS.filter(([k])=>!iv[k]&&sug[k]).length;
   const missReq=intakeMissing().length;
-  const open=activeClient._bfOpen!==undefined ? activeClient._bfOpen : !!(suggested&&missReq);
   const FMETA={}; INTAKE_FIELDS.forEach(([k,l,ph])=>{ FMETA[k]={l,ph:ph||''}; });
   const field=(k,extra,noLabel)=>{
     const m=FMETA[k]||{l:k,ph:''};
@@ -4230,32 +4230,35 @@ async function renderBizFacts(){
     if(k==='description'||k==='landing_targets') return `<div class="bf-field bf-wide">${noLabel?'':`<label>${m.l}${hint}</label>`}
       <textarea id="bf-${k}" rows="3" placeholder="${esc(m.ph)}" oninput="bfAutoSave()">${esc(iv[k]||sug[k]||'')}</textarea></div>`;
     return `<div class="bf-field ${extra||''}"><label>${m.l}${hint}</label>
-      <input id="bf-${k}" value="${esc(iv[k]||sug[k]||'')}" placeholder="${esc(m.ph)}" oninput="bfAutoSave()" ${isSug?'style="border-color:#C9A227;background:#FFFDF2"':''}></div>`;
+      <input id="bf-${k}" value="${esc(iv[k]||sug[k]||'')}" placeholder="${esc(m.ph)}" oninput="bfAutoSave()" ${isSug?'class="bf-sug"':''}></div>`;
   };
-  el.innerHTML=`<details ${open?'open':''} ontoggle="if(activeClient)activeClient._bfOpen=this.open" style="border:1px dashed var(--line);border-radius:var(--r-sm);background:var(--mist)">
-    <summary style="cursor:pointer;padding:11px 14px;font-size:12px;font-weight:700;color:${missReq?'var(--muted)':'var(--s-green-text)'}"><span id="bf-summary">${esc(bfSummaryText())}</span> <span id="bf-savestate" style="font-weight:600;color:var(--muted)"></span></summary>
-    <div class="bf-form">
-      ${INTAKE_SECTIONS.map(([sec,keys])=>`
-        <div class="bf-sec"><h4>${sec}</h4><div class="bf-grid">${keys.map(k=>field(k)).join('')}</div></div>`).join('')}
-      <div class="bf-sec"><h4>Target keywords</h4>
-        <div class="wmeta" style="margin:-2px 0 10px">Up to five searches the campaign must win — content generation writes for these first. Location can be a city, city + state, or ZIP; leave it blank to use the business city.</div>
-        ${[1,2,3,4,5].map(n=>{
-          const isSugK=!iv['kw'+n]&&sug['kw'+n];
-          return `<div class="bf-kwrow">
-            <span class="bf-kwn">${n}</span>
-            <input id="bf-kw${n}" value="${esc(iv['kw'+n]||sug['kw'+n]||'')}" placeholder="${n===1?'e.g. water damage restoration':'target keyword'}" oninput="bfAutoSave()" ${isSugK?'style="border-color:#C9A227;background:#FFFDF2"':''}>
-            <span class="bf-kwin">in</span>
-            <input id="bf-kwl${n}" value="${esc(iv['kwl'+n]||sug['kwl'+n]||'')}" placeholder="city, ST (optional)" oninput="bfAutoSave()">
-          </div>`;}).join('')}
-      </div>
-      <div class="bf-sec"><h4>Targeted landing pages</h4><div class="bf-grid">${field('landing_targets','',true)}</div></div>
-      <div class="bf-actions">
+  el.innerHTML=`
+    <div class="section-h"><h2>Business Facts — Kickoff</h2><div class="ln"></div><span class="tag"><span id="bf-summary">${esc(bfSummaryText())}</span> <span id="bf-savestate"></span></span></div>
+    ${INTAKE_SECTIONS.map(([sec,keys])=>`
+      <div class="bf-sec"><h4>${sec}</h4><div class="bf-grid">${keys.map(k=>field(k)).join('')}</div></div>`).join('')}
+    <div class="bf-sec"><h4>Local Listing Optimization</h4>
+      <div class="wmeta" style="margin-bottom:10px">The facts above power the citation pack and the Advice Local submission — fields auto-save as you type.</div>
+      <div class="bf-actions" style="justify-content:flex-start;margin-top:0">
         <button class="ds-save" style="background:var(--blue)" onclick="downloadCitationPack()"><i class="fa-solid fa-address-card"></i> Citation pack</button>
         <button class="ds-save" style="background:#6FA53C" onclick="downloadCitationCSV()"><i class="fa-solid fa-download"></i> Citations CSV</button>
       </div>
+      <div class="al-panel" id="al-panel"></div>
+    </div>`;
+  const ct=document.getElementById('content-targets');
+  if(ct) ct.innerHTML=`
+    <div class="section-h" style="margin-top:22px"><h2>Content Targeting</h2><div class="ln"></div><span class="tag">drives topic &amp; content generation</span></div>
+    <div class="bf-sec"><h4>Target keywords</h4>
+      <div class="wmeta" style="margin:-2px 0 10px">Up to five searches the campaign must win — content is written for these first. Location can be a city, city + state, or ZIP; blank uses the business city.</div>
+      ${[1,2,3,4,5].map(n=>{
+        const isSugK=!iv['kw'+n]&&sug['kw'+n];
+        return `<div class="bf-kwrow">
+          <span class="bf-kwn">${n}</span>
+          <input id="bf-kw${n}" value="${esc(iv['kw'+n]||sug['kw'+n]||'')}" placeholder="${n===1?'e.g. water damage restoration':'target keyword'}" oninput="bfAutoSave()" ${isSugK?'class="bf-sug"':''}>
+          <span class="bf-kwin">in</span>
+          <input id="bf-kwl${n}" value="${esc(iv['kwl'+n]||sug['kwl'+n]||'')}" placeholder="city, ST (optional)" oninput="bfAutoSave()">
+        </div>`;}).join('')}
     </div>
-    <div class="al-panel" id="al-panel"></div>
-  </details>`;
+    <div class="bf-sec"><h4>Targeted landing pages</h4><div class="bf-grid">${field('landing_targets','',true)}</div></div>`;
   renderALPanel();
 }
 function bfSummaryText(){
