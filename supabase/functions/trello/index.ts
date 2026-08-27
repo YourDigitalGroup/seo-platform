@@ -1,20 +1,27 @@
 // ============================================================================
 //  trello — the console's handoff to the delivery board.
 // ----------------------------------------------------------------------------
-//  Two jobs:
-//   · submit  — "Submit to SEO/AEO specialist" on the Setup tab. Creates a
-//               card on the web board in the strategist's list ("Sarah B.
-//               SEO/AEO" / "Olivia SEO/AEO" — found by first name, created if
-//               missing), due in 2 days, described with the kickoff summary.
-//               The card id is remembered on the client.
-//   · comment — posted when a strategist approves content, so the card
-//               carries the approval trail.
+//  Configured from the console (Team & access → Trello integration), stored
+//  in app_settings key 'trello' (trello_settings.sql):
+//    { board_id, title_template, lists: { <profile_id>: <trello_list_id> } }
 //
-//  Deploy: Edge Functions → trello.
-//  Secrets: TRELLO_KEY, TRELLO_TOKEN (trello.com/power-ups/admin → API key +
-//           token), TRELLO_BOARD_ID (the web board's id from its URL).
-//  Input:  { action: "submit",  client_id, strategist_name, summary? }
-//          { action: "comment", client_id, text }
+//  Actions:
+//   · submit  — "Submit to SEO/AEO specialist" (Setup tab). Creates a card:
+//       - in the COLUMN mapped to the chosen strategist (settings.lists),
+//         falling back to a by-name list match / creation;
+//       - titled from the template — variables {domain} {client} {group}
+//         {plan} {market} — e.g. "[SEO Package] - {domain} - {group}";
+//       - due in 2 days;
+//       - with one CHECKLIST PER MONTH of the campaign ("Month 1", "Month
+//         2", …), items = that month's deliverables (skipped months from a
+//         mid-campaign import are left out);
+//       - tagging the strategist: added as a card member and @mentioned in
+//         a comment, via profiles.trello_username.
+//   · comment — approval-trail comments on the client's card.
+//   · lists   — board columns (id + name) for the settings dashboard.
+//
+//  Secrets: TRELLO_KEY, TRELLO_TOKEN (trello.com/power-ups/admin).
+//  TRELLO_BOARD_ID is an optional fallback — the dashboard's board id wins.
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -33,10 +40,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   try {
     const KEY = Deno.env.get("TRELLO_KEY"), TOKEN = Deno.env.get("TRELLO_TOKEN");
-    const BOARD = Deno.env.get("TRELLO_BOARD_ID");
-    if (!KEY || !TOKEN || !BOARD) {
-      return json({ error: "Trello not configured — set TRELLO_KEY, TRELLO_TOKEN and TRELLO_BOARD_ID under Edge Functions → trello → Secrets" }, 500);
-    }
+    if (!KEY || !TOKEN) return json({ error: "Trello not configured — set TRELLO_KEY and TRELLO_TOKEN under Edge Functions → trello → Secrets" }, 500);
     const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
     // signed-in staff only
@@ -46,9 +50,14 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
-    if (!body.client_id) return json({ error: "client_id required" }, 400);
-    const { data: client } = await supa.from("clients").select("*").eq("id", body.client_id).maybeSingle();
-    if (!client) return json({ error: "no such client" }, 404);
+
+    // Console-managed settings (board id, title template, strategist→column).
+    let settings: any = {};
+    try {
+      const { data: st } = await supa.from("app_settings").select("value").eq("key", "trello").maybeSingle();
+      settings = st?.value || {};
+    } catch (_) { /* trello_settings.sql not run yet */ }
+    const BOARD = String(settings.board_id || Deno.env.get("TRELLO_BOARD_ID") || "").trim();
 
     const auth = `key=${KEY}&token=${TOKEN}`;
     const trello = async (method: string, path: string, params: Record<string, string> = {}) => {
@@ -59,15 +68,64 @@ Deno.serve(async (req) => {
       try { return JSON.parse(txt); } catch { return txt; }
     };
 
-    if (action === "submit") {
-      const strategist = String(body.strategist_name || "").trim();
-      if (!strategist) return json({ error: "strategist_name required" }, 400);
-      const first = strategist.split(/\s+/)[0].toLowerCase();
-
-      // Find the strategist's list by first name; create it if missing.
+    if (action === "lists") {
+      if (!BOARD) return json({ error: "no board id — set it in Team & access → Trello integration (or the TRELLO_BOARD_ID secret)" }, 400);
       const lists: any[] = await trello("GET", `/boards/${BOARD}/lists`, { filter: "open" });
-      let list = lists.find((l) => { const n = String(l.name || "").toLowerCase(); return n.includes(first) && n.includes("seo"); });
-      if (!list) list = await trello("POST", "/lists", { name: `${strategist} SEO/AEO`, idBoard: BOARD, pos: "bottom" });
+      return json({ ok: true, board_id: BOARD, lists: lists.map((l) => ({ id: l.id, name: l.name })) });
+    }
+
+    if (!body.client_id) return json({ error: "client_id required" }, 400);
+    const { data: client } = await supa.from("clients").select("*").eq("id", body.client_id).maybeSingle();
+    if (!client) return json({ error: "no such client" }, 404);
+
+    if (action === "submit") {
+      if (!BOARD) return json({ error: "no board id — set it in Team & access → Trello integration" }, 400);
+      const strategist = String(body.strategist_name || "").trim();
+      const profileId = String(body.strategist_profile_id || "").trim();
+      if (!strategist) return json({ error: "strategist_name required" }, 400);
+      const warnings: string[] = [];
+
+      // ── Column: the strategist's mapped list; fallback = find/create by name
+      let listId = (settings.lists || {})[profileId] || "";
+      let listName = "";
+      if (listId) {
+        listName = "(mapped column)";
+      } else {
+        const first = strategist.split(/\s+/)[0].toLowerCase();
+        const lists: any[] = await trello("GET", `/boards/${BOARD}/lists`, { filter: "open" });
+        let list = lists.find((l) => { const n = String(l.name || "").toLowerCase(); return n.includes(first) && n.includes("seo"); });
+        if (!list) list = await trello("POST", "/lists", { name: `${strategist} SEO/AEO`, idBoard: BOARD, pos: "bottom" });
+        listId = list.id; listName = list.name;
+        warnings.push("no column mapped for this strategist — used/created a list by name; map it in Team & access → Trello integration");
+      }
+
+      // ── Title from the template ({domain} {client} {group} {plan} {market})
+      let groupName = "";
+      if (client.partner_group_id) {
+        const { data: g } = await supa.from("partner_groups").select("name").eq("id", client.partner_group_id).maybeSingle();
+        groupName = g?.name || "";
+      }
+      const vars: Record<string, string> = {
+        domain: String(client.url || ""), client: String(client.name || client.url || ""),
+        group: groupName, plan: String(client.tier || ""), market: String(client.market || ""),
+      };
+      const template = String(settings.title_template || "[SEO Package] - {domain} - {group}");
+      const name = template.replace(/\{(domain|client|group|plan|market)\}/gi, (_, k) => vars[k.toLowerCase()] || "").replace(/\s{2,}/g, " ").trim();
+
+      // ── Strategist tagging: card member + @mention (profiles.trello_username)
+      let memberId = "", atName = "";
+      if (profileId) {
+        try {
+          const { data: prof } = await supa.from("profiles").select("trello_username").eq("id", profileId).maybeSingle();
+          atName = String(prof?.trello_username || "").replace(/^@/, "").trim();
+        } catch (_) { /* trello_settings.sql not run yet */ }
+      }
+      if (atName) {
+        try { const m = await trello("GET", `/members/${encodeURIComponent(atName)}`, { fields: "id,username" }); memberId = m?.id || ""; }
+        catch (_) { warnings.push(`Trello user @${atName} not found — check the @username in Team & access`); }
+      } else {
+        warnings.push("no Trello @username on this strategist — set it in Team & access to enable tagging");
+      }
 
       const due = new Date(Date.now() + DUE_DAYS * 86400000).toISOString();
       const iv = (client.intake || {}) as Record<string, string>;
@@ -75,7 +133,7 @@ Deno.serve(async (req) => {
       for (let i = 1; i <= 5; i++) if (iv["kw" + i]) kws.push(`${iv["kw" + i]}${iv["kwl" + i] ? ` (${iv["kwl" + i]})` : ""}`);
       const desc = [
         `**${client.name || client.url}** — ${client.url}`,
-        `Market: ${client.market || "—"} · Plan: ${client.tier || "—"}`,
+        `Market: ${client.market || "—"} · Plan: ${client.tier || "—"} · Group: ${groupName || "—"}`,
         iv.description ? `\n${String(iv.description).slice(0, 600)}` : "",
         kws.length ? `\n**Target keywords:** ${kws.join("; ")}` : "",
         iv.landing_targets ? `**Landing pages:** ${String(iv.landing_targets).replace(/\n+/g, "; ").slice(0, 400)}` : "",
@@ -83,13 +141,39 @@ Deno.serve(async (req) => {
       ].filter(Boolean).join("\n");
 
       const card = await trello("POST", "/cards", {
-        idList: list.id,
-        name: `SEO/AEO package — ${client.name || client.url}`,
-        desc, due,
+        idList: listId, name, desc, due, ...(memberId ? { idMembers: memberId } : {}),
       });
+
+      // ── One checklist per campaign month, items = that month's deliverables
+      const { data: dels } = await supa.from("deliverables")
+        .select("name, month_offset, state").eq("client_id", client.id)
+        .neq("state", "skipped").order("month_offset", { ascending: true }).limit(400);
+      const byMonth: Record<number, string[]> = {};
+      (dels || []).forEach((d: any) => {
+        const m = Number(d.month_offset) || 1;
+        (byMonth[m] = byMonth[m] || []).push(String(d.name || "").replace(/\s*—\s*Month\s*\d+\s*$/i, ""));
+      });
+      let checkItems = 0;
+      for (const m of Object.keys(byMonth).map(Number).sort((a, b) => a - b)) {
+        const cl = await trello("POST", "/checklists", { idCard: card.id, name: `Month ${m}` });
+        for (const item of byMonth[m].slice(0, 30)) {
+          await trello("POST", `/checklists/${cl.id}/checkItems`, { name: item.slice(0, 250) });
+          checkItems++;
+        }
+      }
+      if (!Object.keys(byMonth).length) warnings.push("no campaign deliverables found — seed the campaign to get the month-by-month checklists");
+
+      if (atName && memberId) {
+        try {
+          await trello("POST", `/cards/${card.id}/actions/comments`, { text: `@${atName} new ${vars.plan || "SEO"} package — due ${due.slice(0, 10)}. Month-by-month deliverable checklists are on this card.` });
+        } catch (_) { warnings.push("card created but the @mention comment failed"); }
+      }
+
       const { error: uErr } = await supa.from("clients").update({ trello_card_id: card.id }).eq("id", client.id);
-      return json({ ok: true, card_url: card.shortUrl || card.url, list: list.name, due,
-        warning: uErr ? `card created but id not saved (${uErr.message}) — run platform_extras.sql` : null });
+      if (uErr) warnings.push(`card created but id not saved (${uErr.message}) — run platform_extras.sql`);
+      return json({ ok: true, card_url: card.shortUrl || card.url, list: listName, title: name, due,
+        months: Object.keys(byMonth).length, check_items: checkItems, tagged: !!memberId,
+        warning: warnings.length ? warnings.join("; ") : null });
     }
 
     if (action === "comment") {
