@@ -58,11 +58,18 @@ Deno.serve(async (req) => {
       const { data, error } = await supa.auth.admin.listUsers({ page: 1, perPage: 200 });
       if (error) return json({ error: error.message }, 400);
       const ids = data.users.map((u) => u.id);
-      const { data: profs } = ids.length ? await supa.from("profiles").select("id, name, role").in("id", ids) : { data: [] as any[] };
+      let profs: any[] | null = null;
+      if (ids.length) {
+        // trello_username arrives with trello_settings.sql — tolerate its absence
+        const r1 = await supa.from("profiles").select("id, name, role, trello_username").in("id", ids);
+        if (r1.error) { const r2 = await supa.from("profiles").select("id, name, role").in("id", ids); profs = r2.data; }
+        else profs = r1.data;
+      } else profs = [];
       const byId: Record<string, any> = {}; (profs || []).forEach((p: any) => { byId[p.id] = p; });
       return json({ ok: true, users: data.users.map((u) => ({
         id: u.id, email: u.email, created_at: u.created_at, last_sign_in_at: u.last_sign_in_at,
         name: byId[u.id]?.name || "", role: byId[u.id]?.role || "",
+        trello_username: byId[u.id]?.trello_username || "",
       })).sort((a, b) => String(a.email).localeCompare(String(b.email))) });
     }
 
@@ -93,6 +100,7 @@ Deno.serve(async (req) => {
       if (!body.user_id) return json({ error: "user_id required" }, 400);
       const patch: Record<string, string> = {};
       if (body.name != null) patch.name = String(body.name).trim();
+      if (body.trello_username != null) patch.trello_username = String(body.trello_username).replace(/^@/, "").trim();
       if (body.role != null) {
         const norm = ROLE_ALIAS[String(body.role)];
         if (!norm) return json({ error: "role must be super_admin, account_manager, or strategist" }, 400);
@@ -105,6 +113,7 @@ Deno.serve(async (req) => {
       }
       const uid = String(body.user_id);
       const { data: upd, error } = await supa.from("profiles").update(patch).eq("id", uid).select("id");
+      if (error && /trello_username/i.test(error.message || "")) return json({ error: "profiles.trello_username missing — run supabase/migrations/trello_settings.sql first" }, 400);
       if (error) return json({ error: error.message }, 400);
       if (!upd?.length) {
         // No profile row yet (user was created outside the console) — create one.

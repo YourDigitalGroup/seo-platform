@@ -90,8 +90,14 @@ For each, deploy the code from this repo (Deploy a new function → Via Editor, 
 `image-search` (secret: `PEXELS_API_KEY` — free from pexels.com/api) powers
 the Find-image picker in the draft editor; the pick ships as the WordPress
 featured image / GBP post photo. `trello` (secrets: `TRELLO_KEY`,
-`TRELLO_TOKEN`, `TRELLO_BOARD_ID`) powers "Submit to SEO/AEO specialist"
-(card in the strategist's list, 2-day due date) and posts approval comments.
+`TRELLO_TOKEN`; board + columns are configured in the console) powers
+"Submit to SEO/AEO specialist" and approval comments. Run
+`supabase/migrations/trello_settings.sql`, then in **Team & access → Trello
+integration** set the Board ID, the card-title template (variables {domain}
+{client} {group} {plan} {market}), and each strategist's column — "Load
+board columns" lists them by name. Each user row also takes a Trello
+@username so the strategist is added to the card and @mentioned. Cards get
+one checklist per campaign month with that month's deliverables.
 Both need `supabase/migrations/platform_extras.sql` run first (draft image
 columns, topic link_target, clients.trello_card_id). For Looker Studio, run
 `looker_views.sql` and see docs/LOOKER_INTEGRATION.md. Reserved for the

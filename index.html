@@ -358,6 +358,7 @@ body[data-theme=dark] .bf-field input.bf-sug,body[data-theme=dark] .bf-kwrow inp
 .team-tbl td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
 .team-tbl tr:last-child td{border-bottom:none}
 .team-tbl select{font-family:inherit;font-size:12.5px;font-weight:600;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--s-card);color:var(--ink)}
+.team-at{font-family:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--s-card);color:var(--ink);width:120px}
 .tbtn{font-family:inherit;font-size:12px;font-weight:700;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--s-card);color:var(--ink);cursor:pointer}
 .tbtn:hover{border-color:var(--blue);color:var(--blue)}
 .tbtn.danger:hover{border-color:#c0392b;color:#c0392b}
@@ -949,7 +950,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.15.2</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.16.0</div>
   </div>
   </div>
 </div>
@@ -1034,7 +1035,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.15.2</span>
+        <span>44i, Inc. · Internal Ops Console · V5.16.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1082,7 +1083,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.15.2</span>
+        <span>44i, Inc. · Internal Ops Console · V5.16.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1239,7 +1240,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.15.2 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.16.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1266,8 +1267,14 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="loadTeam()">↻ Refresh</button></div>
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
+    <div class="widget" style="margin-top:18px">
+      <div class="widget-h"><div><h2>Trello integration.</h2>
+        <div class="wmeta">Where “Submit to SEO/AEO specialist” creates its cards — board, per-strategist column, card title.</div></div>
+        <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="trelloLoadLists()">Load board columns</button></div>
+      <div id="trello-settings"><div class="wmeta">Loading…</div></div>
+    </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.15.2</span>
+      <span>44i, Inc. · Internal Ops Console · V5.16.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1609,6 +1616,7 @@ async function loadTeam(){
     const d=await teamInvoke({action:'list'});
     TEAM_USERS=d.users||[];
     renderTeam();
+    loadTrelloSettings();
   }catch(e){
     list.innerHTML=`<div class="wmeta" style="padding:18px 0;color:#c0392b">Could not load users — ${esc(String(e.message||e))}</div>`;
   }
@@ -1619,7 +1627,7 @@ function renderTeam(){
   if(!TEAM_USERS.length){ list.innerHTML='<div class="wmeta" style="padding:18px 0">No users yet.</div>'; return; }
   const fmt=d=>d?new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'never';
   list.innerHTML=`<table class="team-tbl"><thead><tr>
-      <th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th style="text-align:right">Actions</th>
+      <th>Name</th><th>Email</th><th>Role</th><th>Trello @</th><th>Last sign-in</th><th style="text-align:right">Actions</th>
     </tr></thead><tbody>${TEAM_USERS.map((u,i)=>`<tr>
       <td><b>${esc(u.name||'—')}</b>${u.id===me.id?' <span class="wmeta">(you)</span>':''}</td>
       <td>${esc(u.email||'')}</td>
@@ -1627,6 +1635,7 @@ function renderTeam(){
         `<option value="${v}"${u.role===v?' selected':''}>${l}</option>`).join('')}
         ${u.role&&!TEAM_ROLE_LABEL[u.role]?`<option value="${esc(u.role)}" selected>${esc(u.role)}</option>`:''}
         ${!u.role?'<option value="" selected>— no profile —</option>':''}</select></td>
+      <td><input class="team-at" value="${esc(u.trello_username||'')}" placeholder="@username" onchange="teamSetTrello(${i},this)" title="Their Trello username — used to tag them on package cards"></td>
       <td>${fmt(u.last_sign_in_at)}</td>
       <td style="text-align:right;white-space:nowrap">
         <button class="tbtn" onclick="teamSetPw(${i})">Set password</button>
@@ -1713,6 +1722,80 @@ async function teamSetRole(i,sel){
     showToast('Could not change role — '+String(e.message||e),true);
     sel.value=u.role||'';
   }
+}
+
+async function teamSetTrello(i,el){
+  const u=TEAM_USERS[i]; if(!u) return;
+  const v=el.value.replace(/^@/,'').trim();
+  try{
+    await teamInvoke({action:'update_profile', user_id:u.id, trello_username:v});
+    u.trello_username=v;
+    showToast(v?`✓ ${u.email} tags as @${v} on Trello`:`Trello username cleared for ${u.email}`);
+  }catch(e){ showToast('Could not save Trello username — '+String(e.message||e),true); el.value=u.trello_username||''; }
+}
+// ── TRELLO INTEGRATION SETTINGS (app_settings key "trello") ────────────────
+// board_id + card-title template + strategist→column mapping. The trello
+// Edge Function reads this on every submit.
+let TRELLO_SET={board_id:'', title_template:'[SEO Package] - {domain} - {group}', lists:{}};
+let TRELLO_LISTS=[];
+async function loadTrelloSettings(){
+  try{
+    const {data,error}=await sb.from('app_settings').select('value').eq('key','trello').maybeSingle();
+    if(error){ renderTrelloSettings('app_settings table missing — run supabase/migrations/trello_settings.sql'); return; }
+    if(data&&data.value) TRELLO_SET={...TRELLO_SET, ...data.value, lists:{...(data.value.lists||{})}};
+    renderTrelloSettings();
+  }catch(e){ renderTrelloSettings(String(e.message||e)); }
+}
+function renderTrelloSettings(err){
+  const el=document.getElementById('trello-settings'); if(!el) return;
+  if(err){ el.innerHTML=`<div class="wmeta" style="color:#c0392b">${esc(err)}</div>`; return; }
+  const strategists=TEAM_USERS.filter(u=>u.role==='strategist');
+  const listOpts=TRELLO_LISTS.length?`<datalist id="trello-list-opts">${TRELLO_LISTS.map(l=>`<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('')}</datalist>`:'';
+  el.innerHTML=`${listOpts}
+    <div class="bf-grid" style="margin-bottom:14px">
+      <div class="bf-field"><label>Board ID</label>
+        <input id="ts-board" value="${esc(TRELLO_SET.board_id||'')}" placeholder="from the board URL: trello.com/b/XXXXXXXX/…"></div>
+      <div class="bf-field bf-wide"><label>Card title template <span>— variables: {domain} {client} {group} {plan} {market}</span></label>
+        <input id="ts-title" value="${esc(TRELLO_SET.title_template||'')}" placeholder="[SEO Package] - {domain} - {group}"></div>
+    </div>
+    <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:4px 0 8px">Strategist columns <span style="font-weight:600;text-transform:none;letter-spacing:0">— which column each strategist's cards land in</span></div>
+    ${strategists.length?strategists.map(u=>`
+      <div class="bf-kwrow" style="grid-template-columns:180px 1fr auto">
+        <span style="font-size:13px;font-weight:700">${esc(u.name||u.email)}</span>
+        <input list="trello-list-opts" id="ts-list-${u.id}" value="${esc((TRELLO_SET.lists||{})[u.id]||'')}" placeholder="Trello column (list) ID — click Load board columns to browse">
+        <span class="wmeta">${(()=>{const cur=(TRELLO_SET.lists||{})[u.id];const m=TRELLO_LISTS.find(l=>l.id===cur);return m?esc(m.name):'';})()}</span>
+      </div>`).join(''):'<div class="wmeta">No strategist accounts yet — create them above with the SEO/AEO Strategist role.</div>'}
+    <div class="bf-actions" style="justify-content:flex-start">
+      <button class="ds-save" onclick="saveTrelloSettings()">Save Trello settings</button>
+      ${TRELLO_LISTS.length?`<span class="wmeta" style="align-self:center">${TRELLO_LISTS.length} columns loaded — the ID fields autocomplete; pick by column name.</span>`:''}
+    </div>`;
+}
+async function saveTrelloSettings(){
+  TRELLO_SET.board_id=(document.getElementById('ts-board')||{}).value?.trim()||'';
+  TRELLO_SET.title_template=(document.getElementById('ts-title')||{}).value?.trim()||'[SEO Package] - {domain} - {group}';
+  const lists={};
+  TEAM_USERS.filter(u=>u.role==='strategist').forEach(u=>{
+    const e=document.getElementById('ts-list-'+u.id); if(e&&e.value.trim()) lists[u.id]=e.value.trim();
+  });
+  TRELLO_SET.lists=lists;
+  const {error}=await sb.from('app_settings').upsert({key:'trello', value:TRELLO_SET, updated_at:new Date().toISOString()});
+  if(error){ showToast('Could not save — '+error.message+(/relation|does not exist/i.test(error.message)?' · run trello_settings.sql':''),true); return; }
+  showToast('✓ Trello settings saved — submissions now use this board, columns and title', false, true);
+  renderTrelloSettings();
+}
+async function trelloLoadLists(){
+  await saveTrelloSettings();   // board id must be stored before the function can read it
+  try{
+    const {data,error}=await sb.functions.invoke('trello',{body:{action:'lists'}});
+    if(error||(data&&data.error)){
+      let m=(data&&data.error)||error?.message;
+      try{ if(error&&error.context){ const x=await error.context.json(); m=x.error||m; } }catch(_){}
+      throw new Error(String(m));
+    }
+    TRELLO_LISTS=data.lists||[];
+    renderTrelloSettings();
+    showToast(`${TRELLO_LISTS.length} columns loaded from the board`,false,true);
+  }catch(e){ showToast('Could not load columns — '+String(e.message||e),true); }
 }
 // ── SUSPEND / RESUME — a frontend status flag, nothing more. The only
 // side effect is inherited: the scheduler only auto-audits/reports clients
@@ -3583,18 +3666,19 @@ function renderKickoffSubmit(){
   } else {
     el.innerHTML=`<div><b>Hand off to an SEO/AEO specialist</b><div class="wmeta">Creates a Trello card in their list on the web board with a 2-day deadline and the kickoff facts from this page.</div></div>
       <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select class="fsel" id="ks-strat">${STRATEGISTS.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')||'<option value="">— no strategists —</option>'}</select>
+        <select class="fsel" id="ks-strat">${STRATEGISTS.map(s=>`<option value="${esc(s.id)}" data-name="${esc(s.name)}">${esc(s.name)}</option>`).join('')||'<option value="">— no strategists —</option>'}</select>
         <button class="tbtn" id="ks-btn" onclick="submitToSpecialist()">Submit to specialist</button></span>`;
   }
 }
 async function submitToSpecialist(){
   const c=activeClient; if(!c) return;
-  const sel=document.getElementById('ks-strat'), name=sel&&sel.value;
-  if(!name){ showToast('Add a strategist account in Team & access first',true); return; }
+  const sel=document.getElementById('ks-strat'), pid=sel&&sel.value;
+  const name=sel&&sel.selectedOptions[0]?sel.selectedOptions[0].dataset.name:'';
+  if(!pid||!name){ showToast('Add a strategist account in Team & access first',true); return; }
   await bfFlush();
   const b=document.getElementById('ks-btn'); if(b){ b.disabled=true; b.textContent='Submitting…'; }
   try{
-    const {data,error}=await sb.functions.invoke('trello',{body:{action:'submit', client_id:c.id, strategist_name:name}});
+    const {data,error}=await sb.functions.invoke('trello',{body:{action:'submit', client_id:c.id, strategist_name:name, strategist_profile_id:pid}});
     if(error||(data&&data.error)){
       let m=(data&&data.error)||error?.message;
       try{ if(error&&error.context){ const x=await error.context.json(); m=x.error||m; } }catch(_){}
@@ -3604,7 +3688,7 @@ async function submitToSpecialist(){
     c.trello_card_id=(String(data.card_url||'').split('/c/')[1])||'pending';
     const gc=groupClients.find(x=>x.id===c.id); if(gc) gc.trello_card_id=c.trello_card_id;
     renderKickoffSubmit();
-    showToast(`Handed to ${name} — card in “${data.list}”, due in 2 days`+(data.warning?` · ${data.warning}`:''), false, true);
+    showToast(`Handed to ${name} — “${data.title||'card'}” created${data.months?` with ${data.months} month checklist${data.months>1?'s':''}`:''}${data.tagged?' · strategist tagged':''}, due in 2 days`+(data.warning?` · ${data.warning}`:''), false, true);
   }catch(e){ showToast('Submit failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.textContent='Submit to specialist'; } }
 }
 // ── CLIENT DOC — a clean, partner-branded summary of the approved content,
