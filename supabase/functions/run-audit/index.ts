@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.7.1";
+const ENGINE_VERSION = "5.8.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -1226,10 +1226,22 @@ async function runAuditPipeline(body: any): Promise<Response> {
       const tierNow = String(client.tier || "starter");
       const capOf: Record<string, { cap: number | null; perCycle: boolean }> = {};
       {
-        const { data: tmplA } = await supa.from("service_templates")
-          .select("content_kind, cadence_type, quantity_total, quantity_per_interval")
-          .eq("tier", tierNow).eq("engine", "content").eq("active", true);
+        // Add-on rows (addons.sql) only count when the client bought them.
+        const clientAddons: string[] = Array.isArray(client.addons) ? client.addons : [];
+        let tmplA: any[] | null = null;
+        {
+          const r1 = await supa.from("service_templates")
+            .select("content_kind, cadence_type, quantity_total, quantity_per_interval, is_addon, addon_key")
+            .eq("tier", tierNow).eq("engine", "content").eq("active", true);
+          if (r1.error) {   // addons.sql not run yet — plain shape
+            const r2 = await supa.from("service_templates")
+              .select("content_kind, cadence_type, quantity_total, quantity_per_interval")
+              .eq("tier", tierNow).eq("engine", "content").eq("active", true);
+            tmplA = r2.data;
+          } else tmplA = r1.data;
+        }
         (tmplA || []).forEach((r: any) => { if (!r.content_kind) return;
+          if (r.is_addon && !clientAddons.includes(r.addon_key || "landing_pages")) return;
           if (r.cadence_type === "fixed_quantity") capOf[r.content_kind] = { cap: r.quantity_total ?? null, perCycle: false };
           else if (r.cadence_type === "recurring") capOf[r.content_kind] = { cap: r.quantity_per_interval ?? null, perCycle: true };
         });
@@ -1240,6 +1252,11 @@ async function runAuditPipeline(body: any): Promise<Response> {
           pillar:   { cap: { starter: 0, builder: 0, pro: 1 }, perCycle: true },
         };
         Object.entries(FB).forEach(([k, v]) => { if (!capOf[k]) capOf[k] = { cap: v.cap[tierNow] ?? null, perCycle: v.perCycle }; });
+        // Landing-pages add-on on Starter/Builder: fund up to 5 when the
+        // templates didn't already (addons.sql missing or FB path).
+        if (clientAddons.includes("landing_pages") && (!capOf.landing || !capOf.landing.cap)) {
+          capOf.landing = { cap: 5, perCycle: false };
+        }
       }
       const allocRemaining = (kind: string): number => {
         const c = capOf[kind]; if (!c || c.cap == null) return 99;

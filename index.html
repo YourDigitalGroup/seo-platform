@@ -950,7 +950,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.16.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.17.0</div>
   </div>
   </div>
 </div>
@@ -1035,7 +1035,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.16.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.17.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1083,7 +1083,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.16.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.17.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1136,6 +1136,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
                 <div class="tsel" data-t="builder">SEO Pro<small>$599</small></div>
                 <div class="tsel on" data-t="pro">AEO Pro<small>$799</small></div>
               </div>
+              <div id="addon-row" style="margin-top:8px"></div>
             </div>
           </div>
         </div>
@@ -1240,7 +1241,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.16.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.17.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1274,7 +1275,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.16.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.17.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1293,11 +1294,14 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <div class="mrow">
       <div class="mfield"><label>Target market</label><input id="m-market" type="text" placeholder="Tulsa, OK"></div>
       <div class="mfield"><label>Plan</label>
-        <select id="m-tier">
+        <select id="m-tier" onchange="document.getElementById('m-addon-wrap').style.display=this.value==='pro'?'none':''">
           <option value="starter">SEO Starter — $199/mo</option>
           <option value="builder">SEO Pro — $599/mo</option>
           <option value="pro">AEO Pro — $799/mo</option>
         </select>
+        <label id="m-addon-wrap" style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;margin-top:8px">
+          <input type="checkbox" id="m-addon-landing"> Targeted Landing Pages add-on — $199/mo (up to 5; included with AEO Pro)
+        </label>
       </div>
     </div>
     <div class="mrow">
@@ -1545,6 +1549,7 @@ function mapClient(r){
     gsc:r.gsc_connected, gbp:r.gbp_connected, wp:r.wp_connected, ga4:r.ga4_connected,
     suspended_at:r.suspended_at||null, suspend_reason:r.suspend_reason||null,
     trello_card_id:r.trello_card_id||null,
+    addons:Array.isArray(r.addons)?r.addons:[],
     wp_api_key:r.wp_api_key||null,
     last_audit: r.last_audit_at ? r.last_audit_at.slice(0,10) : null,
     engagement_start_date: r.engagement_start_date || null,
@@ -1800,6 +1805,27 @@ async function trelloLoadLists(){
 // ── SUSPEND / RESUME — a frontend status flag, nothing more. The only
 // side effect is inherited: the scheduler only auto-audits/reports clients
 // whose status is 'active', so suspended clients drop out of automation.
+// ── ADD-ONS — paid extras on top of the tier. First one: Targeted Landing
+// Pages ($199/mo, up to 5) on Starter/Builder; AEO Pro includes it.
+function renderAddonRow(){
+  const el=document.getElementById('addon-row'); if(!el) return;
+  const c=activeClient;
+  if(!c||OFFLINE){ el.innerHTML=''; return; }
+  if((c.tier||activeTier)==='pro'){ el.innerHTML='<span class="wmeta">Targeted landing pages included with AEO Pro.</span>'; return; }
+  const on=clientAddons(c).includes('landing_pages');
+  el.innerHTML=`<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink)">
+    <input type="checkbox" ${on?'checked':''} onchange="toggleAddonLanding(this.checked)">
+    Targeted Landing Pages add-on — $199/mo (up to 5)</label>`;
+}
+async function toggleAddonLanding(on){
+  const c=activeClient; if(!c) return;
+  const next=on?[...new Set([...clientAddons(c),'landing_pages'])]:clientAddons(c).filter(k=>k!=='landing_pages');
+  const {error}=await sb.from('clients').update({addons:next}).eq('id',c.id);
+  if(error){ showToast('Could not save add-on: '+error.message+(/column|addons/i.test(error.message||'')?' — run supabase/migrations/addons.sql':''),true); renderAddonRow(); return; }
+  c.addons=next; const gc=groupClients.find(x=>x.id===c.id); if(gc) gc.addons=next;
+  renderAddonRow(); renderDeliverables(); renderEngines();
+  showToast(on?'Landing Pages add-on ON — the next generation run funds up to 5 landing pages':'Landing Pages add-on removed', false, on);
+}
 function renderCampaignControls(){
   const el=document.getElementById('campaign-controls'); if(!el) return;
   const c=activeClient; if(!c||OFFLINE){ el.style.display='none'; return; }
@@ -2017,7 +2043,8 @@ const SERVICE_CATALOG=(()=>{
   const add=(tiers,name,engine,kind,cadence,o={})=>tiers.forEach((t,i)=>rows.push({
     id:null, tier:t, name, engine, kind:kind||null, cadence,
     per:Array.isArray(o.per)?o.per[i]:(o.per||1), interval:1,
-    total:Array.isArray(o.total)?o.total[i]:(o.total||1), auto:o.auto!==false, sort:rows.length+1}));
+    total:Array.isArray(o.total)?o.total[i]:(o.total||1), auto:o.auto!==false, sort:rows.length+1,
+    addon:o.addon||null, price:o.price||null}));
   add(ALL, 'GBP Management & Posting','content','gbp_post','recurring',{per:[1,2,3]});
   add(ALL, 'Branded Blog Writing','content','blog','fixed_quantity',{total:[1,2,3]});
   add(PLUS,'Radio to Video Ad','content',null,'fixed_quantity',{total:[1,2],auto:false});
@@ -2035,6 +2062,8 @@ const SERVICE_CATALOG=(()=>{
   add(AEO, 'AEO Research & Optimization','audit',null,'recurring',{auto:false});
   add(AEO, 'AEO Pillar Pages','content','pillar','recurring');
   add(AEO, 'Targeted Landing Pages (up to 5)','content','landing','fixed_quantity',{total:5});
+  // $199/mo ADD-ON on Starter & Builder (included with AEO Pro)
+  add(['starter','builder'],'Targeted Landing Pages (up to 5)','content','landing','fixed_quantity',{total:5, addon:'landing_pages', price:199});
   add(AEO, 'Schema Implementation','fix',null,'one_time');
   return rows;
 })();
@@ -2046,11 +2075,18 @@ async function loadCatalog(){
   if(data&&data.length){
     CATALOG=data.map(r=>({id:r.id, tier:r.tier, name:r.name, engine:r.engine, kind:r.content_kind||null,
       cadence:r.cadence_type, per:r.quantity_per_interval||1, interval:r.recurrence_interval||1,
-      total:r.quantity_total||1, auto:!!r.auto, sort:r.sort_order||100}));
+      total:r.quantity_total||1, auto:!!r.auto, sort:r.sort_order||100,
+      addon:(r.is_addon&&(r.addon_key||'landing_pages'))||null, price:r.price_monthly||null}));
     CATALOG_LIVE=true;
   }
 }
-function planServices(tier){ return CATALOG.filter(s=>s.tier===tier); }
+function clientAddons(c){ return Array.isArray(c&&c.addons)?c.addons:[]; }
+// Add-on rows only count when the client bought the add-on. Callers that
+// operate on the open client can omit `addons`.
+function planServices(tier, addons){
+  const a = addons!==undefined ? addons : clientAddons(activeClient);
+  return CATALOG.filter(s=>s.tier===tier && (!s.addon || a.includes(s.addon)));
+}
 
 // ── contract shape (per client — 3/6/12 months or evergreen) ──
 const EVERGREEN_HORIZON=12;  // months of roadmap seeded/rendered for evergreen contracts
@@ -2075,10 +2111,10 @@ function scheduleForService(svc, months){
 }
 function firstOfMonth(d){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); }
 // build every deliverable row for a client's engagement (contract-length aware)
-function buildCampaign(clientId, tier, startDate, months){
+function buildCampaign(clientId, tier, startDate, months, addons){
   const span=months||EVERGREEN_HORIZON, rows=[];
   const start=startDate?firstOfMonth(new Date(startDate+'T00:00:00Z')):firstOfMonth(new Date());
-  planServices(tier).forEach(svc=>{
+  planServices(tier, addons).forEach(svc=>{
     const contractTotal=svc.cadence==='fixed_quantity'?(svc.total||1):0;
     let ordinal=0;
     scheduleForService(svc, span).forEach(({month,count})=>{
@@ -2099,14 +2135,14 @@ function buildCampaign(clientId, tier, startDate, months){
   return rows;
 }
 // seed a client's campaign once (idempotent — skips if rows already exist)
-async function seedCampaign(clientId, tier, startDate, months){
+async function seedCampaign(clientId, tier, startDate, months, addons){
   if(OFFLINE||!clientId) return;
   await loadCatalog();
   const { count } = await sb.from('deliverables').select('id',{count:'exact',head:true}).eq('client_id',clientId);
   if(count && count>0) return;
   const start=startDate||new Date().toISOString().slice(0,10);
   await sb.from('clients').update({ engagement_start_date:start }).eq('id',clientId);
-  const rows=buildCampaign(clientId, tier, start, months);
+  const rows=buildCampaign(clientId, tier, start, months, addons);
   let { error } = await sb.from('deliverables').insert(rows);
   if(error && /column/i.test(error.message||'')){
     // service_catalog.sql not applied yet — retry without the new columns
@@ -2135,7 +2171,7 @@ function seedNow(){
   if(OFFLINE||!activeClient){ showToast('Live mode only',true); return; }
   const lab=contractLabel(activeClient);
   showToast(`Building ${lab} campaign…`);
-  seedCampaign(activeClient.id, activeClient.tier, activeClient.engagement_start_date||new Date().toISOString().slice(0,10), horizonOf(activeClient))
+  seedCampaign(activeClient.id, activeClient.tier, activeClient.engagement_start_date||new Date().toISOString().slice(0,10), horizonOf(activeClient), clientAddons(activeClient))
     .then(loadCampaign).then(()=>{ renderRoadmap(); showToast(`${cap(lab)} campaign generated`,false,true); });
 }
 function cycleOf(c){
@@ -2639,6 +2675,8 @@ function syncClear(){ const a=filters.search||filters.tier!=='all'||filters.stat
 function openAddModal(){
   ['m-name','m-url','m-market'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('m-tier').value='starter';
+  document.getElementById('m-addon-landing').checked=false;
+  document.getElementById('m-addon-wrap').style.display='';
   document.getElementById('m-contract').value='6';
   document.getElementById('m-started').checked=false;
   document.getElementById('m-startmonth-wrap').style.display='none';
@@ -2657,6 +2695,7 @@ async function saveClient(){
   const evergreen=contract==='evergreen', lengthMonths=evergreen?6:(+contract||6);
   const strat=document.getElementById('m-strat').value||null;
   if(!url){ showToast('Enter a domain URL',true); return; }
+  const addons=(tier!=='pro'&&document.getElementById('m-addon-landing')?.checked)?['landing_pages']:[];
   // Platform access is contractually required for every client — always granted.
   const a={}; PLATFORMS.forEach(p=>a[p.key]=true);
   if(OFFLINE){
@@ -2669,7 +2708,7 @@ async function saveClient(){
     page=0; loadPage(); renderTriage(); return;
   }
   // LIVE — insert the client row; package generation happens once the audit engine is connected
-  const row={ partner_group_id:activeGroup.id, name:name||url, url, market, tier, status,
+  const row={ partner_group_id:activeGroup.id, name:name||url, url, market, tier, status, addons,
     contract_length_months:lengthMonths, contract_is_evergreen:evergreen,
     strategist_id:strat, assigned_by: strat?me.id:null, assigned_at: strat?new Date().toISOString():null,
     gsc_connected:a.gsc, gbp_connected:a.gbp, wp_connected:a.wp, ga4_connected:a.ga4 };
@@ -2695,7 +2734,7 @@ async function saveClient(){
   const engStart=sd.toISOString().slice(0,10);
   const lab=evergreen?'evergreen':`${lengthMonths}-month`;
   closeAddModal(); showToast(`${name||url} added — building ${lab} campaign${started?` from month ${startMonth}`:''}…`);
-  if(ins&&ins.id) await seedCampaign(ins.id, tier, engStart, evergreen?EVERGREEN_HORIZON:lengthMonths);
+  if(ins&&ins.id) await seedCampaign(ins.id, tier, engStart, evergreen?EVERGREEN_HORIZON:lengthMonths, addons);
   await loadGroupClients(); page=0; loadPage(); renderTriage();
   // "Add & generate" means GENERATE: open the new client and kick off the
   // full package build immediately — no second click required.
@@ -2778,7 +2817,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=planLabel(c.tier)+' plan';
 
-  renderCampaignControls(); renderKickoffSubmit();
+  renderCampaignControls(); renderKickoffSubmit(); renderAddonRow();
   renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderAuditHistory(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
