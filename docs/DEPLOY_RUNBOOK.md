@@ -56,6 +56,16 @@ the package Setup tab, and folds the old onboarding/paused statuses into
 automates 'active' clients). Without it, suspending still works but the date
 and reason aren't stored.
 
+## 1a-5. Plan add-ons  (Supabase → SQL Editor)
+
+Paste `supabase/migrations/addons.sql` and Run (idempotent; AFTER
+service_catalog.sql). Adds the add-on columns to service_templates and
+`clients.addons`, and seeds the first add-on: **Targeted Landing Pages —
+$199/mo (up to 5)** on Starter and Builder (AEO Pro includes it). Toggled per
+client in the add-client modal or on the package Setup tab under the plan
+picker; the audit engine only funds landing pages on Starter/Builder when the
+add-on is on. Redeploy run-audit (5.8.0) with it.
+
 ## 1b. Service catalog + contract model  (Supabase → SQL Editor)
 
 Paste the full contents of `supabase/migrations/service_catalog.sql` and Run
