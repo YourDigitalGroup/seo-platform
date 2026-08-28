@@ -14,11 +14,11 @@
 --                    quantity_per_interval each time
 --                    (GBP posts 1–3×/mo, Monthly Reporting, AEO Pillar Pages 1×/mo)
 --    fixed_quantity  quantity_total across the WHOLE contract, not per month
---                    (Branded Blog Writing 1/2/4 total — per-contract total
+--                    (Branded Blog Writing 1/2/3 total — per-contract total
 --                     confirmed with the business owner 2026-07-02;
 --                     Radio to Video Ad 1/2 total; Targeted Landing Pages ≤5 total)
 --    one_time        a single setup / as-needed task
---                    (Schema Implementation, initial AEO Research & Optimization,
+--                    (Schema Implementation,
 --                     Domain Optimization 404s/301s)
 --    continuous      always-on monitoring — not a discrete scheduled task, so it
 --                    never generates deliverables rows
@@ -89,7 +89,7 @@ values
   ('pro',    'GBP Management & Posting',              'content','gbp_post','recurring',      1, 3, null, true,  10),
   ('starter','Branded Blog Writing',                  'content','blog',    'fixed_quantity', 1, null, 1, true,  20),
   ('builder','Branded Blog Writing',                  'content','blog',    'fixed_quantity', 1, null, 2, true,  20),
-  ('pro',    'Branded Blog Writing',                  'content','blog',    'fixed_quantity', 1, null, 4, true,  20),
+  ('pro',    'Branded Blog Writing',                  'content','blog',    'fixed_quantity', 1, null, 3, true,  20),
   ('starter','Local Listing Optimization',            'fix',    null,      'continuous',     1, null, null, true, 40),
   ('builder','Local Listing Optimization',            'fix',    null,      'continuous',     1, null, null, true, 40),
   ('pro',    'Local Listing Optimization',            'fix',    null,      'continuous',     1, null, null, true, 40),
@@ -119,7 +119,7 @@ values
   ('builder','Sitemap Refresh',                       'fix',    null,      'continuous',     1, null, null, true, 130),
   ('pro',    'Sitemap Refresh',                       'fix',    null,      'continuous',     1, null, null, true, 130),
   -- ── AEO Pro only ──────────────────────────────────────────────────────────
-  ('pro',    'AEO Research & Optimization',           'audit',  null,      'one_time',       1, null, null, false, 150),
+  ('pro',    'AEO Research & Optimization',           'audit',  null,      'recurring',      1, 1,    null, false, 150),
   ('pro',    'AEO Pillar Pages',                      'content','pillar',  'recurring',      1, 1, null, true, 160),
   ('pro',    'Targeted Landing Pages (up to 5)',      'content','landing', 'fixed_quantity', 1, null, 5, true, 170),
   ('pro',    'Schema Implementation',                 'fix',    null,      'one_time',       1, null, null, true, 180)

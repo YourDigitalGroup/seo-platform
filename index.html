@@ -950,7 +950,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.16.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.16.1</div>
   </div>
   </div>
 </div>
@@ -1035,7 +1035,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.16.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.16.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1083,7 +1083,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.16.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.16.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1240,7 +1240,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.16.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.16.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1274,7 +1274,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.16.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.16.1</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2019,7 +2019,7 @@ const SERVICE_CATALOG=(()=>{
     per:Array.isArray(o.per)?o.per[i]:(o.per||1), interval:1,
     total:Array.isArray(o.total)?o.total[i]:(o.total||1), auto:o.auto!==false, sort:rows.length+1}));
   add(ALL, 'GBP Management & Posting','content','gbp_post','recurring',{per:[1,2,3]});
-  add(ALL, 'Branded Blog Writing','content','blog','fixed_quantity',{total:[1,2,4]});
+  add(ALL, 'Branded Blog Writing','content','blog','fixed_quantity',{total:[1,2,3]});
   add(PLUS,'Radio to Video Ad','content',null,'fixed_quantity',{total:[1,2],auto:false});
   add(ALL, 'Local Listing Optimization','fix',null,'continuous');
   add(ALL, 'Reputation Monitoring','reporting',null,'continuous');
@@ -2032,7 +2032,7 @@ const SERVICE_CATALOG=(()=>{
   add(PLUS,'Internal Link Strategy','fix',null,'continuous');
   add(PLUS,'Sitemap Refresh','fix',null,'continuous');
   add(ALL, 'Monthly Reporting','reporting',null,'recurring');
-  add(AEO, 'AEO Research & Optimization','audit',null,'one_time',{auto:false});
+  add(AEO, 'AEO Research & Optimization','audit',null,'recurring',{auto:false});
   add(AEO, 'AEO Pillar Pages','content','pillar','recurring');
   add(AEO, 'Targeted Landing Pages (up to 5)','content','landing','fixed_quantity',{total:5});
   add(AEO, 'Schema Implementation','fix',null,'one_time');
