@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.7.0";
+const ENGINE_VERSION = "5.7.1";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -1234,7 +1234,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
           else if (r.cadence_type === "recurring") capOf[r.content_kind] = { cap: r.quantity_per_interval ?? null, perCycle: true };
         });
         const FB: Record<string, { cap: Record<string, number>; perCycle: boolean }> = {
-          blog:     { cap: { starter: 1, builder: 2, pro: 4 }, perCycle: false },
+          blog:     { cap: { starter: 1, builder: 2, pro: 3 }, perCycle: false },
           landing:  { cap: { starter: 0, builder: 0, pro: 5 }, perCycle: false },
           gbp_post: { cap: { starter: 1, builder: 2, pro: 3 }, perCycle: true },
           pillar:   { cap: { starter: 0, builder: 0, pro: 1 }, perCycle: true },
