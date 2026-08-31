@@ -950,7 +950,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.17.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.17.1</div>
   </div>
   </div>
 </div>
@@ -1035,7 +1035,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.17.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.17.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1083,7 +1083,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.17.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.17.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1241,7 +1241,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.17.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.17.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1275,7 +1275,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.17.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.17.1</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2716,7 +2716,8 @@ async function saveClient(){
   // Self-heal against a live DB missing optional columns (contract fields,
   // assignment metadata…): drop whichever column the error names and retry.
   for(let i=0;i<5 && error && /column/i.test(error.message||'');i++){
-    const m=(error.message||'').match(/column "?([a-z_]+)"?/i), bad=m&&m[1];
+    // Postgres says: column "addons" ... — PostgREST says: the 'addons' column
+    const m=(error.message||'').match(/'([a-z_]+)' column|column ['"]?([a-z_]+)['"]?/i), bad=m&&(m[1]||m[2]);
     if(!bad || !(bad in row)) break;
     console.warn('clients table missing column',bad,'— retrying without it (run the migrations in docs/DEPLOY_RUNBOOK.md)');
     delete row[bad];
