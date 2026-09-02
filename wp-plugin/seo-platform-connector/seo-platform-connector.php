@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: 44i SEO Platform Connector
- * Description: Securely receives SEO metadata, JSON-LD schema, and content from the 44i SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.8.0
- * Author: 44i Digital
+ * Plugin Name: Your Digital Group SEO Connector
+ * Description: Securely receives SEO metadata, JSON-LD schema, and content from your agency's SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
+ * Version: 1.9.0
+ * Author: Your Digital Group
  * License: GPL-2.0+
  * Requires at least: 5.0
  * Requires PHP: 7.0
@@ -12,19 +12,33 @@
 
 if (!defined('ABSPATH')) exit;
 
-// If another copy of this plugin is already loaded (e.g. the folder was
-// uploaded twice during an update), bail instead of fataling on
-// "Cannot redeclare seop_authed()" — the first copy keeps working.
-if (defined('SEOP_VERSION')) return;
+// If another copy of this plugin loaded first (folder uploaded twice during
+// an update), bail instead of fataling on "Cannot redeclare seop_authed()" —
+// and deactivate whichever copy is older so the site converges to one.
+if (defined('SEOP_VERSION')) {
+    add_action('admin_init', function () {
+        if (!function_exists('deactivate_plugins') || !current_user_can('activate_plugins')) return;
+        $mine = plugin_basename(__FILE__);
+        if (version_compare(SEOP_VERSION, '1.9.0', '<')) {
+            // the copy that loaded first is older — retire it, keep this one
+            foreach ((array) get_option('active_plugins', []) as $p) {
+                if ($p !== $mine && basename($p) === basename(__FILE__)) deactivate_plugins($p, true);
+            }
+        } else {
+            deactivate_plugins($mine, true);   // the other copy is same/newer — retire this one
+        }
+    });
+    return;
+}
 
-// 44i hosting blocks outbound HTTP by default, which breaks the AI auto-fix
+// Some hosting blocks outbound HTTP by default, which breaks the AI auto-fix
 // (api.anthropic.com). wp-config.php loads before plugins, so this only takes
 // effect when the constant isn't already defined there.
 if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.8.0');
+define('SEOP_VERSION', '1.9.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -33,7 +47,7 @@ define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
 // Resolution order: wp-config constant SEOP_ANTHROPIC_API_KEY (host-level
 // override) → this baked key → the per-site settings field.
 // NOTE: anyone with file access to a client site can read a baked key —
-// accepted trade-off per 44i; use a key with a spend limit.
+// accepted trade-off per Your Digital Group; use a key with a spend limit.
 define('SEOP_BAKED_AI_KEY', '');
 function seop_ai_key() {
     if (defined('SEOP_ANTHROPIC_API_KEY') && SEOP_ANTHROPIC_API_KEY) return SEOP_ANTHROPIC_API_KEY;
@@ -96,7 +110,7 @@ add_action('rest_api_init', function () {
  * WordPress only ships a built-in 'weekly' interval since 5.4, so we register
  * our own — works on every version. */
 add_filter('cron_schedules', function ($s) {
-    if (!isset($s['seop_weekly'])) $s['seop_weekly'] = ['interval' => WEEK_IN_SECONDS, 'display' => 'Once Weekly (44i SEO)'];
+    if (!isset($s['seop_weekly'])) $s['seop_weekly'] = ['interval' => WEEK_IN_SECONDS, 'display' => 'Once Weekly (SEO Connector)'];
     return $s;
 });
 add_action('seop_ai_autofix_event', 'seop_ai_autofix');
@@ -647,8 +661,8 @@ function seop_parse_header_lines($raw) {
     return $headers;
 }
 function seop_apply_package($pkg) {
-    if (!is_array($pkg) || ($pkg['format'] ?? '') !== '44i-deploy-package') {
-        return new WP_Error('seop_format', 'not a 44i-deploy-package file', ['status' => 400]);
+    if (!is_array($pkg) || !in_array($pkg['format'] ?? '', ['ydg-deploy-package', '44i-deploy-package'], true)) {
+        return new WP_Error('seop_format', 'not a deploy-package file from the SEO platform', ['status' => 400]);
     }
     $r = ['applied' => [], 'skipped' => [], 'manual' => []];
     $ok = function ($what) use (&$r) { $r['applied'][] = $what; };
@@ -724,7 +738,7 @@ function seop_apply_package($pkg) {
         else $drafted++;
     }
     if ($scheduled) $ok($scheduled . ' piece(s) scheduled on the campaign calendar (dates above)');
-    if ($drafted)   $ok($drafted . ' draft(s) created for review — drafts never auto-publish. (WordPress labels every draft “Publish immediately”; that\'s just the editor default. Approve the piece in the 44i platform and re-import, or hit Publish here.)');
+    if ($drafted)   $ok($drafted . ' draft(s) created for review — drafts never auto-publish. (WordPress labels every draft “Publish immediately”; that\'s just the editor default. Approve the piece in the SEO platform and re-import, or hit Publish here.)');
     foreach ((array) ($pkg['manual_tasks'] ?? []) as $t) {
         $r['manual'][] = sanitize_text_field(($t['title'] ?? '') . ': ') . sanitize_textarea_field(mb_substr((string) ($t['action'] ?? ''), 0, 400));
     }
@@ -1073,7 +1087,7 @@ function seop_settings_page() {
     echo '<p><strong>SEO-only.</strong> This connector never changes your site\'s appearance, theme, layout, or settings. Unapproved content arrives as drafts; approved content publishes on its schedule.</p>';
 
     echo '<h2>Import package</h2>';
-    echo '<p>Upload the <code>deploy-*.json</code> file exported from the 44i platform (the “Deploy file” button). It applies SEO meta, schema, social tags, robots.txt, llms.txt, redirects, security headers, and creates/schedules the content — all in one shot.</p>';
+    echo '<p>Upload the <code>deploy-*.json</code> file exported from the SEO platform (the “Deploy file” button). It applies SEO meta, schema, social tags, robots.txt, llms.txt, redirects, security headers, and creates/schedules the content — all in one shot.</p>';
     echo '<form method="post" enctype="multipart/form-data">' . wp_nonce_field('seop_import', '_wpnonce', true, false);
     echo '<p><input type="file" name="seop_pkg" accept="application/json,.json" required> ';
     echo '<button class="button button-primary">Import &amp; apply</button></p></form>';
@@ -1135,7 +1149,7 @@ function seop_settings_page() {
     echo '<tr><th>Active SEO plugin</th><td><code>' . esc_html(seop_seo_plugin()) . '</code></td></tr>';
     echo '<tr><th>Connector version</th><td><code>' . esc_html(SEOP_VERSION) . '</code></td></tr>';
     $biz = seop_business();
-    echo '<tr><th>Business profile</th><td>' . (($biz['name'] ?? '') ? '<code>' . esc_html($biz['name']) . '</code> — site-wide LocalBusiness/E-E-A-T schema active' : '<em>not loaded — import a deploy package that includes business facts (44i platform V5.1.1+)</em>') . '</td></tr>';
+    echo '<tr><th>Business profile</th><td>' . (($biz['name'] ?? '') ? '<code>' . esc_html($biz['name']) . '</code> — site-wide LocalBusiness/E-E-A-T schema active' : '<em>not loaded — import a deploy package that includes business facts (SEO platform V5.1.1+)</em>') . '</td></tr>';
     echo '</table>';
     echo '<form method="post">' . wp_nonce_field('seop_regen', '_wpnonce', true, false);
     echo '<p><button class="button" name="seop_regen" value="1">Regenerate API key</button></p></form>';

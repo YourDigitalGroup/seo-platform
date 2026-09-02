@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     // Owner-specified target keywords (intake kw1..kw5 + location) rank first.
     const ivS = (client.intake || {}) as Record<string, string>;
     const targetKw: string[] = [];
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= 40; i++) {
       const k = String(ivS["kw" + i] || "").trim();
       if (k) targetKw.push(k + (ivS["kwl" + i] ? ` (${String(ivS["kwl" + i]).trim()})` : ""));
     }

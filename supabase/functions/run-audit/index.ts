@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.8.0";
+const ENGINE_VERSION = "5.9.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -1261,16 +1261,13 @@ async function runAuditPipeline(body: any): Promise<Response> {
       const allocRemaining = (kind: string): number => {
         const c = capOf[kind]; if (!c || c.cap == null) return 99;
         if (c.perCycle) return Math.max(0, c.cap - (usedOf["cycle:" + kind] || 0));
-        // Contract totals are PACED by campaign month: at month m of len only
-        // round(total·m/len) pieces may exist. A client imported mid-campaign
-        // (backdated engagement_start_date) gets only the remainder — months
-        // delivered elsewhere never regenerate — and on-platform clients no
-        // longer front-load the whole contract in month 1. cycleMonth is set
-        // before any topic creation runs; 0 (no start date) leaves the cap
-        // unpaced.
+        // The whole remaining campaign generates at once, so contract totals
+        // are capped at the REMAINING SHARE: months delivered elsewhere on a
+        // mid-campaign import (before cycleMonth) never regenerate. A fresh
+        // client (month 1) gets the full total; month 3 of 6 gets 4/6 of it.
         const len = client.contract_is_evergreen ? 0 : (client.contract_length_months || 6);
-        const paced = len && cycleMonth ? Math.max(0, Math.round(c.cap * Math.min(cycleMonth, len) / len)) : c.cap;
-        return Math.max(0, paced - (usedOf[kind] || 0));
+        const share = len && cycleMonth ? Math.max(0, Math.round(c.cap * (len - Math.min(cycleMonth, len) + 1) / len)) : c.cap;
+        return Math.max(0, share - (usedOf[kind] || 0));
       };
       const consumeAlloc = (kind: string) => { usedOf[kind] = (usedOf[kind] || 0) + 1; usedOf["cycle:" + kind] = (usedOf["cycle:" + kind] || 0) + 1; };
       const allocShort: string[] = [];
@@ -1293,7 +1290,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
       // gate-checked and intent-deduped like everything else.
       const ivT = (client.intake || {}) as Record<string, string>;
       const intakeKw: string[] = [];
-      for (let i = 1; i <= 5; i++) {
+      for (let i = 1; i <= 40; i++) {   // unlimited rows in the console; scan a wide range
         const k = String(ivT["kw" + i] || "").trim();
         if (!k) continue;
         const loc = String(ivT["kwl" + i] || "").trim() || (primaryCity ? String(primaryCity).split(",")[0] : "");
@@ -1334,9 +1331,15 @@ async function runAuditPipeline(body: any): Promise<Response> {
       // the scheduled, auto content deliverables for this cycle (if a campaign is seeded)
       let due: any[] = [];
       if (cycleMonth) {
+        // The ENTIRE remaining campaign generates at package time — every
+        // planned content deliverable from the current month to the end of
+        // the contract. Month segmentation survives on the deliverable rows
+        // (month_offset + topic_id), which is what the queue's month
+        // headers, the roadmap and the Trello checklists read.
         const { data: dRows } = await supa.from("deliverables")
-          .select("id, kind").eq("client_id", client.id).eq("engine", "content")
-          .eq("state", "planned").eq("auto", true).eq("month_offset", cycleMonth);
+          .select("id, kind, month_offset").eq("client_id", client.id).eq("engine", "content")
+          .eq("state", "planned").eq("auto", true).gte("month_offset", cycleMonth)
+          .order("month_offset", { ascending: true });
         due = dRows || [];
       }
       if (due.length) {
