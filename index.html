@@ -315,6 +315,7 @@ body[data-theme=dark] .sctile[data-tip]:hover::after{background:#0d1728;border:1
 .qlink{display:block;font-size:11px;color:var(--muted);padding-left:10px;margin-top:2px}
 .qlink input{font-family:inherit;font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:7px;background:var(--mist);color:var(--ink);width:230px}
 .qlink .fa-image{color:var(--grow-d);margin-left:6px}
+.qmonth{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--s-head);padding:14px 4px 6px;border-bottom:1px solid var(--line);margin-bottom:6px}
 /* ── kickoff form (LLO accordion) — sectioned, not a wall of boxes ── */
 .bf-sec{margin-top:14px;padding:14px 16px;background:var(--mist);border:1px solid var(--line);border-radius:var(--r-sm)}
 .bf-sec h4{margin:0 0 12px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--s-head)}
@@ -950,7 +951,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.17.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.18.0</div>
   </div>
   </div>
 </div>
@@ -1035,7 +1036,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.17.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.18.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1083,7 +1084,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.17.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.18.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1241,7 +1242,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.17.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.18.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1275,7 +1276,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.17.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.18.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1741,7 +1742,8 @@ async function teamSetTrello(i,el){
 // ── TRELLO INTEGRATION SETTINGS (app_settings key "trello") ────────────────
 // board_id + card-title template + strategist→column mapping. The trello
 // Edge Function reads this on every submit.
-let TRELLO_SET={board_id:'', title_template:'[SEO Package] - {domain} - {group}', lists:{}};
+const TRELLO_COMMENT_DEFAULT='@{strategist_handle} This {plan} package is ready to be built out for {client}. @kellarelliot please add the plugin to the site (WordPress only).';
+let TRELLO_SET={board_id:'', title_template:'[SEO Package] - {domain} - {group}', comment_template:TRELLO_COMMENT_DEFAULT, lists:{}};
 let TRELLO_LISTS=[];
 async function loadTrelloSettings(){
   try{
@@ -1762,6 +1764,8 @@ function renderTrelloSettings(err){
         <input id="ts-board" value="${esc(TRELLO_SET.board_id||'')}" placeholder="from the board URL: trello.com/b/XXXXXXXX/…"></div>
       <div class="bf-field bf-wide"><label>Card title template <span>— variables: {domain} {client} {group} {plan} {market}</span></label>
         <input id="ts-title" value="${esc(TRELLO_SET.title_template||'')}" placeholder="[SEO Package] - {domain} - {group}"></div>
+      <div class="bf-field bf-wide"><label>Handoff comment <span>— posted on the card at submit · variables: {strategist_handle} {client} {domain} {group} {plan} {market} · blank = no comment</span></label>
+        <textarea id="ts-comment" rows="2">${esc(TRELLO_SET.comment_template??TRELLO_COMMENT_DEFAULT)}</textarea></div>
     </div>
     <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:4px 0 8px">Strategist columns <span style="font-weight:600;text-transform:none;letter-spacing:0">— which column each strategist's cards land in</span></div>
     ${strategists.length?strategists.map(u=>`
@@ -1778,6 +1782,7 @@ function renderTrelloSettings(err){
 async function saveTrelloSettings(){
   TRELLO_SET.board_id=(document.getElementById('ts-board')||{}).value?.trim()||'';
   TRELLO_SET.title_template=(document.getElementById('ts-title')||{}).value?.trim()||'[SEO Package] - {domain} - {group}';
+  const ce=document.getElementById('ts-comment'); if(ce) TRELLO_SET.comment_template=ce.value.trim();
   const lists={};
   TEAM_USERS.filter(u=>u.role==='strategist').forEach(u=>{
     const e=document.getElementById('ts-list-'+u.id); if(e&&e.value.trim()) lists[u.id]=e.value.trim();
@@ -3629,7 +3634,14 @@ function renderQueue(){
   const q=document.getElementById('queue');
   const kindOpts=k=>CONTENT_KINDS.map(c=>`<option value="${c.k}" ${c.k===k?'selected':''}>${c.label}</option>`).join('');
   const modelOpts=m=>Object.keys(MODELS).map(key=>`<option value="${key}" ${key===m?'selected':''}>${MODELS[key].label}</option>`).join('');
-  let rows=PK.topics.map((t,i)=>{
+  // Month segmentation: topics created from campaign deliverables carry a
+  // month via deliverables.topic_id/month_offset — group under Month headers
+  // so the strategist sees the whole campaign's tactics laid out per month.
+  const monthOf={}; (PK.campaign||[]).forEach(d=>{ if(d.topic_id) monthOf[d.topic_id]=d.month_offset||1; });
+  const ordered=PK.topics.map((t,i)=>({t,i,m:monthOf[t._id]||null})).sort((a,b)=>((a.m||999)-(b.m||999))||(a.i-b.i));
+  const showMonths=ordered.some(x=>x.m);
+  let lastM=-1;
+  const rowFor=(t,i)=>{
     const openable=(t.status==='drafted'||t.status==='approved');
     return `<div class="qrow qedit">
       <span><input class="qtitle" value="${esc(t.title)}" oninput="editTopicTitle(${i},this.value)"><span class="qkw" style="font-size:11px;color:var(--muted);padding-left:10px">↳ ${esc(t.keyword)}${t.source==='manual'?' · manual':''}</span>
@@ -3640,6 +3652,11 @@ function renderQueue(){
       <span>${openable?`<button class="qopen" onclick="openDraft(${i})">Open</button>`:''}</span>
       <span class="cx">${t._id&&t.status!=='approved'?`<button class="cxbtn" title="Retire — remove from the campaign permanently (logged in the internal review)" onclick="retireTopic(${i})"><i class="fa-solid fa-ban"></i></button>`:''}<button class="cxbtn" title="Remove from queue" onclick="removeTopic(${i})">✕</button></span>
     </div>`;
+  };
+  let rows=ordered.map(({t,i,m})=>{
+    let h='';
+    if(showMonths&&m!==lastM){ lastM=m; h=`<div class="qmonth">${m?`Month ${m}`:'Additional / unscheduled'}</div>`; }
+    return h+rowFor(t,i);
   }).join('');
   if(!PK.topics.length) rows=`<div class="qempty">No content queued. Select gap keywords above, or add a topic.</div>`;
   const counts=PK.topics.reduce((a,t)=>{a[t.model]=(a[t.model]||0)+1;return a;},{});
@@ -4300,11 +4317,6 @@ const INTAKE_FIELDS=[
   ['facebook','Facebook URL',''],['instagram','Instagram URL',''],['linkedin','LinkedIn URL',''],
   ['appointment_url','Appointment / quote link','https://…'],
   ['gbp_shortname','GBP shortname','only used in GBP'],
-  ['kw1','Target keyword 1','e.g. water damage restoration'],['kwl1','Location','Jonesboro, AR'],
-  ['kw2','Target keyword 2',''],['kwl2','Location',''],
-  ['kw3','Target keyword 3',''],['kwl3','Location',''],
-  ['kw4','Target keyword 4',''],['kwl4','Location',''],
-  ['kw5','Target keyword 5',''],['kwl5','Location',''],
   ['landing_targets','Targeted landing pages','one per line — a page topic or URL; the plan builds these first']];
 // The kickoff form renders in sections, not one wall of boxes.
 const INTAKE_SECTIONS=[
@@ -4373,14 +4385,11 @@ async function renderBizFacts(){
     <div class="section-h" style="margin-top:22px"><h2>Content Targeting</h2><div class="ln"></div><span class="tag">drives topic &amp; content generation</span></div>
     <div class="bf-sec"><h4>Target keywords</h4>
       <div class="wmeta" style="margin:-2px 0 10px">Up to five searches the campaign must win — content is written for these first. Location can be a city, city + state, or ZIP; blank uses the business city.</div>
-      ${[1,2,3,4,5].map(n=>{
-        const isSugK=!iv['kw'+n]&&sug['kw'+n];
-        return `<div class="bf-kwrow">
-          <span class="bf-kwn">${n}</span>
-          <input id="bf-kw${n}" value="${esc(iv['kw'+n]||sug['kw'+n]||'')}" placeholder="${n===1?'e.g. water damage restoration':'target keyword'}" oninput="bfAutoSave()" ${isSugK?'class="bf-sug"':''}>
-          <span class="bf-kwin">in</span>
-          <input id="bf-kwl${n}" value="${esc(iv['kwl'+n]||sug['kwl'+n]||'')}" placeholder="city, ST (optional)" oninput="bfAutoSave()">
-        </div>`;}).join('')}
+      <div id="bf-kwrows">${(()=>{
+        let maxN=5; for(let n=6;n<=40;n++) if(String(iv['kw'+n]||'').trim()||String(iv['kwl'+n]||'').trim()) maxN=n;
+        return Array.from({length:maxN},(_,x)=>x+1).map(n=>bfKwRow(n, iv['kw'+n]||sug['kw'+n]||'', iv['kwl'+n]||sug['kwl'+n]||'', !iv['kw'+n]&&sug['kw'+n])).join('');
+      })()}</div>
+      <button class="tbtn" style="margin-top:4px" onclick="bfAddKw()"><i class="fa-solid fa-plus"></i> Add keyword</button>
     </div>
     <div class="bf-sec"><h4>Targeted landing pages</h4><div class="bf-grid">${field('landing_targets','',true)}</div></div>`;
   renderALPanel();
@@ -4388,6 +4397,21 @@ async function renderBizFacts(){
 function bfSummaryText(){
   const missReq=intakeMissing().length;
   return `Local Listing Optimization (LLO) — business facts & citation pack · ${5-missReq}/5 required saved`;
+}
+function bfKwRow(n,kw,loc,isSug){
+  return `<div class="bf-kwrow">
+    <span class="bf-kwn">${n}</span>
+    <input id="bf-kw${n}" value="${esc(kw||'')}" placeholder="${n===1?'e.g. water damage restoration':'target keyword'}" oninput="bfAutoSave()" ${isSug?'class="bf-sug"':''}>
+    <span class="bf-kwin">in</span>
+    <input id="bf-kwl${n}" value="${esc(loc||'')}" placeholder="city, ST (optional)" oninput="bfAutoSave()">
+  </div>`;
+}
+function bfAddKw(){
+  const wrap=document.getElementById('bf-kwrows'); if(!wrap) return;
+  const n=wrap.querySelectorAll('.bf-kwrow').length+1;
+  if(n>40){ showToast('That is plenty of keywords — 40 is the ceiling',true); return; }
+  wrap.insertAdjacentHTML('beforeend', bfKwRow(n,'','',false));
+  const e=document.getElementById('bf-kw'+n); if(e) e.focus();
 }
 let _bfTimer=null;
 function bfAutoSave(){
@@ -4404,7 +4428,8 @@ async function bfFlush(){
   if(_bfTimer){ clearTimeout(_bfTimer); _bfTimer=null; }
   if(!activeClient||!document.getElementById('bf-phone')) return;
   const iv=activeClient._intake||{};
-  const dirty=INTAKE_FIELDS.some(([k])=>{ const e=document.getElementById('bf-'+k); return e && e.value.trim()!==String(iv[k]||''); });
+  const cur=bfCollect();
+  const dirty=Object.keys(cur).some(k=>cur[k]!==String(iv[k]||''));
   if(dirty) await saveBizFacts(true);
 }
 // ── ADVICE LOCAL — automated citation submission (LLO fulfillment) ──────────
@@ -4487,9 +4512,16 @@ async function alStatus(){
 // Auto-saves on edit. Deliberately does NOT re-render the accordion — a
 // re-render would collapse it and steal focus mid-typing; the summary count
 // and save-state chip update in place instead.
+function bfCollect(){
+  const iv={};
+  INTAKE_FIELDS.forEach(([k])=>{ const e=document.getElementById('bf-'+k); if(e) iv[k]=e.value.trim(); });
+  // dynamic target-keyword rows (kw1/kwl1 … kwN/kwlN — the + button adds rows)
+  document.querySelectorAll('input[id^="bf-kw"]').forEach(e=>{ iv[e.id.slice(3)]=e.value.trim(); });
+  return iv;
+}
 async function saveBizFacts(auto){
   if(!activeClient) return;
-  const iv={}; INTAKE_FIELDS.forEach(([k])=>{ const e=document.getElementById('bf-'+k); if(e) iv[k]=e.value.trim(); });
+  const iv=bfCollect();
   activeClient._intake=iv;
   const {error}=await sb.from('clients').update({intake:iv}).eq('id',activeClient.id);
   const st=document.getElementById('bf-savestate');
@@ -4811,7 +4843,7 @@ function _legacyDownloadCampaignDoc(){
 // Bundles EVERYTHING the engines generated — SEO meta, JSON-LD, OG tags,
 // robots.txt / llms.txt, redirects, security headers, and content with
 // scheduled publish dates — into a single portable JSON file (format:
-// 44i-deploy-package). Upload it in WP Admin → Settings → SEO Platform →
+// ydg-deploy-package). Upload it in WP Admin → Settings → SEO Platform →
 // Import package, or feed it to any CMS importer that speaks the format.
 // GBP posts and non-file tasks land in manual_tasks.
 function md2html(md){
@@ -4938,7 +4970,7 @@ function buildDeployPackage(){
     rating_value:iv.gbp_rating||'', rating_count:iv.gbp_reviews||'',
     service_area:{ primary:TA.primary||c.market||'', secondary:TA.secondary||[] } };
   return {
-    format:'44i-deploy-package', format_version:1, generated_at:new Date().toISOString(),
+    format:'ydg-deploy-package', format_version:1, generated_at:new Date().toISOString(),
     site, client:{ name:c.name||'', market:c.market||'', tier:c.tier||'' }, business,
     source:{ package_id:PK.package_id||null, audit_id:PK.audit?PK.audit.id:null,
       audit_score:(PK.raw&&PK.raw.scores&&PK.raw.scores.auditScore)??null },

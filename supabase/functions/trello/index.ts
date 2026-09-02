@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 //  Configured from the console (Team & access → Trello integration), stored
 //  in app_settings key 'trello' (trello_settings.sql):
-//    { board_id, title_template, lists: { <profile_id>: <trello_list_id> } }
+//    { board_id, title_template, comment_template, lists: { <profile_id>: <trello_list_id> } }
 //
 //  Actions:
 //   · submit  — "Submit to SEO/AEO specialist" (Setup tab). Creates a card:
@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
       const due = new Date(Date.now() + DUE_DAYS * 86400000).toISOString();
       const iv = (client.intake || {}) as Record<string, string>;
       const kws: string[] = [];
-      for (let i = 1; i <= 5; i++) if (iv["kw" + i]) kws.push(`${iv["kw" + i]}${iv["kwl" + i] ? ` (${iv["kwl" + i]})` : ""}`);
+      for (let i = 1; i <= 40; i++) if (iv["kw" + i]) kws.push(`${iv["kw" + i]}${iv["kwl" + i] ? ` (${iv["kwl" + i]})` : ""}`);
       const desc = [
         `**${client.name || client.url}** — ${client.url}`,
         `Market: ${client.market || "—"} · Plan: ${client.tier || "—"} · Group: ${groupName || "—"}`,
@@ -163,10 +163,20 @@ Deno.serve(async (req) => {
       }
       if (!Object.keys(byMonth).length) warnings.push("no campaign deliverables found — seed the campaign to get the month-by-month checklists");
 
-      if (atName && memberId) {
+      // Handoff comment from the editable template (Team & access → Trello
+      // integration). Variables: {strategist_handle} {client} {domain}
+      // {group} {plan} {market}. Posted whenever a template is set — Trello
+      // mentions work by handle text even when member resolution failed.
+      const commentTemplate = String(settings.comment_template ??
+        "@{strategist_handle} This {plan} package is ready to be built out for {client}. @kellarelliot please add the plugin to the site (WordPress only).");
+      if (commentTemplate.trim()) {
+        const cvars: Record<string, string> = { ...vars, strategist_handle: atName || strategist };
+        const commentText = commentTemplate
+          .replace(/\{(strategist_handle|domain|client|group|plan|market)\}/gi, (_, k) => cvars[k.toLowerCase()] || "")
+          .replace(/\s{2,}/g, " ").trim();
         try {
-          await trello("POST", `/cards/${card.id}/actions/comments`, { text: `@${atName} new ${vars.plan || "SEO"} package — due ${due.slice(0, 10)}. Month-by-month deliverable checklists are on this card.` });
-        } catch (_) { warnings.push("card created but the @mention comment failed"); }
+          await trello("POST", `/cards/${card.id}/actions/comments`, { text: commentText.slice(0, 1000) });
+        } catch (_) { warnings.push("card created but the handoff comment failed"); }
       }
 
       const { error: uErr } = await supa.from("clients").update({ trello_card_id: card.id }).eq("id", client.id);
