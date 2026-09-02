@@ -174,6 +174,17 @@ Deno.serve(async (req) => {
         const commentText = commentTemplate
           .replace(/\{(strategist_handle|domain|client|group|plan|market)\}/gi, (_, k) => cvars[k.toLowerCase()] || "")
           .replace(/\s{2,}/g, " ").trim();
+        // A Trello @mention only NOTIFIES people who are on the card/board —
+        // plain text otherwise. Resolve every @handle in the comment and add
+        // them to the card first (e.g. @kellarelliot gets pinged for the
+        // plugin install), then post the comment.
+        const handles = [...new Set((commentText.match(/@([A-Za-z0-9_.]+)/g) || []).map((h) => h.slice(1)))];
+        for (const h of handles) {
+          try {
+            const m = await trello("GET", `/members/${encodeURIComponent(h)}`, { fields: "id,username" });
+            if (m?.id) await trello("POST", `/cards/${card.id}/idMembers`, { value: m.id });
+          } catch (_) { if (h !== atName) warnings.push(`@${h} not found on Trello (or already on the card)`); }
+        }
         try {
           await trello("POST", `/cards/${card.id}/actions/comments`, { text: commentText.slice(0, 1000) });
         } catch (_) { warnings.push("card created but the handoff comment failed"); }

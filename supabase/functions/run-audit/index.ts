@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.9.0";
+const ENGINE_VERSION = "5.9.1";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -1347,9 +1347,14 @@ async function runAuditPipeline(body: any): Promise<Response> {
         campaignDriven = true;
         for (const d of due) {
           const kind = d.kind || "blog";
-          if (allocRemaining(kind) <= 0) { allocShort.push(kind); continue; }
+          // No allocation gate here: the seeded deliverable rows ARE the
+          // funded plan (one row per contracted piece per month), so 1 topic
+          // per row can't exceed it. The per-cycle caps were built for
+          // single-month generation and were silently choking multi-month
+          // runs (e.g. 6 months × 3 GBP posts hit the 3-per-cycle ceiling
+          // after month 1 — the rest never generated).
           const kw = pickFor(kind);
-          if (!kw) continue;
+          if (!kw) { allocShort.push(kind); continue; }
           const town = kind === "landing" ? (secondaryTowns.find((t: any) => kw.includes(t)) || null) : (primaryCity || null);
           const tRow: any = { package_id, title: titleCase(kw), target_keyword: kw, kind, model: MODEL[kind] || "sonnet-4-6",
             status: "queued", source: "campaign", location: town,
@@ -1417,7 +1422,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
           if (tErr) errors.push(`content_topics: ${tErr.message}`);
           else { topicCount = topicRows.length; topicsCreated.push(...topicRows.map((r: any) => ({ kind: r.kind, keyword: r.target_keyword, town: r.location }))); } }
       }
-      if (allocShort.length) note.push(`Plan allocation ceiling reached for: ${[...new Set(allocShort)].join(", ")} — deliverables beyond the signed plan were NOT generated (recommend an upgrade or narrower scope).`);
+      if (allocShort.length) note.push(`Could not fund every planned piece for: ${[...new Set(allocShort)].join(", ")} — keyword pools ran dry or the plan ceiling was hit; unfunded deliverables stay planned for later cycles.`);
     }
 
     // ── 16. DIRECTIVE — the plan-scoped work order ────────────────────────────

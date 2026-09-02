@@ -952,7 +952,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.18.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.19.0</div>
   </div>
   </div>
 </div>
@@ -1037,7 +1037,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.18.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.19.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1085,7 +1085,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.18.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.19.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1243,7 +1243,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.18.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.19.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1277,7 +1277,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.18.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.19.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -4916,17 +4916,33 @@ function buildDeployPackage(){
     else manual.push({ title:(f.label||f.kind)+' — '+(f.target||'/'), action:f.after, kind:f.kind });
   });
   // Content: ONLY APPROVED pieces ship — unapproved stay in the platform
-  // until a strategist approves them. Every shipped piece gets a real
-  // publish schedule, paced across what's left of the current cycle month —
-  // weekly at most, tighter (min 2 days apart) when several pieces must land
-  // inside it — starting next Monday 9am. GBP posts are manual.
-  const start=new Date(); start.setDate(start.getDate()+(((8-start.getDay())%7)||7)); start.setHours(9,0,0,0);
+  // until a strategist approves them. Publish dates follow the CAMPAIGN
+  // CALENDAR: each piece schedules inside ITS OWN campaign month (from the
+  // deliverable it was created for + engagement_start_date), spread evenly
+  // within that month, minimum 2 days apart, never in the past — so month-3
+  // blogs auto-publish in month 3, not the week of generation. Pieces with
+  // no campaign month spread over the next 4 weeks. GBP posts are manual.
   const deployable=(PK.topics||[]).filter(t=>t.body&&t.kind!=='gbp_post'&&t.status==='approved');
-  const approvedN=deployable.filter(t=>t.status==='approved').length;
-  const cycleEnd=new Date(start.getFullYear(), start.getMonth()+1, 0, 9, 0, 0);
-  const DAY=24*3600*1000;
-  const step=approvedN>1?Math.min(7*DAY, Math.max(2*DAY, Math.floor((cycleEnd.getTime()-start.getTime())/(approvedN-1)))):0;
-  let si=0;
+  const DAY=24*3600*1000, NOW=Date.now();
+  const monthOfT={}; (PK.campaign||[]).forEach(d=>{ if(d.topic_id) monthOfT[d.topic_id]=d.month_offset||1; });
+  const engS=activeClient&&activeClient.engagement_start_date
+    ? new Date(activeClient.engagement_start_date+'T00:00:00Z') : new Date();
+  const schedFor={};
+  {
+    const byM={}; deployable.forEach(t=>{ const m=monthOfT[t._id]||0; (byM[m]=byM[m]||[]).push(t); });
+    Object.keys(byM).map(Number).sort((a,b)=>a-b).forEach(m=>{
+      const list=byM[m];
+      let ws, we;
+      if(m>0){
+        ws=Date.UTC(engS.getUTCFullYear(), engS.getUTCMonth()+m-1, 2, 15, 0, 0);   // ~9-10am US, 2nd of the month
+        we=Date.UTC(engS.getUTCFullYear(), engS.getUTCMonth()+m, 0, 15, 0, 0);     // last day of that month
+      } else { ws=NOW+DAY; we=NOW+28*DAY; }
+      const s0=Math.max(ws, NOW+DAY);                 // never schedule in the past
+      const e0=Math.max(we, s0+2*DAY);
+      const step=list.length>1?Math.max(2*DAY, Math.floor((e0-s0)/(list.length-1))):0;
+      list.forEach((t,i)=>{ schedFor[t._id||t.title]=new Date(Math.min(s0+i*step, e0)).toISOString(); });
+    });
+  }
   // Auto internal link: the focus keyword's first natural mention links back
   // to the strategist-editable target (queue row "links to").
   const linkify=(html,kw,href)=>{
@@ -4936,7 +4952,7 @@ function buildDeployPackage(){
   };
   const content=deployable.map(t=>{
     const approved=t.status==='approved';
-    const when=approved?new Date(start.getTime()+(si++)*step).toISOString():null;
+    const when=approved?(schedFor[t._id||t.title]||null):null;
     const d=splitDraft(t.body);
     return { external_id:t._id||null, title:d.h1||t.title, body_html:linkify(md2html(d.body), t.keyword, t.link),
       slug:d.slug, seo_title:d.seo_title, seo_description:d.seo_desc,
