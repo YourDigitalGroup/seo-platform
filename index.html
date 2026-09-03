@@ -952,7 +952,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.19.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.20.0</div>
   </div>
   </div>
 </div>
@@ -1037,7 +1037,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.19.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.20.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1085,7 +1085,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.19.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.20.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1139,6 +1139,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
                 <div class="tsel on" data-t="pro">AEO Pro<small>$799</small></div>
               </div>
               <div id="addon-row" style="margin-top:8px"></div>
+              <div id="contract-row" style="margin-top:8px"></div>
             </div>
           </div>
         </div>
@@ -1243,7 +1244,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.19.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.20.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1277,7 +1278,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.19.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.20.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1312,6 +1313,8 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
           <option value="3">3 months</option>
           <option value="6" selected>6 months</option>
           <option value="12">12 months</option>
+          <option value="18">18 months</option>
+          <option value="24">24 months</option>
           <option value="evergreen">Evergreen — ongoing</option>
         </select>
       </div>
@@ -1677,7 +1680,9 @@ function dialog(opts){
     document.getElementById('dlg-desc').innerHTML=opts.body||'';
     const F=opts.fields||[];
     document.getElementById('dlg-fields').innerHTML=F.map(f=>`<div class="ifield"><label>${esc(f.label||'')}</label>${
-      f.type==='textarea'
+      f.type==='select'
+        ?`<select id="dlg-f-${f.id}">${(f.options||[]).map(o=>`<option value="${esc(o.value)}"${String(f.value)===String(o.value)?' selected':''}>${esc(o.label)}</option>`).join('')}</select>`
+      :f.type==='textarea'
         ?`<textarea id="dlg-f-${f.id}" rows="3" placeholder="${esc(f.placeholder||'')}">${esc(f.value||'')}</textarea>`
         :`<input id="dlg-f-${f.id}" type="${f.type||'text'}" placeholder="${esc(f.placeholder||'')}" value="${esc(f.value||'')}">`}</div>`).join('');
     const ok=document.getElementById('dlg-ok');
@@ -1695,7 +1700,7 @@ function dialog(opts){
       closeDlg(values);
     };
     document.getElementById('dlg-overlay').classList.add('open');
-    const first=document.querySelector('#dlg-fields input, #dlg-fields textarea');
+    const first=document.querySelector('#dlg-fields input, #dlg-fields textarea, #dlg-fields select');
     if(first) setTimeout(()=>first.focus(),60);
   });
 }
@@ -1832,6 +1837,117 @@ async function toggleAddonLanding(on){
   renderAddonRow(); renderDeliverables(); renderEngines();
   showToast(on?'Landing Pages add-on ON — the next generation run funds up to 5 landing pages':'Landing Pages add-on removed', false, on);
 }
+
+// ── Campaign length — editable after setup; changing it re-plans the tactics ──
+function renderContractRow(){
+  const el=document.getElementById('contract-row'); if(!el) return;
+  const c=activeClient;
+  if(!c||OFFLINE){ el.innerHTML=''; return; }
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span class="wmeta">Campaign length: <b>${contractLabel(c)}</b>${contractLengthOf(c)?` · ${campaignMonthLabel(c)}`:''}</span>
+    <button class="tbtn" onclick="changeContractLength()"><i class="fa-solid fa-calendar-days"></i> Change length…</button></div>`;
+}
+async function changeContractLength(){
+  const c=activeClient; if(!c) return;
+  if(OFFLINE){ showToast('Live mode only',true); return; }
+  const curVal=c.contract_is_evergreen?'evergreen':String(contractLengthOf(c)||6);
+  const v=await dialog({ title:'Change campaign length',
+    body:`Re-plans <b>${esc(c.url||c.name)}</b>'s package to the new length. Everything already delivered, approved or drafted is kept; the remaining planned tactics are re-spread across the new schedule — going longer adds months of work, going shorter compresses what's left into fewer months. Written content is never deleted.`,
+    okLabel:'Re-plan campaign',
+    fields:[{id:'len', label:'New campaign length', type:'select', value:curVal, options:[
+      {value:'3',label:'3 months'},{value:'6',label:'6 months'},{value:'12',label:'12 months'},
+      {value:'18',label:'18 months'},{value:'24',label:'24 months'},
+      {value:'evergreen',label:'Evergreen — ongoing'}]}]});
+  if(!v) return;
+  if(v.len===curVal){ showToast('Campaign length unchanged'); return; }
+  await applyContractLength(v.len);
+}
+async function applyContractLength(contract){
+  const c=activeClient; if(!c) return;
+  const evergreen=contract==='evergreen', lengthMonths=evergreen?(c.contract_length_months||6):(+contract||6);
+  showToast('Re-planning campaign…');
+  // store the new contract shape (self-heal against a live DB missing the columns)
+  const upd={contract_length_months:lengthMonths, contract_is_evergreen:evergreen};
+  let {error}=await sb.from('clients').update(upd).eq('id',c.id);
+  for(let i=0;i<2 && error && /column/i.test(error.message||'');i++){
+    const m=(error.message||'').match(/'([a-z_]+)' column|column ['"]?([a-z_]+)['"]?/i), bad=m&&(m[1]||m[2]);
+    if(!bad||!(bad in upd)) break;
+    delete upd[bad];
+    if(!Object.keys(upd).length) break;
+    ({error}=await sb.from('clients').update(upd).eq('id',c.id));
+  }
+  if(error){ showToast('Could not change the campaign length: '+error.message+(/column/i.test(error.message||'')?' — run supabase/migrations/service_catalog.sql':''),true); return; }
+  c.contract_length_months=lengthMonths; c.contract_is_evergreen=evergreen;
+  const gc=groupClients.find(x=>x.id===c.id); if(gc){ gc.contract_length_months=lengthMonths; gc.contract_is_evergreen=evergreen; }
+  const res=await replanCampaign();
+  await loadCampaign();
+  renderRoadmap(); renderContractRow(); renderDeliverables(); renderEngines();
+  showToast(`Campaign is now ${contractLabel(c)}`+(res?` — ${res.added} tactic(s) added, ${res.removed} re-planned away, ${res.kept} in-flight kept`:''), false, true);
+}
+// Match an existing deliverable row back to its catalog service — by
+// service_template_id when both sides have one, else by the base name
+// (labels carry "(#n of T)" ordinals and a "— Month N" suffix).
+function svcRowsMatch(d, svc){
+  if(d.service_template_id && svc.id) return d.service_template_id===svc.id;
+  const base=String(d.name||'').replace(/\s*\(#\d+ of \d+\)/g,'').replace(/\s*—\s*Month\s*\d+\s*$/i,'').trim();
+  return base===svc.name;
+}
+// Rebuild the not-yet-started remainder of the funded plan against the
+// (new) contract horizon. Rows with progress — delivered/ready/skipped, or
+// with a draft attached — are never touched; only untouched 'planned' rows
+// from the current month forward are deleted and re-spread. Fixed-quantity
+// services keep their contract totals: what's consumed stays consumed, and
+// the remainder is spread evenly across the months that are left.
+async function replanCampaign(){
+  const c=activeClient; if(!c||OFFLINE) return null;
+  await loadCatalog(); await loadCampaign();
+  const all=PK.campaign||[];
+  if(!all.length) return null;   // nothing seeded yet — the next seeding uses the new length
+  const span=horizonOf(c), cur=cycleOf(c);
+  const replannable=d=>d.state==='planned' && !d.topic_id && (d.month_offset||1)>=cur;
+  const keep=all.filter(d=>!replannable(d)), drop=all.filter(replannable);
+  if(drop.length){
+    const {error}=await sb.from('deliverables').delete().in('id',drop.map(d=>d.id));
+    if(error){ showToast('Could not re-plan the roadmap: '+error.message,true); return null; }
+  }
+  const start=c.engagement_start_date?firstOfMonth(new Date(c.engagement_start_date+'T00:00:00Z')):firstOfMonth(new Date());
+  const cycOf=m=>new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth()+(m-1), 1)).toISOString().slice(0,10);
+  const rows=[];
+  const push=(svc,m,label,seq)=>rows.push({ client_id:c.id, cycle_month:cycOf(m), month_offset:m, seq:seq||1,
+    engine:svc.engine, kind:svc.engine==='content'?(svc.kind||campaignKind(svc.name)):null,
+    name:`${label} — Month ${m}`, cadence:cadenceLabel(svc), cadence_type:svc.cadence,
+    service_template_id:svc.id||null, auto:!!svc.auto, state:'planned' });
+  planServices(c.tier).forEach(svc=>{
+    if(svc.cadence==='continuous') return;                       // always-on: no scheduled rows
+    const kept=keep.filter(d=>svcRowsMatch(d,svc));
+    if(svc.cadence==='one_time'){ if(!kept.length && cur<=1) push(svc,1,svc.name); return; }
+    if(svc.cadence==='fixed_quantity'){
+      const T=svc.total||1, K=Math.min(T,kept.length), R=T-K;    // consumed budget stays consumed
+      const W=Math.max(1, span-cur+1);
+      for(let i=0;i<R;i++){
+        const m=cur+Math.min(W-1, Math.max(0, Math.round((i+0.5)*W/R)-1));
+        push(svc,m, T>1?`${svc.name} (#${K+i+1} of ${T})`:svc.name);
+      }
+      return;
+    }
+    const step=svc.interval||1, n=svc.per||1;                    // recurring
+    for(let m=1;m<=span;m+=step){
+      if(m<cur) continue;
+      for(let s=1;s<=n;s++){
+        if(kept.some(d=>(d.month_offset||1)===m && (d.seq||1)===s)) continue;
+        push(svc,m, n>1?`${svc.name} (#${s} of ${n})`:svc.name, s);
+      }
+    }
+  });
+  if(rows.length){
+    let {error}=await sb.from('deliverables').insert(rows);
+    if(error && /column/i.test(error.message||''))               // service_catalog.sql not applied yet
+      ({error}=await sb.from('deliverables').insert(rows.map(({cadence_type,service_template_id,...r})=>r)));
+    if(error){ showToast('Re-plan insert failed: '+error.message,true); return null; }
+  }
+  return { added:rows.length, removed:drop.length, kept:keep.filter(d=>(d.month_offset||1)>=cur).length };
+}
+
 function renderCampaignControls(){
   const el=document.getElementById('campaign-controls'); if(!el) return;
   const c=activeClient; if(!c||OFFLINE){ el.style.display='none'; return; }
@@ -2824,7 +2940,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=planLabel(c.tier)+' plan';
 
-  renderCampaignControls(); renderKickoffSubmit(); renderAddonRow();
+  renderCampaignControls(); renderKickoffSubmit(); renderAddonRow(); renderContractRow();
   renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderAuditHistory(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
