@@ -882,8 +882,13 @@ footer .fbadges{display:flex;gap:18px}
 
 /* client cards — replaces the clients table */
 .ccards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
-.ccard{background:var(--s-card);border:1px solid var(--s-border);border-radius:var(--r-lg);padding:16px 18px 14px;cursor:pointer;transition:transform 170ms var(--ease),box-shadow 170ms var(--ease);box-shadow:var(--shadow-sm)}
+.ccard{position:relative;background:var(--s-card);border:1px solid var(--s-border);border-radius:var(--r-lg);padding:16px 18px 14px;cursor:pointer;transition:transform 170ms var(--ease),box-shadow 170ms var(--ease);box-shadow:var(--shadow-sm)}
 .ccard:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+/* hover Edit — swaps in over the status dot so the card stays uncluttered */
+.ccard-edit{position:absolute;top:12px;right:14px;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border:1px solid var(--s-border);border-radius:999px;background:var(--s-card);color:var(--blue);font:inherit;font-size:12px;font-weight:700;cursor:pointer;opacity:0;pointer-events:none;transition:opacity 140ms var(--ease);box-shadow:var(--shadow-sm)}
+.ccard:hover .ccard-edit{opacity:1;pointer-events:auto}
+.ccard-edit:hover{border-color:var(--blue);background:rgba(75,155,215,.08)}
+.ccard:hover .ccard-top .status-dot{opacity:0}
 .ccard-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .ccard .dn{font-size:15px;font-weight:800;letter-spacing:-.2px;color:var(--s-head);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ccard .nm{font-size:12px;color:var(--s-mut);margin-top:1px}
@@ -952,7 +957,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.20.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.21.0</div>
   </div>
   </div>
 </div>
@@ -1037,7 +1042,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.20.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.21.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1085,7 +1090,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.20.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.21.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1139,7 +1144,6 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
                 <div class="tsel on" data-t="pro">AEO Pro<small>$799</small></div>
               </div>
               <div id="addon-row" style="margin-top:8px"></div>
-              <div id="contract-row" style="margin-top:8px"></div>
             </div>
           </div>
         </div>
@@ -1244,7 +1248,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.20.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.21.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1278,7 +1282,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.20.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.21.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1290,7 +1294,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
 <!-- ═══════════ ADD CLIENT MODAL ═══════════ -->
 <div class="overlay" id="modal">
   <div class="modal">
-    <div class="modal-h"><h2>Add client.</h2><button class="xbtn" onclick="closeAddModal()">✕</button></div>
+    <div class="modal-h"><h2 id="modal-title">Add client.</h2><button class="xbtn" onclick="closeAddModal()">✕</button></div>
     <div class="modal-grp" id="modal-grp"></div>
     <div class="mfield"><label>Client name</label><input id="m-name" type="text" placeholder="Acme Roofing"></div>
     <div class="mfield"><label>Domain URL</label><input id="m-url" type="text" placeholder="acmeroofing.com"></div>
@@ -1322,7 +1326,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <select id="m-startmonth"></select>
       </div>
     </div>
-    <div class="mrow">
+    <div class="mrow" id="m-started-wrap">
       <div class="mfield" style="justify-content:center">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600">
           <input type="checkbox" id="m-started" onchange="document.getElementById('m-startmonth-wrap').style.display=this.checked?'':'none'"
@@ -1339,7 +1343,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <div class="gen-note" id="gen-note">On save, the system generates the full deployment package — audit, competition, fixes, deliverables, and the white-labeled report.</div>
     <div class="mfoot">
       <button class="mbtn" onclick="closeAddModal()">Cancel</button>
-      <button class="mbtn primary" onclick="saveClient()">Add &amp; generate</button>
+      <button class="mbtn primary" id="modal-save" onclick="saveClient()">Add &amp; generate</button>
     </div>
   </div>
 </div>
@@ -1838,52 +1842,6 @@ async function toggleAddonLanding(on){
   showToast(on?'Landing Pages add-on ON — the next generation run funds up to 5 landing pages':'Landing Pages add-on removed', false, on);
 }
 
-// ── Campaign length — editable after setup; changing it re-plans the tactics ──
-function renderContractRow(){
-  const el=document.getElementById('contract-row'); if(!el) return;
-  const c=activeClient;
-  if(!c||OFFLINE){ el.innerHTML=''; return; }
-  el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <span class="wmeta">Campaign length: <b>${contractLabel(c)}</b>${contractLengthOf(c)?` · ${campaignMonthLabel(c)}`:''}</span>
-    <button class="tbtn" onclick="changeContractLength()"><i class="fa-solid fa-calendar-days"></i> Change length…</button></div>`;
-}
-async function changeContractLength(){
-  const c=activeClient; if(!c) return;
-  if(OFFLINE){ showToast('Live mode only',true); return; }
-  const curVal=c.contract_is_evergreen?'evergreen':String(contractLengthOf(c)||6);
-  const v=await dialog({ title:'Change campaign length',
-    body:`Re-plans <b>${esc(c.url||c.name)}</b>'s package to the new length. Everything already delivered, approved or drafted is kept; the remaining planned tactics are re-spread across the new schedule — going longer adds months of work, going shorter compresses what's left into fewer months. Written content is never deleted.`,
-    okLabel:'Re-plan campaign',
-    fields:[{id:'len', label:'New campaign length', type:'select', value:curVal, options:[
-      {value:'3',label:'3 months'},{value:'6',label:'6 months'},{value:'12',label:'12 months'},
-      {value:'18',label:'18 months'},{value:'24',label:'24 months'},
-      {value:'evergreen',label:'Evergreen — ongoing'}]}]});
-  if(!v) return;
-  if(v.len===curVal){ showToast('Campaign length unchanged'); return; }
-  await applyContractLength(v.len);
-}
-async function applyContractLength(contract){
-  const c=activeClient; if(!c) return;
-  const evergreen=contract==='evergreen', lengthMonths=evergreen?(c.contract_length_months||6):(+contract||6);
-  showToast('Re-planning campaign…');
-  // store the new contract shape (self-heal against a live DB missing the columns)
-  const upd={contract_length_months:lengthMonths, contract_is_evergreen:evergreen};
-  let {error}=await sb.from('clients').update(upd).eq('id',c.id);
-  for(let i=0;i<2 && error && /column/i.test(error.message||'');i++){
-    const m=(error.message||'').match(/'([a-z_]+)' column|column ['"]?([a-z_]+)['"]?/i), bad=m&&(m[1]||m[2]);
-    if(!bad||!(bad in upd)) break;
-    delete upd[bad];
-    if(!Object.keys(upd).length) break;
-    ({error}=await sb.from('clients').update(upd).eq('id',c.id));
-  }
-  if(error){ showToast('Could not change the campaign length: '+error.message+(/column/i.test(error.message||'')?' — run supabase/migrations/service_catalog.sql':''),true); return; }
-  c.contract_length_months=lengthMonths; c.contract_is_evergreen=evergreen;
-  const gc=groupClients.find(x=>x.id===c.id); if(gc){ gc.contract_length_months=lengthMonths; gc.contract_is_evergreen=evergreen; }
-  const res=await replanCampaign();
-  await loadCampaign();
-  renderRoadmap(); renderContractRow(); renderDeliverables(); renderEngines();
-  showToast(`Campaign is now ${contractLabel(c)}`+(res?` — ${res.added} tactic(s) added, ${res.removed} re-planned away, ${res.kept} in-flight kept`:''), false, true);
-}
 // Match an existing deliverable row back to its catalog service — by
 // service_template_id when both sides have one, else by the base name
 // (labels carry "(#n of T)" ordinals and a "— Month N" suffix).
@@ -1898,13 +1856,16 @@ function svcRowsMatch(d, svc){
 // from the current month forward are deleted and re-spread. Fixed-quantity
 // services keep their contract totals: what's consumed stays consumed, and
 // the remainder is spread evenly across the months that are left.
-async function replanCampaign(){
-  const c=activeClient; if(!c||OFFLINE) return null;
-  await loadCatalog(); await loadCampaign();
-  const all=PK.campaign||[];
-  if(!all.length) return null;   // nothing seeded yet — the next seeding uses the new length
+async function replanCampaign(c){
+  if(!c||OFFLINE) return null;
+  await loadCatalog();
+  const {data:all,error:qErr}=await sb.from('deliverables').select('*').eq('client_id',c.id);
+  if(qErr){ showToast('Could not load the campaign to re-plan: '+qErr.message,true); return null; }
+  if(!all||!all.length) return null;   // nothing seeded yet — the next seeding uses the new details
   const span=horizonOf(c), cur=cycleOf(c);
-  const replannable=d=>d.state==='planned' && !d.topic_id && (d.month_offset||1)>=cur;
+  // 'skipped' rows normally live in the past (mid-campaign imports); one at or
+  // past the current month means the campaign month moved earlier — re-fund it.
+  const replannable=d=>(d.state==='planned'||d.state==='skipped') && !d.topic_id && (d.month_offset||1)>=cur;
   const keep=all.filter(d=>!replannable(d)), drop=all.filter(replannable);
   if(drop.length){
     const {error}=await sb.from('deliverables').delete().in('id',drop.map(d=>d.id));
@@ -1944,6 +1905,14 @@ async function replanCampaign(){
     if(error && /column/i.test(error.message||''))               // service_catalog.sql not applied yet
       ({error}=await sb.from('deliverables').insert(rows.map(({cadence_type,service_template_id,...r})=>r)));
     if(error){ showToast('Re-plan insert failed: '+error.message,true); return null; }
+  }
+  // Months now in the past (the campaign month moved later) were delivered
+  // outside the platform — mark untouched planned rows skipped, exactly like
+  // a mid-campaign import at seed time. Drafted rows keep their content.
+  if(cur>1){
+    const {error:skErr}=await sb.from('deliverables').update({state:'skipped'})
+      .eq('client_id',c.id).lt('month_offset',cur).eq('state','planned').is('topic_id',null);
+    if(skErr) console.warn('replan skip-past', skErr);
   }
   return { added:rows.length, removed:drop.length, kept:keep.filter(d=>(d.month_offset||1)>=cur).length };
 }
@@ -2757,6 +2726,7 @@ function renderRows(rows){
       <div class="ccard-top">
         <div style="min-width:0"><div class="dn">${c.url}</div><div class="nm">${c.name}${c.market?' · '+c.market:''}</div></div>
         <span class="status-dot sd-${c.status}" style="flex-shrink:0"><i></i>${cap(c.status)}</span>
+        ${OFFLINE?'':`<button class="ccard-edit" title="Edit the campaign details" onclick="event.stopPropagation();openEditModal('${c.id}')"><i class="fa-solid fa-pen"></i> Edit</button>`}
       </div>
       <div class="ccard-mid">
         ${stratCell}
@@ -2794,7 +2764,13 @@ function syncClear(){ const a=filters.search||filters.tier!=='all'||filters.stat
 // ════════════════════════════════════════════════════════════
 //  ADD CLIENT (within active group) → generates a package
 // ════════════════════════════════════════════════════════════
+let EDIT_ID=null;   // client id when the modal is editing an existing campaign
 function openAddModal(){
+  EDIT_ID=null;
+  document.getElementById('modal-title').textContent='Add client.';
+  document.getElementById('modal-save').innerHTML='Add &amp; generate';
+  document.getElementById('m-started-wrap').style.display='';
+  document.getElementById('gen-note').textContent='On save, the system generates the full deployment package — audit, competition, fixes, deliverables, and the white-labeled report.';
   ['m-name','m-url','m-market'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('m-tier').value='starter';
   document.getElementById('m-addon-landing').checked=false;
@@ -2807,8 +2783,37 @@ function openAddModal(){
   document.getElementById('modal-grp').innerHTML=`Adding to <b>${activeGroup.name}</b> — package deploys in this partner's brand. As ${ROLE_LABEL[me.role]||'staff'}, assign the SEO/AEO strategist here.`;
   document.getElementById('modal').classList.add('open');
 }
-function closeAddModal(){ document.getElementById('modal').classList.remove('open'); }
+// Hover-Edit on a client card: the same form the campaign was set up with,
+// prefilled. Saving updates the client and re-plans the remaining tactics
+// when the plan, add-on, contract length or campaign month changed.
+function openEditModal(id){
+  const c=groupClients.find(x=>x.id===id); if(!c) return;
+  if(OFFLINE){ showToast('Live mode only',true); return; }
+  EDIT_ID=id;
+  document.getElementById('modal-title').textContent='Edit campaign.';
+  document.getElementById('modal-save').textContent='Save changes';
+  document.getElementById('m-name').value=c.name||'';
+  document.getElementById('m-url').value=c.url||'';
+  document.getElementById('m-market').value=c.market||'';
+  document.getElementById('m-tier').value=c.tier||'starter';
+  document.getElementById('m-addon-wrap').style.display=(c.tier||'starter')==='pro'?'none':'';
+  document.getElementById('m-addon-landing').checked=clientAddons(c).includes('landing_pages');
+  document.getElementById('m-contract').value=c.contract_is_evergreen?'evergreen':String(contractLengthOf(c)||6);
+  // edit mode: no "already started" checkbox — the month select is always
+  // shown, prefilled with where the campaign stands today
+  document.getElementById('m-started-wrap').style.display='none';
+  document.getElementById('m-started').checked=true;
+  document.getElementById('m-startmonth-wrap').style.display='';
+  const curM=cycleOf(c);
+  document.getElementById('m-startmonth').innerHTML=Array.from({length:24},(_,i)=>`<option value="${i+1}"${i+1===curM?' selected':''}>Month ${i+1}</option>`).join('');
+  document.getElementById('m-strat').innerHTML=`<option value="">— unassigned —</option>`+STRATEGISTS.map(s=>`<option value="${s.id}"${s.id===c.strategist_id?' selected':''}>${s.name}</option>`).join('');
+  document.getElementById('modal-grp').innerHTML=`Editing <b>${esc(c.url||c.name)}</b> — changing the plan, add-on, contract length or campaign month re-plans the remaining tactics. Delivered and drafted work is never touched.`;
+  document.getElementById('gen-note').textContent='On save, the remaining planned tactics are re-spread to match the new details. Anything already delivered, approved or drafted is kept as-is.';
+  document.getElementById('modal').classList.add('open');
+}
+function closeAddModal(){ EDIT_ID=null; document.getElementById('modal').classList.remove('open'); }
 async function saveClient(){
+  if(EDIT_ID) return saveClientEdits();
   const name=document.getElementById('m-name').value.trim();
   const url=document.getElementById('m-url').value.trim().replace(/^https?:\/\//,'');
   const market=document.getElementById('m-market').value.trim();
@@ -2865,6 +2870,66 @@ async function saveClient(){
     await openClient(ins.id);
     generatePackage().catch(e=>{ console.error('auto-generate',e); showToast('Auto-generate failed — click Generate package on the Setup tab',true); });
   }
+}
+// Save from the Edit-campaign modal: update the client row, then re-plan the
+// remaining deliverables if anything plan-shaping changed (tier, add-on,
+// contract length, campaign month). Name/market/strategist edits are just a
+// row update — no re-plan.
+async function saveClientEdits(){
+  const c=groupClients.find(x=>x.id===EDIT_ID);
+  if(!c){ closeAddModal(); return; }
+  const name=document.getElementById('m-name').value.trim();
+  const url=document.getElementById('m-url').value.trim().replace(/^https?:\/\//,'');
+  const market=document.getElementById('m-market').value.trim();
+  const tier=document.getElementById('m-tier').value;
+  const contract=document.getElementById('m-contract').value;
+  const evergreen=contract==='evergreen', lengthMonths=evergreen?(c.contract_length_months||6):(+contract||6);
+  const strat=document.getElementById('m-strat').value||null;
+  if(!url){ showToast('Enter a domain URL',true); return; }
+  const addons=(tier!=='pro'&&document.getElementById('m-addon-landing')?.checked)?['landing_pages']:[];
+  let newMonth=Math.max(1,parseInt(document.getElementById('m-startmonth')?.value||'1',10));
+  if(!evergreen&&newMonth>lengthMonths) newMonth=lengthMonths;
+  const oldMonth=cycleOf(c);
+  // shifting the campaign month = shifting the engagement start (the one
+  // lever every downstream system keys off)
+  let engStart=c.engagement_start_date;
+  if(newMonth!==oldMonth||!engStart){
+    const sd=new Date(); sd.setUTCMonth(sd.getUTCMonth()-(newMonth-1));
+    engStart=sd.toISOString().slice(0,10);
+  }
+  const replanNeeded = tier!==c.tier
+    || JSON.stringify(addons.slice().sort())!==JSON.stringify(clientAddons(c).slice().sort())
+    || evergreen!==!!c.contract_is_evergreen
+    || (!evergreen && lengthMonths!==(c.contract_length_months||6))
+    || newMonth!==oldMonth;
+  const upd={ name:name||url, url, market, tier, addons,
+    contract_length_months:lengthMonths, contract_is_evergreen:evergreen,
+    engagement_start_date:engStart, strategist_id:strat };
+  if(strat!==(c.strategist_id||null)){ upd.assigned_by=strat?me.id:null; upd.assigned_at=strat?new Date().toISOString():null; }
+  let {error}=await sb.from('clients').update(upd).eq('id',c.id);
+  // Self-heal against a live DB missing optional columns — same as add.
+  for(let i=0;i<6 && error && /column/i.test(error.message||'');i++){
+    const m=(error.message||'').match(/'([a-z_]+)' column|column ['"]?([a-z_]+)['"]?/i), bad=m&&(m[1]||m[2]);
+    if(!bad || !(bad in upd)) break;
+    console.warn('clients table missing column',bad,'— retrying without it (run the migrations in docs/DEPLOY_RUNBOOK.md)');
+    delete upd[bad];
+    ({error}=await sb.from('clients').update(upd).eq('id',c.id));
+  }
+  if(error){ showToast('Could not save the changes: '+error.message,true); return; }
+  Object.assign(c,upd);
+  if(activeClient&&activeClient.id===c.id){ Object.assign(activeClient,upd); activeTier=activeClient.tier; }
+  closeAddModal();
+  let res=null;
+  if(replanNeeded){
+    showToast('Saved — re-planning the remaining tactics…');
+    res=await replanCampaign(c);
+    if(activeClient&&activeClient.id===c.id){
+      await loadCampaign(); renderRoadmap(); renderDeliverables(); renderEngines(); renderAddonRow(); renderKickoffSubmit();
+    }
+  }
+  loadPage(); renderTriage();
+  showToast(`${c.url} updated — ${planLabel(c.tier)} · ${contractLabel(c)}${contractLengthOf(c)?` · month ${cycleOf(c)}`:''}`+
+    (res?` · ${res.added} tactic(s) added, ${res.removed} re-planned, ${res.kept} in-flight kept`:''), false, true);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2940,7 +3005,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=planLabel(c.tier)+' plan';
 
-  renderCampaignControls(); renderKickoffSubmit(); renderAddonRow(); renderContractRow();
+  renderCampaignControls(); renderKickoffSubmit(); renderAddonRow();
   renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderAuditHistory(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
