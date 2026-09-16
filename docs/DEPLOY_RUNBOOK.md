@@ -31,10 +31,19 @@ First store the two Vault secrets (once):
 `select vault.create_secret('https://YOURPROJECT.supabase.co', 'project_url');`
 `select vault.create_secret('YOUR_SERVICE_ROLE_KEY', 'service_role_key');`
 Then paste `supabase/migrations/schedules.sql` and Run, and deploy the
-`run-scheduled` Edge Function. Daily 11:00 UTC: audit-only re-run per active
-client (rotating, 20/run, skips anything audited <20h ago). Mondays 13:00 UTC:
-report rebuild per client. Verify: `select jobname, schedule from cron.job;`
+`run-scheduled` Edge Function (1.1.0 — covers the whole roster per run;
+skips anything audited <20h ago). Daily 11:00 UTC: audit-only re-run per
+active client. Mondays 13:00 UTC: report rebuild per client.
+Verify: `select jobname, schedule from cron.job;`
 Manual fire: POST /functions/v1/run-scheduled {"mode":"daily-audits"}.
+
+**If daily audits stop running**: paste `supabase/migrations/
+schedules_doctor.sql` and Run. One paste repairs the jobs, hardens the
+invoker (loud failure when Vault secrets are missing, 15s HTTP timeout),
+fires a run immediately, and prints a health report that names the exact
+failure (missing secrets / rotated service key = 401 / function not
+deployed = 404 / cron never firing). The report stays queryable afterwards:
+`select * from seop_scheduler_health;`
 
 ## 1a-3. Background audit jobs  (Supabase → SQL Editor)
 
@@ -96,6 +105,7 @@ For each, deploy the code from this repo (Deploy a new function → Via Editor, 
 | `advice-local`   | `supabase/functions/advice-local/index.ts`       |
 | `image-search`   | `supabase/functions/image-search/index.ts`       |
 | `trello`         | `supabase/functions/trello/index.ts`             |
+| `report-feed`    | `supabase/functions/report-feed/index.ts`        |
 
 `image-search` (secret: `PEXELS_API_KEY` — free from pexels.com/api) powers
 the Find-image picker in the draft editor; the pick ships as the WordPress
@@ -109,8 +119,10 @@ board columns" lists them by name. Each user row also takes a Trello
 @username so the strategist is added to the card and @mentioned. Cards get
 one checklist per campaign month with that month's deliverables.
 Both need `supabase/migrations/platform_extras.sql` run first (draft image
-columns, topic link_target, clients.trello_card_id). For Looker Studio, run
-`looker_views.sql` and see docs/LOOKER_INTEGRATION.md. Reserved for the
+columns, topic link_target, clients.trello_card_id). For Looker Studio and
+TapClicks, run `looker_views.sql`, deploy `report-feed` (secret:
+`REPORT_FEED_TOKEN`, 32+ random chars; turn OFF "Enforce JWT verification"
+for this one function), and see docs/LOOKER_INTEGRATION.md. Reserved for the
 reputation-monitoring integration: secret `REP_MONITORING_API_KEY` (key
 coming from Scott's provider).
 

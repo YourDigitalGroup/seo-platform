@@ -34,6 +34,7 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const FRESH_HOURS = 20;
+const SCHED_VERSION = "1.1.0";   // echoed in every response so a stale deploy is self-evident
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -43,7 +44,11 @@ Deno.serve(async (req) => {
     if (mode !== "daily-audits" && mode !== "weekly-reports") {
       return json({ error: "mode must be daily-audits or weekly-reports" }, 400);
     }
-    const cap = Math.min(Math.max(1, Number(limit) || 20), 60);
+    // Default cap covers the WHOLE roster (dispatches are fast 202s — the
+    // audits run in their own background invocations), so "daily" really
+    // means daily. The old default of 20/run silently turned a 60-client
+    // roster into an every-3-days rotation. `limit` still overrides.
+    const cap = Math.min(Math.max(1, Number(limit) || 200), 500);
     const base = Deno.env.get("SUPABASE_URL")!;
     const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supa = createClient(base, key, { auth: { persistSession: false } });
@@ -51,7 +56,7 @@ Deno.serve(async (req) => {
     const { data: clients } = await supa.from("clients")
       .select("id, url, status").eq("status", "active").not("url", "is", null).limit(500);
     const active = (clients || []).filter((c: any) => String(c.url || "").trim() !== "");
-    if (!active.length) return json({ ok: true, mode, dispatched: 0, note: "no active clients" });
+    if (!active.length) return json({ ok: true, mode, version: SCHED_VERSION, dispatched: 0, note: "no active clients" });
 
     // Order least-recently-audited first; skip anything audited < FRESH_HOURS ago.
     const lastRun: Record<string, string> = {};
@@ -83,7 +88,7 @@ Deno.serve(async (req) => {
     // Dispatch with modest concurrency; completion happens in the target
     // functions' own invocations, so we only hand the pipeline to waitUntil.
     const dispatch = (async () => {
-      const CONC = 3;
+      const CONC = 5;
       for (let i = 0; i < targets.length; i += CONC) {
         await Promise.allSettled(targets.slice(i, i + CONC).map((c: any) =>
           fetch(`${base}/functions/v1/${fn}`, {
@@ -99,7 +104,7 @@ Deno.serve(async (req) => {
     const er = (globalThis as any).EdgeRuntime;
     if (er?.waitUntil) er.waitUntil(dispatch); else await dispatch;
 
-    return json({ ok: true, mode, dispatched: targets.length,
+    return json({ ok: true, mode, version: SCHED_VERSION, dispatched: targets.length,
       clients: targets.map((c: any) => c.url),
       skipped_fresh: mode === "daily-audits" ? active.length - targets.length : undefined });
   } catch (e) {
