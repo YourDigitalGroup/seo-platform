@@ -45,6 +45,18 @@ join packages p on p.id = t.package_id
 join clients c on c.id = p.client_id
 left join partner_groups g on g.id = c.partner_group_id;
 
+-- One row per campaign deliverable — delivery/fulfillment reporting
+-- (months completed, tactics delivered vs planned, per partner/plan).
+create or replace view looker_deliverables as
+select
+  d.id as deliverable_id, d.client_id, c.name as client_name, c.url as client_url,
+  c.tier as plan, g.name as partner_group,
+  d.name, d.engine, d.kind, d.cadence, d.month_offset, d.cycle_month,
+  d.state, d.auto
+from deliverables d
+join clients c on c.id = d.client_id
+left join partner_groups g on g.id = c.partner_group_id;
+
 -- Read-only role for the Looker Studio PostgreSQL connector.
 -- After running this, set a password:  alter role looker_reader password '…';
 do $$ begin
@@ -53,4 +65,4 @@ do $$ begin
   end if;
 end $$;
 grant usage on schema public to looker_reader;
-grant select on looker_audits, looker_clients, looker_content to looker_reader;
+grant select on looker_audits, looker_clients, looker_content, looker_deliverables to looker_reader;
