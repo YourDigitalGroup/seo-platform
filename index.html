@@ -669,6 +669,26 @@ footer .fbadges{display:flex;gap:18px}
 .dm-body{font-family:inherit;font-size:13.5px;line-height:1.6;width:100%;min-height:230px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);color:var(--ink);resize:vertical}
 .dm-body:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.12)}
 .dm-body:disabled{background:var(--mist);color:var(--muted)}
+/* ── Visual (WYSIWYG) draft editor — same markdown underneath ── */
+.dm-mode{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-left:auto;flex-shrink:0}
+.dm-mode button{font:inherit;font-size:11px;font-weight:700;letter-spacing:.2px;padding:4px 12px;border:0;background:transparent;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.dm-mode button.on{background:var(--blue);color:#fff}
+.dm-toolbar{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 6px}
+.dm-toolbar button{font:inherit;font-size:12px;font-weight:700;min-width:30px;height:28px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:var(--s-card);color:var(--ink);cursor:pointer}
+.dm-toolbar button:hover{border-color:var(--blue);color:var(--blue)}
+.dm-toolbar button:disabled{opacity:.45;cursor:default}
+.dm-toolbar .sep{width:1px;background:var(--line);margin:3px 4px}
+.dm-visual{font-family:inherit;font-size:13.5px;line-height:1.65;width:100%;min-height:230px;max-height:460px;overflow-y:auto;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);color:var(--ink)}
+.dm-visual:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.12)}
+.dm-visual[contenteditable="false"]{background:var(--mist);color:var(--muted)}
+.dm-visual h1,.dm-visual h2{font-size:19px;font-weight:800;letter-spacing:-.2px;margin:14px 0 6px;color:var(--s-head)}
+.dm-visual h3{font-size:16px;font-weight:800;margin:12px 0 5px;color:var(--s-head)}
+.dm-visual h4{font-size:14px;font-weight:800;margin:10px 0 4px;color:var(--s-head)}
+.dm-visual p{margin:0 0 10px}
+.dm-visual ul,.dm-visual ol{margin:0 0 10px;padding-left:22px}
+.dm-visual li{margin:2px 0}
+.dm-visual a{color:var(--blue);text-decoration:underline}
+.dm-visual blockquote{margin:0 0 10px;padding:6px 12px;border-left:3px solid var(--line);color:var(--muted)}
 .dm-rewrite{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
 .dm-instr{font-family:inherit;font-size:13px;line-height:1.5;width:100%;min-height:74px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);color:var(--ink);resize:vertical}
 .dm-instr:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.12)}
@@ -957,7 +977,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.21.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.22.0</div>
   </div>
   </div>
 </div>
@@ -1042,7 +1062,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.21.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.22.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1090,7 +1110,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.21.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.22.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1248,7 +1268,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.21.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.22.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1282,7 +1302,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.21.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.22.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1386,8 +1406,28 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <button class="xbtn" onclick="closeDraft()">✕</button>
     </div>
     <div class="dm-readonly" id="dm-readonly" style="display:none">View only — SEO/AEO strategists and admins edit content.</div>
-    <div class="dm-section-lab">Generated draft — edit directly to overwrite</div>
-    <textarea class="dm-body" id="dm-body"></textarea>
+    <div class="dm-section-lab" style="display:flex;align-items:center;gap:10px">Generated draft — edit directly to overwrite
+      <span class="dm-mode" id="dm-mode">
+        <button type="button" data-mode="visual" onclick="dmSetMode('visual')" title="Rich-text editing — formatting shows as it will publish"><i class="fa-solid fa-font"></i> Visual</button>
+        <button type="button" data-mode="markdown" onclick="dmSetMode('markdown')" title="Raw markdown — ## headings, **bold**, - lists"><i class="fa-solid fa-code"></i> Markdown</button>
+      </span>
+    </div>
+    <div class="dm-toolbar" id="dm-toolbar">
+      <button type="button" onclick="dmCmd('bold')" title="Bold"><i class="fa-solid fa-bold"></i></button>
+      <button type="button" onclick="dmCmd('italic')" title="Italic"><i class="fa-solid fa-italic"></i></button>
+      <span class="sep"></span>
+      <button type="button" onclick="dmCmd('formatBlock','<h2>')" title="Section heading">H2</button>
+      <button type="button" onclick="dmCmd('formatBlock','<h3>')" title="Sub-heading">H3</button>
+      <button type="button" onclick="dmCmd('formatBlock','<p>')" title="Normal paragraph"><i class="fa-solid fa-paragraph"></i></button>
+      <span class="sep"></span>
+      <button type="button" onclick="dmCmd('insertUnorderedList')" title="Bullet list"><i class="fa-solid fa-list-ul"></i></button>
+      <button type="button" onclick="dmCmd('insertOrderedList')" title="Numbered list"><i class="fa-solid fa-list-ol"></i></button>
+      <span class="sep"></span>
+      <button type="button" onclick="dmLink()" title="Insert link"><i class="fa-solid fa-link"></i></button>
+      <button type="button" onclick="dmCmd('removeFormat')" title="Clear formatting"><i class="fa-solid fa-eraser"></i></button>
+    </div>
+    <div class="dm-visual" id="dm-visual" contenteditable="true"></div>
+    <textarea class="dm-body" id="dm-body" style="display:none"></textarea>
     <div class="cs" id="dm-score"></div>
     <div class="dm-rewrite">
       <div class="dm-section-lab">Or request a rewrite — give instructions</div>
@@ -3091,11 +3131,115 @@ function scoreContent(body, keyword, title, kind){
 function renderDraftScore(){
   const el=document.getElementById('dm-score'); if(!el||_draftIdx==null) return;
   const t=PK.topics[_draftIdx];
-  const {score,checks}=scoreContent(document.getElementById('dm-body').value, t.keyword, t.title, t.kind||'blog');
+  const {score,checks}=scoreContent(dmGetBody(), t.keyword, t.title, t.kind||'blog');
   const cls=score>=80?'good':score>=50?'ok':'bad';
   const lab=score>=80?'Optimized':score>=50?'Room to improve':'Needs work';
   el.innerHTML=`<div class="cs-top"><div class="cs-ring ${cls}">${score}</div><div class="cs-lab"><b>Content score · ${lab}</b><span>focus keyword: ${esc(t.keyword||'—')}</span></div></div>`+
     `<div class="cs-list">`+checks.map(c=>`<div class="cs-item ${c.ok?'ok':'no'}"><span class="cs-ic">${c.ok?'✓':'○'}</span><span class="cs-tx">${c.label}${c.ok?'':` <i>${c.hint}</i>`}</span></div>`).join('')+`</div>`;
+}
+// ── Editor mode: Visual (WYSIWYG) vs Markdown. The draft is STORED as
+//    markdown either way — Visual is a live rich-text view converted both
+//    directions (md2html to show, html2md to save), so QA, scoring, the
+//    deploy file and the WordPress HTML conversion all keep working off the
+//    same canonical text. The choice sticks per browser.
+let DM_MODE=(function(){ try{ return localStorage.getItem('seop_editor_mode')||'visual'; }catch(e){ return 'visual'; } })();
+function dmSetMode(mode, convert){
+  if(mode!=='visual'&&mode!=='markdown') mode='visual';
+  const ta=document.getElementById('dm-body'), vis=document.getElementById('dm-visual'), tb=document.getElementById('dm-toolbar');
+  if(convert!==false && mode!==DM_MODE){
+    if(mode==='visual') vis.innerHTML=md2html(ta.value);
+    else ta.value=html2md(vis.innerHTML);
+  }
+  DM_MODE=mode; try{ localStorage.setItem('seop_editor_mode',mode); }catch(e){}
+  ta.style.display=mode==='markdown'?'':'none';
+  vis.style.display=mode==='visual'?'':'none';
+  tb.style.display=mode==='visual'?'':'none';
+  document.querySelectorAll('#dm-mode button').forEach(b=>b.classList.toggle('on',b.dataset.mode===mode));
+  renderDraftScore();
+}
+// the draft body as markdown, whichever view is active
+function dmGetBody(){
+  return DM_MODE==='visual' ? html2md(document.getElementById('dm-visual').innerHTML)
+                            : document.getElementById('dm-body').value;
+}
+function dmSetBody(md){
+  document.getElementById('dm-body').value=md;
+  document.getElementById('dm-visual').innerHTML=md2html(md);
+}
+function dmSetEditable(edit){
+  document.getElementById('dm-body').disabled=!edit;
+  document.getElementById('dm-visual').setAttribute('contenteditable', edit?'true':'false');
+  document.querySelectorAll('#dm-toolbar button').forEach(b=>b.disabled=!edit);
+}
+function dmCmd(cmd,val){
+  const ed=document.getElementById('dm-visual');
+  if(ed.getAttribute('contenteditable')!=='true') return;
+  ed.focus();
+  try{ document.execCommand('styleWithCSS',false,false); }catch(e){}
+  document.execCommand(cmd,false,val||null);
+  renderDraftScore();
+}
+async function dmLink(){
+  const ed=document.getElementById('dm-visual');
+  if(ed.getAttribute('contenteditable')!=='true') return;
+  const sel=window.getSelection();
+  const range=(sel&&sel.rangeCount&&ed.contains(sel.anchorNode))?sel.getRangeAt(0).cloneRange():null;
+  const selText=range?String(range):'';
+  const v=await dialog({ title:'Insert link',
+    body: selText?`Links the selected text: <b>${esc(selText.slice(0,80))}</b>`:'No text selected — the URL is inserted as its own link.',
+    okLabel:'Insert link',
+    fields:[{id:'url', label:'URL', placeholder:'https://…', required:true, pattern:/^https?:\/\//i, invalid:'Use a full http(s):// URL'}]});
+  if(!v) return;
+  ed.focus();
+  if(range){ const s=window.getSelection(); s.removeAllRanges(); s.addRange(range); }
+  if(range && !range.collapsed) document.execCommand('createLink', false, v.url);
+  else document.execCommand('insertHTML', false, '<a href="'+esc(v.url)+'">'+esc(v.url)+'</a>');
+  renderDraftScore();
+}
+// Rich text → the same markdown dialect md2html reads. Handles everything the
+// toolbar and md2html can produce: h1-h4, p/div, b/strong, i/em, a, ul/ol/li,
+// blockquote, br. Unknown wrappers fall through to their text.
+function html2md(html){
+  const tmp=document.createElement('div'); tmp.innerHTML=String(html||'');
+  const BLOCK=/^(h[1-6]|p|div|ul|ol|blockquote)$/;
+  const inline=(node)=>{
+    let s='';
+    node.childNodes.forEach(n=>{
+      if(n.nodeType===3){ s+=n.nodeValue.replace(/[ \t]*\n[ \t]*/g,' '); return; }
+      if(n.nodeType!==1) return;
+      const tag=n.tagName.toLowerCase();
+      if(tag==='br'){ s+='\n'; return; }
+      const inner=inline(n);
+      if(tag==='strong'||tag==='b'){ const t=inner.trim(); s+=t?'**'+t+'**':''; }
+      else if(tag==='em'||tag==='i'){ const t=inner.trim(); s+=t?'*'+t+'*':''; }
+      else if(tag==='a'){ const href=n.getAttribute('href')||''; const t=inner.trim()||href;
+        s+=/^https?:\/\//i.test(href)?'['+t+']('+href+')':t; }
+      else s+=inner;
+    });
+    return s;
+  };
+  const blocks=[];
+  const walk=(n)=>{
+    if(n.nodeType===3){ const t=n.nodeValue.trim(); if(t) blocks.push(t); return; }
+    if(n.nodeType!==1) return;
+    const tag=n.tagName.toLowerCase(); let m;
+    // inverse of md2html's mapping (#→h2, ##→h3, ###→h4): hN → N-1 hashes
+    if((m=tag.match(/^h([1-6])$/))){ const t=inline(n).trim(); if(t) blocks.push('#'.repeat(Math.min(4,Math.max(1,+m[1]-1)))+' '+t); return; }
+    if(tag==='ul'||tag==='ol'){
+      const items=[]; let i=1;
+      [...n.children].forEach(li=>{ if(li.tagName&&li.tagName.toLowerCase()==='li'){ const t=inline(li).trim().replace(/\n+/g,' '); if(t) items.push((tag==='ul'?'- ':(i++)+'. ')+t); } });
+      if(items.length) blocks.push(items.join('\n')); return;
+    }
+    if(tag==='blockquote'){ const t=inline(n).trim(); if(t) blocks.push(t.split(/\n+/).map(l=>'> '+l.trim()).join('\n')); return; }
+    if(tag==='p'||tag==='div'){
+      // execCommand sometimes nests block elements inside divs — recurse
+      if([...n.children].some(c=>BLOCK.test((c.tagName||'').toLowerCase()))){ n.childNodes.forEach(walk); return; }
+      const t=inline(n).trim(); if(t) blocks.push(t.replace(/\n{2,}/g,'\n')); return;
+    }
+    const t=inline(n).trim(); if(t) blocks.push(t);
+  };
+  tmp.childNodes.forEach(walk);
+  return blocks.join('\n\n').replace(/\n{3,}/g,'\n\n').trim();
 }
 function openDraft(i){
   _draftIdx=i; const t=PK.topics[i];
@@ -3105,7 +3249,7 @@ function openDraft(i){
   document.getElementById('dm-sub').innerHTML=`<span class="mtag ${m.cls}">${m.label}</span><span class="dm-kw">↳ ${esc(t.keyword)}</span><span class="dm-rev">rev ${t.revision||1}</span><span class="qstatus qs-${t.status}">${cap(t.status)}</span>`;
   const edit=canEditContent();
   document.getElementById('dm-readonly').style.display=edit?'none':'block';
-  const body=document.getElementById('dm-body'); body.value=t.body; body.disabled=!edit;
+  dmSetBody(t.body); dmSetEditable(edit); dmSetMode(DM_MODE,false);
   renderDraftScore();
   const instr=document.getElementById('dm-instr'); instr.value=''; instr.disabled=!edit;
   ['dm-rewrite-btn','dm-save-btn','dm-approve-btn'].forEach(id=>document.getElementById(id).disabled=!edit);
@@ -3115,7 +3259,7 @@ function openDraft(i){
 function closeDraft(){ document.getElementById('draft-modal').classList.remove('open'); _draftIdx=null; }
 function saveDraft(){
   if(_draftIdx==null||!canEditContent()) return;
-  const t=PK.topics[_draftIdx]; t.body=document.getElementById('dm-body').value;
+  const t=PK.topics[_draftIdx]; t.body=dmGetBody(); dmSetBody(t.body);
   t.edited=true; if(t.status==='queued') t.status='drafted';
   if(!OFFLINE&&t._id){ sb.from('content_drafts').update({body:t.body, updated_at:new Date().toISOString()}).eq('topic_id', t._id).then(()=>{}); }
   renderQueue(); showToast('Draft saved — your edits overwrite the generated copy');
@@ -3150,7 +3294,7 @@ async function setLinkTarget(i,v){
 }
 function approveDraft(){
   if(_draftIdx==null||!canEditContent()) return;
-  const t=PK.topics[_draftIdx]; t.body=document.getElementById('dm-body').value;
+  const t=PK.topics[_draftIdx]; t.body=dmGetBody();
   const qa=qaScan(t.body);
   if(qa.blocking.length){ showToast('Cannot approve — '+qa.blocking[0], true); return; }
   if(qa.warnings.length) showToast('Approved with a style note: '+qa.warnings[0]);
@@ -3177,7 +3321,7 @@ function requestRewrite(){
     t.body=`[Rev ${t.revision} — rewritten per: "${instr}"]\n\n`+genBody(t);
     t.status='drafted';
     if(_draftIdx!=null){ // refresh modal if still open on same topic
-      const body=document.getElementById('dm-body'); body.value=t.body;
+      dmSetBody(t.body);
       document.getElementById('dm-instr').value='';
       document.getElementById('dm-sub').innerHTML=`<span class="mtag ${m.cls}">${m.label}</span><span class="dm-kw">↳ ${esc(t.keyword)}</span><span class="dm-rev">rev ${t.revision}</span><span class="qstatus qs-drafted">Drafted</span>`;
     }
@@ -5230,6 +5374,8 @@ document.getElementById('tiers').addEventListener('click',e=>{
 document.getElementById('modal').addEventListener('click',e=>{ if(e.target===document.getElementById('modal')) closeAddModal(); });
 document.getElementById('draft-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('draft-modal')) closeDraft(); });
 document.getElementById('dm-body').addEventListener('input', renderDraftScore);
+document.getElementById('dm-visual').addEventListener('input', renderDraftScore);
+try{ document.execCommand('defaultParagraphSeparator', false, 'p'); }catch(e){}
 document.getElementById('l-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
 
 // ════════════════════════════════════════════════════════════
