@@ -121,6 +121,8 @@ Deno.serve(async (req) => {
         "x-api-key": ANTHROPIC_KEY,
         "anthropic-version": ANTHROPIC_VERSION,
         "content-type": "application/json",
+        // needed by keys not scoped to one workspace (optional secret)
+        ...(Deno.env.get("ANTHROPIC_WORKSPACE_ID") ? { "anthropic-workspace-id": Deno.env.get("ANTHROPIC_WORKSPACE_ID")! } : {}),
       },
       body: JSON.stringify({
         model: apiModel,

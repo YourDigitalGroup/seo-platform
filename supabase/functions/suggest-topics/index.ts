@@ -89,9 +89,11 @@ Deno.serve(async (req) => {
       claimed.length ? `ALREADY COVERED (do NOT suggest anything answering the same search): ${(exT || []).filter((t: any) => t.status !== "retired").slice(0, 20).map((t: any) => t.target_keyword || t.title).join("; ")}.` : "",
     ].filter(Boolean).join("\n");
 
+    const wsid = Deno.env.get("ANTHROPIC_WORKSPACE_ID") || "";  // needed by keys not scoped to one workspace
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json",
+        ...(wsid ? { "anthropic-workspace-id": wsid } : {}) },
       body: JSON.stringify({
         model: "claude-sonnet-4-6", max_tokens: 1400,
         system: "You are a local-SEO content strategist. Return ONLY compact JSON, no prose, no markdown fences: " +

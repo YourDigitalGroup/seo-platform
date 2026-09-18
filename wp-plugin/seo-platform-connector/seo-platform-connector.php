@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Your Digital Group SEO Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from your agency's SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.9.0
+ * Version: 1.9.1
  * Author: Your Digital Group
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -19,7 +19,7 @@ if (defined('SEOP_VERSION')) {
     add_action('admin_init', function () {
         if (!function_exists('deactivate_plugins') || !current_user_can('activate_plugins')) return;
         $mine = plugin_basename(__FILE__);
-        if (version_compare(SEOP_VERSION, '1.9.0', '<')) {
+        if (version_compare(SEOP_VERSION, '1.9.1', '<')) {
             // the copy that loaded first is older — retire it, keep this one
             foreach ((array) get_option('active_plugins', []) as $p) {
                 if ($p !== $mine && basename($p) === basename(__FILE__)) deactivate_plugins($p, true);
@@ -38,7 +38,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.9.0');
+define('SEOP_VERSION', '1.9.1');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -53,6 +53,18 @@ function seop_ai_key() {
     if (defined('SEOP_ANTHROPIC_API_KEY') && SEOP_ANTHROPIC_API_KEY) return SEOP_ANTHROPIC_API_KEY;
     if (SEOP_BAKED_AI_KEY) return SEOP_BAKED_AI_KEY;
     return (string) get_option(SEOP_OPT_AI_KEY);
+}
+// v1.9.1: Anthropic WORKSPACE ID. Identity-linked API keys that are not scoped
+// to a single workspace must send an anthropic-workspace-id header on every
+// request or the API returns 400. Keys created scoped to one workspace need
+// nothing here. Same resolution order as the key; baked at zip time by
+// build-zip.sh (optional 2nd argument).
+define('SEOP_OPT_AI_WORKSPACE', 'seoplatform_anthropic_workspace');
+define('SEOP_BAKED_AI_WORKSPACE', '');
+function seop_ai_workspace() {
+    if (defined('SEOP_ANTHROPIC_WORKSPACE_ID') && SEOP_ANTHROPIC_WORKSPACE_ID) return SEOP_ANTHROPIC_WORKSPACE_ID;
+    if (SEOP_BAKED_AI_WORKSPACE) return SEOP_BAKED_AI_WORKSPACE;
+    return (string) get_option(SEOP_OPT_AI_WORKSPACE);
 }
 define('SEOP_OPT_AI_CRON',   'seoplatform_ai_cron');
 define('SEOP_OPT_AI_REPORT', 'seoplatform_ai_last_report');
@@ -760,15 +772,23 @@ function seop_package_rest($request) {
 function seop_claude($system, $user, $max = 600) {
     $key = seop_ai_key();
     if (!$key) return new WP_Error('seop_ai', 'no Anthropic API key configured');
+    $headers = ['x-api-key' => $key, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'];
+    // Keys not scoped to a single workspace must name the workspace per request.
+    if (seop_ai_workspace()) $headers['anthropic-workspace-id'] = seop_ai_workspace();
     $r = wp_remote_post('https://api.anthropic.com/v1/messages', [
         'timeout' => 60,
-        'headers' => ['x-api-key' => $key, 'anthropic-version' => '2023-06-01', 'content-type' => 'application/json'],
+        'headers' => $headers,
         'body' => wp_json_encode(['model' => SEOP_AI_MODEL, 'max_tokens' => $max, 'system' => $system,
             'messages' => [['role' => 'user', 'content' => $user]]]),
     ]);
     if (is_wp_error($r)) return $r;
     if (wp_remote_retrieve_response_code($r) !== 200) {
-        return new WP_Error('seop_ai', 'Anthropic ' . wp_remote_retrieve_response_code($r) . ': ' . substr((string) wp_remote_retrieve_body($r), 0, 160));
+        $bodyTxt = (string) wp_remote_retrieve_body($r);
+        $msg = 'Anthropic ' . wp_remote_retrieve_response_code($r) . ': ' . substr($bodyTxt, 0, 160);
+        if (stripos($bodyTxt, 'workspace') !== false && !seop_ai_workspace()) {
+            $msg .= ' — this API key is not scoped to a workspace. Paste the Anthropic workspace ID (wrkspc_…) in the AI auto-fix settings below, or replace the key with one created for a single workspace.';
+        }
+        return new WP_Error('seop_ai', $msg);
     }
     $body = json_decode(wp_remote_retrieve_body($r), true);
     $text = '';
@@ -1072,6 +1092,7 @@ function seop_settings_page() {
     $aiReport = null;
     if (isset($_POST['seop_ai_save']) && check_admin_referer('seop_ai')) {
         if (!empty($_POST['seop_ai_key'])) update_option(SEOP_OPT_AI_KEY, sanitize_text_field($_POST['seop_ai_key']));
+        if (isset($_POST['seop_ai_workspace'])) update_option(SEOP_OPT_AI_WORKSPACE, sanitize_text_field($_POST['seop_ai_workspace']));
         $cron = !empty($_POST['seop_ai_cron']);
         update_option(SEOP_OPT_AI_CRON, $cron ? 1 : 0);
         wp_clear_scheduled_hook('seop_ai_autofix_event');
@@ -1123,6 +1144,12 @@ function seop_settings_page() {
         echo '<tr><th>Anthropic API key</th><td><em>Built into this plugin build — nothing to enter.</em></td></tr>';
     } else {
         echo '<tr><th>Anthropic API key</th><td><input type="password" name="seop_ai_key" placeholder="' . ($hasAiKey ? '•••••••• (saved — enter to replace)' : 'sk-ant-…') . '" style="width:340px"> <em>' . ($hasAiKey ? 'configured' : 'not set') . '</em></td></tr>';
+    }
+    if (SEOP_BAKED_AI_WORKSPACE || (defined('SEOP_ANTHROPIC_WORKSPACE_ID') && SEOP_ANTHROPIC_WORKSPACE_ID)) {
+        echo '<tr><th>Anthropic workspace</th><td><em>Built into this plugin build — nothing to enter.</em></td></tr>';
+    } else {
+        $ws = (string) get_option(SEOP_OPT_AI_WORKSPACE);
+        echo '<tr><th>Anthropic workspace ID</th><td><input type="text" name="seop_ai_workspace" value="' . esc_attr($ws) . '" placeholder="wrkspc_…" style="width:340px"> <em>only needed when the API key is not scoped to a single workspace — a “must include the anthropic-workspace-id header” error means fill this in</em></td></tr>';
     }
     echo '<tr><th>Weekly auto-fix</th><td><label><input type="checkbox" name="seop_ai_cron" value="1"' . (get_option(SEOP_OPT_AI_CRON) ? ' checked' : '') . '> Run automatically every week (keeps new pages covered)</label></td></tr>';
     echo '</table><p><button class="button" name="seop_ai_save" value="1">Save AI settings</button></p></form>';

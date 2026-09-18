@@ -256,8 +256,12 @@ async function runAuditPipeline(body: any): Promise<Response> {
     const writeAI = async (system: string, user: string, max = 500): Promise<string> => {
       if (!AI_KEY) return "";
       try {
+        // ANTHROPIC_WORKSPACE_ID (optional secret): required by keys that are
+        // not scoped to a single workspace; harmless to omit otherwise.
+        const wsid = Deno.env.get("ANTHROPIC_WORKSPACE_ID") || "";
         const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
-          headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json",
+            ...(wsid ? { "anthropic-workspace-id": wsid } : {}) },
           body: JSON.stringify({ model: "claude-haiku-4-5", max_tokens: max, system, messages: [{ role: "user", content: user }] }) });
         if (!r.ok) { errors.push(`classify ${r.status}`); return ""; }
         const d = await r.json(); return (d.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
