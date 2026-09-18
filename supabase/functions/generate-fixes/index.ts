@@ -90,9 +90,11 @@ Deno.serve(async (req) => {
     // Call the AI writer once; return plain text.
     const writeAI = async (model: string, system: string, user: string, maxTokens = 700): Promise<string> => {
       if (!AI_KEY) throw new Error("AI writer key is not set");
+      const wsid = Deno.env.get("ANTHROPIC_WORKSPACE_ID") || "";  // needed by keys not scoped to one workspace
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json",
+          ...(wsid ? { "anthropic-workspace-id": wsid } : {}) },
         body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
       });
       if (!r.ok) throw new Error(`AI writer ${r.status}: ${(await r.text()).slice(0, 200)}`);
