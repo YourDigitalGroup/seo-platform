@@ -9,7 +9,8 @@
 //             (Set a long random value: Edge Functions → report-feed →
 //             Secrets. The token travels in the URL because SmartConnectors
 //             can't send custom headers — treat the URL itself as a secret.)
-//   · view    audits | clients | content | deliverables — the looker_* views
+//   · view    audits | clients | content | deliverables | reports |
+//             report_grades | report_items — the looker_* views
 //             from supabase/migrations/looker_views.sql (run that first).
 //             Whitelisted names only; nothing else is reachable.
 //   · format  csv (default) | json
@@ -39,6 +40,10 @@ const VIEWS: Record<string, { table: string; order: string; asc: boolean }> = {
   clients:      { table: "looker_clients",      order: "name",         asc: true  },
   content:      { table: "looker_content",      order: "created_at",   asc: false },
   deliverables: { table: "looker_deliverables", order: "month_offset", asc: true  },
+  // the full client progress report (generate-report 2.2.0+ snapshots)
+  reports:       { table: "looker_reports",       order: "report_date",  asc: false },
+  report_grades: { table: "looker_report_grades", order: "report_date",  asc: false },
+  report_items:  { table: "looker_report_items",  order: "report_date",  asc: false },
 };
 
 const csvCell = (v: unknown): string => {

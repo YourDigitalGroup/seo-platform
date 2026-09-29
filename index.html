@@ -977,7 +977,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.22.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.22.1</div>
   </div>
   </div>
 </div>
@@ -1062,7 +1062,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.22.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.22.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1110,7 +1110,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.22.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.22.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1268,7 +1268,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.22.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.22.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1302,7 +1302,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.22.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.22.1</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3299,7 +3299,10 @@ function approveDraft(){
   if(qa.blocking.length){ showToast('Cannot approve — '+qa.blocking[0], true); return; }
   if(qa.warnings.length) showToast('Approved with a style note: '+qa.warnings[0]);
   t.status='approved';
-  if(!OFFLINE&&t._id){ sb.from('content_drafts').update({approved:true, body:t.body}).eq('topic_id', t._id).then(()=>{}); }
+  if(!OFFLINE&&t._id){
+    sb.from('content_drafts').update({approved:true, body:t.body}).eq('topic_id', t._id).then(()=>{});
+    sb.from('content_topics').update({status:'approved'}).eq('id', t._id).then(()=>{});
+  }
   // Approval trail: post to the client's Trello card (best-effort, silent).
   if(!OFFLINE&&activeClient&&activeClient.trello_card_id){
     sb.functions.invoke('trello',{body:{action:'comment', client_id:activeClient.id,

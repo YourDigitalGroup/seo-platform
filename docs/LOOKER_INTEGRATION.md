@@ -1,74 +1,89 @@
 # Looker Studio + TapClicks integration
 
-Two ways out of the platform, both fed by the same four reporting views
-(`looker_views.sql`): a **live PostgreSQL connection** (best for Looker
-Studio) and a **token-protected CSV feed** (best for TapClicks, and the
-fallback for Looker when direct DB access is blocked). TapClicks setup is at
-the bottom.
+Everything in the client **SEO & AEO Progress Report** (all eight sections,
+every number, list, grade and plan item) is available to Looker Studio and
+TapClicks. Both tools connect the same way: TapClicks' PostgreSQL connector
+takes the same connection details as Looker's. A token-protected CSV feed is
+the fallback for TapClicks plans without a database connector.
 
+## What's in the data source
 
-Goal: the platform's audit scores, grades, roster state and content pipeline
-in Looker Studio, refreshed automatically, fully whitelabel-safe.
+`supabase/migrations/looker_views.sql` creates seven read-only views.
 
-## Recommended path: direct PostgreSQL connection (no exports, no cron)
+**The progress report.** Each time a report is built, `generate-report`
+2.2.0+ saves exactly what it rendered, so these views match the PDF:
 
-Supabase is plain PostgreSQL, and Looker Studio has a native PostgreSQL
-connector — so the report data can be LIVE with zero pipeline code.
+| View | One row per | Covers |
+|---|---|---|
+| `looker_reports` | report | every headline number: program month/phase/state + summary (§1), content published, fixes deployed, schema types, audit checks passing vs baseline (§2), this cycle's counts (§3), Search Console query surface/impressions/clicks/striking distance with last-cycle and baseline (§4), ranking keywords, est. visits, domain authority with baseline and the delta notes (§5), AEO readiness %, AI citation metrics (§6), next-actions count and review flag (§8). `is_latest` marks each client's newest report. |
+| `looker_report_grades` | pillar per report | §7: baseline / last cycle / now, not-assessed + coverage, regression, and the "Notes & next moves" text |
+| `looker_report_items` | list line per report | every table in the report, keyed by `section`: `content_by_type`, `schema_types` (§2) · `fixes_deployed`, `content_published` (§3) · `gsc_trend`, `early_movement` (§4) · `position_improvements`, `newly_ranking` (§5) · `citation_trend` (§6) · `next_actions`, `verified_fixed`, `not_pursuing`, `roadmap` (§8) |
 
-1. **Run `supabase/migrations/looker_views.sql`** (SQL Editor). It creates
-   four flattened views — `looker_audits` (scores/grades per audit run),
-   `looker_clients` (roster + latest score), `looker_content` (content
-   pipeline), `looker_deliverables` (campaign fulfillment: planned vs
-   delivered per month) — and a `looker_reader` role that can read ONLY
-   those views: no API keys, no intake PII, no raw tables.
-2. **Set the role's password**: `alter role looker_reader password '…';`
-3. **Connection details** (Supabase → Settings → Database): use the
-   **session pooler** host, port 5432, database `postgres`, user
-   `looker_reader`. Looker Studio requires SSL — enable it in the connector.
-4. In Looker Studio: *Create → Data source → PostgreSQL* → enter the above →
-   pick a view. Blend the three views on `client_id` as needed.
+**Platform data** (live, not tied to a report build):
 
-Every audit (daily, via the scheduler) lands in the views immediately —
-Looker's cache refreshes on its own schedule (default 12h, configurable to 1h).
+| View | One row per |
+|---|---|
+| `looker_audits` | audit run: score, all grades, headline metrics |
+| `looker_clients` | client: roster, contract, latest score |
+| `looker_content` | content piece: pipeline status |
+| `looker_deliverables` | campaign deliverable: planned vs delivered per month |
+
+Every view carries `client_id`, `client_url` and `partner_group`. Blend on
+`report_id` (report views) or `client_id` (everything).
+
+## Setup — once, in Supabase
+
+1. **SQL Editor → paste `looker_views.sql` → Run.** Safe to re-run: it never
+   resets the reader password.
+2. **Redeploy `generate-report`** (2.2.0) so reports start saving snapshots.
+3. **Populate every client now** instead of waiting for Monday's weekly run:
+   `select seop_invoke_scheduler('weekly-reports');` in the SQL Editor.
+4. **Reader password** (first time only):
+   `alter role looker_reader password '…';`
+
+## Connection details (paste into both tools)
+
+Supabase → **Connect** (top bar) → Connection String → **Session pooler**.
+
+| Field | Value |
+|---|---|
+| Connector | PostgreSQL (not MySQL) |
+| Host | the pooler host, e.g. `aws-0-us-east-2.pooler.supabase.com` |
+| Port | 5432 |
+| Database | postgres |
+| Username | `looker_reader.<project-ref>`, where the project ref is Project Settings → General → Project ID |
+| Password | the looker_reader password |
+| SSL | on; upload the certificate from Database → Settings → SSL Configuration (rename `.crt` → `.pem` if the picker asks for PEM) |
+
+**Looker Studio:** Create → Data source → PostgreSQL → the above → pick a
+view. **TapClicks:** Connections → PostgreSQL → the same values.
+
+Every daily audit and weekly report build lands in the views immediately.
+Looker's cache refresh defaults to 12h; set data freshness to 1h if needed.
 
 ## Whitelabel notes
-- `partner_group` is on every row — filter each partner's Looker report to
-  their own group and brand the report theme to them.
-- The views deliberately exclude 44i-internal fields (keys, Trello ids,
-  intake contact details).
+- Filter each partner's dashboard on `partner_group`.
+- The views exclude internal fields (keys, Trello ids, intake contact details).
+  `looker_report_items` section `review_flags` is internal (strategist-review
+  triggers), so leave it off client-facing dashboards.
 
-## The CSV feed — `report-feed` Edge Function
+## Fallback: the CSV feed (`report-feed` Edge Function)
 
-For pullers that want a URL instead of a database (TapClicks, Sheets,
-Looker-without-DB-access):
+For TapClicks plans without a database connector (SmartConnector pulls a URL):
 
 1. **Deploy** `supabase/functions/report-feed/index.ts` as `report-feed`.
-2. **Set the secret** `REPORT_FEED_TOKEN` to a long random string (32+ chars;
-   Edge Functions → report-feed → Secrets).
-3. **Turn OFF "Enforce JWT verification"** for this one function (Edge
-   Functions → report-feed → Details) — BI pullers can't send Supabase JWTs;
-   the token is the gate.
-4. Feed URLs (treat them as secrets — the token rides in the URL):
+2. **Set the secret** `REPORT_FEED_TOKEN` to a long random string (32+ chars).
+3. **Turn OFF "Enforce JWT verification"** for this one function. BI pullers
+   can't send Supabase JWTs, so the token is the gate.
+4. Feed URLs (treat them as secrets, since the token rides in the URL):
 
-   `https://YOURPROJECT.supabase.co/functions/v1/report-feed?token=TOKEN&view=audits`
+   `https://YOURPROJECT.supabase.co/functions/v1/report-feed?token=TOKEN&view=reports`
 
-   - `view=` `audits` · `clients` · `content` · `deliverables`
+   - `view=` `reports` · `report_grades` · `report_items` · `audits` ·
+     `clients` · `content` · `deliverables`
    - `&format=json` for JSON instead of CSV
-   - `&group=Partner Name` → a per-partner feed for whitelabeled dashboards
-   - `&days=90` (audits only) → trailing window
+   - `&group=Partner Name` for a per-partner feed
+   - `&days=90` (audits only) for a trailing window
 
-## TapClicks setup (SmartConnector)
-
-TapClicks ingests scheduled CSV pulls via SmartConnectors:
-
-1. TapClicks → **Connections → SmartConnectors → New**, source type **URL**.
-2. Paste a feed URL per view (start with `view=audits` and
-   `view=deliverables`). Set the fetch schedule to daily, ~13:00 UTC — after
-   the platform's 11:00 UTC audit sweep.
-3. Map fields when prompted: `run_at` = date, `score` + grade columns =
-   metrics, `client_url`/`partner_group` = dimensions.
-4. For per-partner TapClicks clients, create one SmartConnector per partner
-   using `&group=…` so each only ever sees their own rows.
-
-SmartConnectors are a TapClicks plan feature — if the option is missing from
-the menu, it needs enabling on the TapClicks subscription.
+In TapClicks: Connections → SmartConnectors → New → URL, one per view,
+fetched daily after 13:00 UTC.

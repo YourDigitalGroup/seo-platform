@@ -120,7 +120,7 @@ board columns" lists them by name. Each user row also takes a Trello
 one checklist per campaign month with that month's deliverables.
 Both need `supabase/migrations/platform_extras.sql` run first (draft image
 columns, topic link_target, clients.trello_card_id). For Looker Studio and
-TapClicks, run `looker_views.sql`, deploy `report-feed` (secret:
+TapClicks (the full progress report — every section — plus platform data), run `looker_views.sql`, redeploy `generate-report` (2.2.0 saves the report snapshots the views read), deploy `report-feed` (secret:
 `REPORT_FEED_TOKEN`, 32+ random chars; turn OFF "Enforce JWT verification"
 for this one function), and see docs/LOOKER_INTEGRATION.md. Reserved for the
 reputation-monitoring integration: secret `REP_MONITORING_API_KEY` (key
