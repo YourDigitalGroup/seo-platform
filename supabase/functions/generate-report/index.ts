@@ -24,15 +24,22 @@
 //  · WHITE-LABEL. Branded with the client's partner group (name, logo, color);
 //    44i Digital only when the client has no group.
 //
+//  · BI SNAPSHOT. Every figure, list and grade the report renders is also
+//    written as structured data to report_snapshots (one row per package +
+//    audit), which the looker_report* views flatten for Looker Studio and
+//    TapClicks — so the dashboards show exactly what the PDF shows.
+//
 //  Deploy: Edge Functions → generate-report → redeploy.
 //  Requires: report_storage_migration.sql (report_html/report_meta on
-//  packages) and report_baseline.sql (clients.baseline_audit_id).
+//  packages), report_baseline.sql (clients.baseline_audit_id), and
+//  looker_views.sql (report_snapshots — the report still builds without it).
 //  Input:  { "package_id": "<uuid>" } or { "client_id": "<uuid>" }
-//  Returns { ok, html, meta } — and persists html+meta on the package row.
+//  Returns { ok, html, meta, report_data } — and persists html+meta on the
+//  package row plus the snapshot row.
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const REPORT_VERSION = "2.1.0";
+const REPORT_VERSION = "2.2.0";
 const MIN_WINDOW_DAYS = 28;   // lagging deltas need at least this much time
 const PCT_FLOOR = 30;         // no % change on a base smaller than this
 const NA_COVERAGE_MIN = 0.5;  // pillar shows "not assessed" below this check coverage
@@ -50,6 +57,23 @@ const num = (n: unknown, def = "—") => (n == null || (typeof n === "number" &&
 const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "—";
 const days = (a: string, b: string) => Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
 const monthsBetween = (a: string, b: string) => Math.max(0, (new Date(b).getUTCFullYear() - new Date(a).getUTCFullYear()) * 12 + (new Date(b).getUTCMonth() - new Date(a).getUTCMonth()));
+
+// Section 1 narrative per program state — shared by the PDF and the snapshot.
+const STATE_COPY: Record<string, string> = {
+  foundation: "This engagement is in the foundation phase: assets are being built and deployed, and the search engines are discovering them. Measurable ranking and traffic movement follows indexation — typically from the second and third month onward.",
+  emerging: "Leading indicators are moving — the site is surfacing for more queries and positions are improving — while lagging outcomes (traffic, top rankings) follow behind them. This is the expected order: visibility first, clicks second.",
+  compounding: "Both leading and lagging indicators are moving. The assets built earlier in the program are now producing measurable outcomes, and each cycle's work adds to a base that keeps working.",
+  building: "Measured movement is limited so far this program. The work shipped is accumulating (see the asset ledger), and the leading-indicator section below shows the earliest signals we track ahead of rankings and traffic.",
+  plateau: `Leading indicators have been flat past the point where movement is expected. That requires a changed plan, not patience — the next-cycle section reflects a revised approach, and this report has been flagged for strategist review.`,
+};
+const FIX_LABELS: Record<string, string> = { title_tag: "Title tags", meta_description: "Meta descriptions", h1: "H1 headings", image_alt: "Image alt text", page_copy: "Page copy", faq_schema: "FAQ schema", local_business_schema: "LocalBusiness schema", org_schema: "Organization schema", person_schema: "Person schema", breadcrumb_schema: "Breadcrumb schema", aggregate_rating_schema: "Rating schema", internal_link: "Internal links", canonical: "Canonicals", robots_txt: "robots.txt", sitemap_xml: "XML sitemap", security_headers: "Security headers", og_tags: "Social tags", llms_txt: "llms.txt", redirect_map: "Redirects", website_schema: "WebSite schema", favicon: "Favicon", gbp_post: "Business Profile posts" };
+const stripTags = (s: string) => String(s || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+// Plain-text twin of the pillar "Notes & next moves" cell.
+const gradeNotesText = (g: any) => [
+  g.regression ? `Moved down. ${g.cause} ${g.remediation}` : "",
+  g.suppressed ? "Measurement coverage too low this cycle to grade honestly." : "",
+  g.plan || "",
+].filter(Boolean).join(" ");
 
 // A lagging-metric delta cell honoring window + base-floor rules.
 function laggingDelta(nowV: number | null, beforeV: number | null, windowDays: number, unit = ""): string {
@@ -231,9 +255,20 @@ Deno.serve(async (req) => {
 
     // ── 8. Cumulative asset ledger (program-to-date) ─────────────────────────
     const { data: allTopics } = await supa.from("content_topics")
-      .select("kind, status, packages!inner(client_id)").eq("packages.client_id", client.id);
+      .select("id, kind, status, packages!inner(client_id)").eq("packages.client_id", client.id);
+    // Approving a draft flags content_drafts.approved — older consoles never
+    // copied that onto the topic's status, so a topic counts as done when
+    // EITHER says so (otherwise section 2 read 0 while section 3 listed 6).
+    const { data: clientPkgs } = await supa.from("packages").select("id").eq("client_id", client.id);
+    const approvedTopicIds = new Set<string>();
+    const pkgIds = (clientPkgs || []).map((p: any) => p.id);
+    if (pkgIds.length) {
+      const { data: ad } = await supa.from("content_drafts").select("topic_id").in("package_id", pkgIds).eq("approved", true);
+      (ad || []).forEach((d: any) => { if (d.topic_id) approvedTopicIds.add(d.topic_id); });
+    }
     const publishedByKind: Record<string, number> = {};
-    (allTopics || []).filter((t: any) => t.status === "approved" || t.status === "published").forEach((t: any) => { publishedByKind[t.kind] = (publishedByKind[t.kind] || 0) + 1; });
+    (allTopics || []).filter((t: any) => t.status !== "retired" && (t.status === "approved" || t.status === "published" || approvedTopicIds.has(t.id)))
+      .forEach((t: any) => { publishedByKind[t.kind] = (publishedByKind[t.kind] || 0) + 1; });
     const auditIds = audits.map((a: any) => a.id);
     let cumulativeFixes = 0;
     if (auditIds.length) {
@@ -305,9 +340,81 @@ Deno.serve(async (req) => {
       review_recommended: reviewFlags.length > 0, review_flags: reviewFlags, violations: [],
       sources: { ahrefs: true, gsc: gscConnected, ga4: false, ai_citations: !!brandRadar },
     };
+    // ── 13. BI snapshot — everything the PDF shows, as structured data ───────
+    const pctOf = (a: number, b: number) => b ? Math.round((a / b) * 100) : null;
+    const deltaOf = (a: any, b: any) => (a != null && b != null) ? Number(a) - Number(b) : null;
+    const cycleByKind: Record<string, number> = {}; (pushedFixes || []).forEach((f: any) => { cycleByKind[f.kind] = (cycleByKind[f.kind] || 0) + 1; });
+    const reportData = {
+      report_version: REPORT_VERSION,
+      // cover + section 1
+      report_date: currentAudit.run_at, baseline_date: baseline.run_at, last_cycle_date: lastPrior?.run_at || null,
+      brand: brand.name || null, client_name: clientName, market: raw.tradeArea?.primary || client.market || null,
+      business_type: raw.business?.type || null, is_first_cycle: isFirstCycle, baseline_locked: baselineLocked,
+      program_month: programMonth, phase, state, state_summary: STATE_COPY[state] || STATE_COPY.building,
+      program_days: programDays, cycle_days: cycleDays, window_ok: windowOK, audit_score: currentAudit.score ?? null,
+      // section 2 — owned assets, program-to-date
+      content_published_total: Object.values(publishedByKind).reduce((a: number, b: number) => a + b, 0),
+      content_by_type: Object.entries(publishedByKind).map(([kind, count]) => ({ kind, type: prettyKind(kind), count })),
+      fixes_deployed_total: cumulativeFixes,
+      schema_types_count: schemaTypes.length, schema_types: schemaTypes,
+      checks_passing: passNow, checks_total: clNow.length, checks_passing_baseline: passBase,
+      // section 3 — this cycle's work
+      cycle_fixes_deployed: (pushedFixes || []).length,
+      cycle_fixes_by_kind: Object.entries(cycleByKind).map(([kind, count]) => ({ kind, label: FIX_LABELS[kind] || kind, count })),
+      cycle_content_count: gatedDrafts.length, near_duplicates_consolidated: gatedCount,
+      cycle_content: gatedDrafts.map((c: any) => ({ title: c.title || "(untitled)", kind: c.kind, type: prettyKind(c.kind) })),
+      // section 4 — Google Search Console (measured)
+      gsc_connected: gscConnected,
+      gsc_queries: gscNow?.queries ?? null, gsc_impressions: gscNow?.impressions ?? null,
+      gsc_clicks: gscNow?.clicks ?? null, gsc_striking: gscNow?.striking ?? null,
+      gsc_queries_last_cycle: gscPrior?.queries ?? null, gsc_queries_delta: gscPrior ? deltaOf(gscNow?.queries, gscPrior.queries) : null,
+      gsc_impressions_last_cycle: gscPrior?.impressions ?? null, gsc_clicks_last_cycle: gscPrior?.clicks ?? null,
+      gsc_queries_baseline: gscBase?.queries ?? null, gsc_impressions_baseline: gscBase?.impressions ?? null, gsc_clicks_baseline: gscBase?.clicks ?? null,
+      gsc_trend: gscTrend,
+      // section 5 — rankings & traffic (modeled estimates)
+      ranking_keywords: currentAudit.org_keywords ?? null, ranking_keywords_baseline: baseline.org_keywords ?? null,
+      ranking_keywords_delta: deltaOf(currentAudit.org_keywords, baseline.org_keywords),
+      ranking_keywords_delta_note: stripTags(laggingDelta(currentAudit.org_keywords, baseline.org_keywords, programDays)),
+      est_visits: currentAudit.org_traffic ?? null, est_visits_baseline: baseline.org_traffic ?? null,
+      est_visits_delta: deltaOf(currentAudit.org_traffic, baseline.org_traffic),
+      est_visits_delta_note: stripTags(laggingDelta(currentAudit.org_traffic, baseline.org_traffic, programDays)),
+      domain_authority: currentAudit.domain_rating ?? null, domain_authority_baseline: baseline.domain_rating ?? null,
+      position_improvements: improvements.slice(0, 12).map((m: any) => ({ keyword: m.keyword, volume: m.volume, before: m.before, after: m.after })),
+      newly_ranking: newlyRanking.slice(0, 10).map((m: any) => ({ keyword: m.keyword, volume: m.volume, after: m.after })),
+      deep_moves: deepMoves.slice(0, 8).map((m: any) => ({ keyword: m.keyword, before: m.before, after: m.after })),
+      yoy_available: !!yoyAudit,
+      yoy_keywords_then: yoyAudit?.org_keywords ?? null, yoy_visits_then: yoyAudit?.org_traffic ?? null,
+      // section 6 — AI visibility
+      aeo_readiness_pct: pctOf(aeoReadyPass, aeoReadyTotal), aeo_ready_pass: aeoReadyPass, aeo_ready_total: aeoReadyTotal,
+      ai_citations_live: !!brandRadar,
+      ai_mentions: brandRadar?.mentions ?? null,
+      ai_share_of_voice_pct: brandRadar?.ourSov != null ? Math.round(brandRadar.ourSov * 100) : null,
+      ai_top_competitor: brandRadar?.topCompetitor?.brand ?? null,
+      ai_top_competitor_sov_pct: brandRadar?.topCompetitor?.sov != null ? Math.round(brandRadar.topCompetitor.sov * 100) : null,
+      citation_trend: radarTrend.map((t: any) => ({ date: t.date, mentions: t.mentions, sov_pct: t.sov != null ? Math.round(t.sov * 100) : null })),
+      // section 7 — pillar grades
+      grades: gradeRows.map((g: any, i: number) => ({
+        pillar: g.label, key: g.pillar, sort: i + 1,
+        baseline: g.base, last_cycle: g.prior, now: g.suppressed ? null : g.now, not_assessed: g.suppressed,
+        coverage_pct: Math.round(g.coverage * 100), regression: g.regression, notes: gradeNotesText(g),
+      })),
+      // section 8 — next cycle
+      verified_fixed_count: learnedFixed.length, verified_fixed: learnedFixed,
+      next_actions: nextActions.map((i: any) => ({ title: i.title, action: i.action || "", program_area: i.service || "" })),
+      not_pursuing: gateRejects.map((r: any) => ({ keyword: r.keyword, reason: r.reason })),
+      roadmap: roadmap.map((i: any) => ({ title: i.title })),
+      review_recommended: reviewFlags.length > 0, review_flags: reviewFlags,
+    };
+    const { error: snapErr } = await supa.from("report_snapshots").upsert({
+      client_id: client.id, package_id: pkg.id, audit_id: currentAudit.id,
+      report_date: currentAudit.run_at, report_version: REPORT_VERSION, built_at: meta.generated_at, data: reportData,
+    }, { onConflict: "package_id,audit_id" });
+    if (snapErr) console.warn("report_snapshots not written — run looker_views.sql:", snapErr.message);
+    (meta as any).snapshot_saved = !snapErr;
+
     try { await supa.from("packages").update({ report_html: html, report_built_at: meta.generated_at, report_meta: meta }).eq("id", pkg.id); } catch (_) { /* columns ship in report_storage_migration.sql */ }
 
-    return json({ ok: true, html, meta, baseline: baseline.run_at, current: currentAudit.run_at,
+    return json({ ok: true, html, meta, report_data: reportData, baseline: baseline.run_at, current: currentAudit.run_at,
       deltas: { improvements: improvements.length, newlyRanking: newlyRanking.length, executedFixes: (pushedFixes || []).length, publishedContent: gatedDrafts.length } });
   } catch (e) {
     console.error("generate-report fatal", e);
@@ -366,14 +473,6 @@ function renderHTML(d: any): string {
     .footer { margin-top: 30pt; padding-top: 12pt; border-top: 1px solid #e3e7ee; font-size: 8.5pt; color: #6b7686; text-align: center; }
   `;
 
-  const STATE_COPY: Record<string, string> = {
-    foundation: "This engagement is in the foundation phase: assets are being built and deployed, and the search engines are discovering them. Measurable ranking and traffic movement follows indexation — typically from the second and third month onward.",
-    emerging: "Leading indicators are moving — the site is surfacing for more queries and positions are improving — while lagging outcomes (traffic, top rankings) follow behind them. This is the expected order: visibility first, clicks second.",
-    compounding: "Both leading and lagging indicators are moving. The assets built earlier in the program are now producing measurable outcomes, and each cycle's work adds to a base that keeps working.",
-    building: "Measured movement is limited so far this program. The work shipped is accumulating (see the asset ledger), and the leading-indicator section below shows the earliest signals we track ahead of rankings and traffic.",
-    plateau: `Leading indicators have been flat past the point where movement is expected. That requires a changed plan, not patience — the next-cycle section reflects a revised approach, and this report has been flagged for strategist review.`,
-  };
-
   const cover = `
   <section class="cover">
     ${brand.logo ? `<img class="logo" src="${esc(brand.logo)}" alt="${esc(brand.name)}">` : ""}
@@ -418,7 +517,6 @@ function renderHTML(d: any): string {
     ${ledgerRows ? `<h4>Published content by type</h4><table><thead><tr><th>Type</th><th class="num">Total</th></tr></thead><tbody>${ledgerRows}</tbody></table>` : ""}
   </section>`;
 
-  const FIX_LABELS: Record<string, string> = { title_tag: "Title tags", meta_description: "Meta descriptions", h1: "H1 headings", image_alt: "Image alt text", page_copy: "Page copy", faq_schema: "FAQ schema", local_business_schema: "LocalBusiness schema", org_schema: "Organization schema", person_schema: "Person schema", breadcrumb_schema: "Breadcrumb schema", aggregate_rating_schema: "Rating schema", internal_link: "Internal links", canonical: "Canonicals", robots_txt: "robots.txt", sitemap_xml: "XML sitemap", security_headers: "Security headers", og_tags: "Social tags", llms_txt: "llms.txt", redirect_map: "Redirects", website_schema: "WebSite schema", favicon: "Favicon", gbp_post: "Business Profile posts" };
   const byKind: Record<string, number> = {}; pushedFixes.forEach((f: any) => { byKind[f.kind] = (byKind[f.kind] || 0) + 1; });
   const work = `
   <section style="page-break-before: always;">

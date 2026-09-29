@@ -200,6 +200,7 @@ Deno.serve(async (req) => {
       await zap("gsc_queries", "client_id", [cid]);
       await zap("deliverables", "client_id", [cid]);
       await zap("audit_jobs", "client_id", [cid]);
+      await zap("report_snapshots", "client_id", [cid]);
       await zap("packages", "id", packageIds);
       await zap("audits", "id", auditIds);
 
