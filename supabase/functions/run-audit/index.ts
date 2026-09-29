@@ -143,7 +143,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.9.1";
+const ENGINE_VERSION = "5.9.2";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -676,15 +676,16 @@ async function runAuditPipeline(body: any): Promise<Response> {
     //        via PAGESPEED_API_KEY). Prefers real-user CrUX field data, falls
     //        back to lab data, then to our own TTFB/payload heuristics.
     let psi: any = null;
-    try {
-      const PSI_KEY = Deno.env.get("PAGESPEED_API_KEY") || Deno.env.get("GOOGLE_PLACES_API_KEY") || ""; // keyless PSI shares a tiny per-IP quota across all of Supabase — always use a key
-      const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 45000);
-      const pr = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(home)}&strategy=mobile&category=performance${PSI_KEY ? `&key=${PSI_KEY}` : ""}`, { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (pr.ok) {
+    const PSI_KEY = Deno.env.get("PAGESPEED_API_KEY") || Deno.env.get("GOOGLE_PLACES_API_KEY") || ""; // keyless PSI shares a tiny per-IP quota across all of Supabase — always use a key
+    const runPsi = async (): Promise<any> => {
+      try {
+        const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 45000);
+        const pr = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(home)}&strategy=mobile&category=performance${PSI_KEY ? `&key=${PSI_KEY}` : ""}`, { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (!pr.ok) { errors.push(`pagespeed ${pr.status}: ${(await pr.text()).slice(0, 120)}`); return null; }
         const d = await pr.json(); const lh = d.lighthouseResult; const au = lh?.audits ?? {}; const cx = d.loadingExperience?.metrics ?? {};
         const ms = (k: string) => au[k]?.numericValue ?? null;
-        psi = {
+        return {
           score: lh?.categories?.performance?.score != null ? Math.round(lh.categories.performance.score * 100) : null,
           lcp_ms: cx.LARGEST_CONTENTFUL_PAINT_MS?.percentile ?? ms("largest-contentful-paint"),
           cls: cx.CUMULATIVE_LAYOUT_SHIFT_SCORE?.percentile != null ? cx.CUMULATIVE_LAYOUT_SHIFT_SCORE.percentile / 100 : ms("cumulative-layout-shift"),
@@ -695,9 +696,24 @@ async function runAuditPipeline(body: any): Promise<Response> {
           fixables: ["render-blocking-resources", "modern-image-formats", "uses-responsive-images", "uses-text-compression", "unused-javascript", "uses-long-cache-ttl"]
             .filter((k) => au[k] && au[k].score != null && au[k].score < 0.9).map((k) => au[k].title || k),
         };
-        note.push(`PageSpeed measured (mobile perf ${psi.score ?? "—"}, ${psi.field ? "field" : "lab"} data).`);
-      } else { errors.push(`pagespeed ${pr.status}: ${(await pr.text()).slice(0, 120)}`); }
-    } catch (e) { errors.push(`pagespeed: ${String(e)}`); }
+      } catch (e) { errors.push(`pagespeed: ${String(e)}`); return null; }
+    };
+    // A single lab run on a cold page cache (common on WordPress) can read an
+    // F where the very next run reads a B. Warm the cache the way a phone
+    // visitor would, and re-measure once when the first reading is weak;
+    // the better of the two runs is the site's normal, cached performance.
+    try {
+      await fetch(home, { redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36" } });
+    } catch (_) { /* warm-up is best effort */ }
+    psi = await runPsi();
+    if (psi && psi.score != null && psi.score < 80) {
+      const retake = await runPsi();
+      if (retake && retake.score != null && retake.score > psi.score) {
+        note.push(`PageSpeed re-measured on a warm cache: ${psi.score} → ${retake.score}.`);
+        psi = retake;
+      }
+    }
+    if (psi) note.push(`PageSpeed measured (mobile perf ${psi.score ?? "—"}, ${psi.field ? "field" : "lab"} data).`);
     if (!psi) { psi = { score: null, lcp_ms: null, cls: null, inp_ms: null, tbt_ms: null, ttfb_ms: ttfbMs, field: false, fixables: [] };
       note.push("PageSpeed unavailable — performance graded from response-time heuristics only."); }
 
