@@ -56,8 +56,16 @@ select cron.schedule('seop-daily-audits',   '0 11 * * *', $$select seop_invoke_s
 select cron.schedule('seop-weekly-reports', '0 13 * * 1', $$select seop_invoke_scheduler('weekly-reports')$$);
 
 -- 4 · fire the daily job right now (audits fresher than 20h are skipped, so
---     this is safe — it only reaches clients the schedule has been missing)
-select seop_invoke_scheduler('daily-audits') as fired_request_id;
+--     this is safe — it only reaches clients the schedule has been missing).
+--     Missing Vault secrets must not abort the script: the SQL Editor runs it
+--     as one transaction, so an error here would roll back steps 1–3 and the
+--     health report would never print. The report names what's missing.
+do $$ begin
+  perform seop_invoke_scheduler('daily-audits');
+  raise notice 'daily audit sweep fired';
+exception when others then
+  raise notice 'live fire skipped: %', sqlerrm;
+end $$;
 
 -- 5 · permanent health view + report ─────────────────────────────────────────
 create or replace view seop_scheduler_health as
