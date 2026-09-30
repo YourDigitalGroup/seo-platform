@@ -157,7 +157,40 @@ select
   -- §8 next cycle
   (d->>'verified_fixed_count')::int           as verified_fixed_count,
   jsonb_array_length(coalesce(d->'next_actions','[]'::jsonb)) as next_actions_count,
-  (d->>'review_recommended')::boolean         as review_recommended
+  (d->>'review_recommended')::boolean         as review_recommended,
+  -- Display-ready text, worded as the PDF words it. Looker scorecards can't
+  -- render text or true/false fields, so drop these into a table or text
+  -- chart instead of re-building the wording in Looker.
+  -- (Kept at the end: CREATE OR REPLACE VIEW can only append columns.)
+  to_char((d->>'report_date')::timestamptz, 'FMMonth FMDD, YYYY')   as report_date_label,
+  to_char((d->>'baseline_date')::timestamptz, 'FMMonth FMDD, YYYY') as baseline_date_label,
+  initcap(d->>'phase')                                             as phase_label,
+  'Program month ' || (d->>'program_month') || ' · ' || initcap(d->>'phase') || ' phase' as program_label,
+  (d->>'checks_passing') || '/' || (d->>'checks_total')             as checks_passing_label,
+  case when (d->>'checks_passing_baseline')::int > 0
+       then 'was ' || (d->>'checks_passing_baseline') || ' at baseline'
+       else 'baseline for future cycles' end                        as checks_baseline_label,
+  case when (d->>'gsc_queries_delta') is not null
+       then (case when (d->>'gsc_queries_delta')::numeric >= 0 then '+' else '' end)
+            || (d->>'gsc_queries_delta') || ' vs last cycle' end    as gsc_query_surface_delta_label,
+  case when coalesce((d->>'gsc_striking')::numeric, 0) > 0
+       then (d->>'gsc_striking') || ' queries sit in striking distance (positions 4–20) — the next-cycle work targets these first.'
+  end                                                               as gsc_striking_label,
+  case when (d->>'domain_authority_baseline') is not null
+       then 'was ' || (d->>'domain_authority_baseline') || ' at baseline · builds over months'
+  end                                                               as domain_authority_baseline_label,
+  case when (d->>'aeo_readiness_pct') is not null
+       then (d->>'aeo_readiness_pct') || '% (' || (d->>'aeo_ready_pass') || '/' || (d->>'aeo_ready_total') || ' checks)'
+  end                                                               as aeo_readiness_label,
+  case when (d->>'ai_citations_live')::boolean then 'Live' else 'Being configured' end as ai_citation_status,
+  case when (d->>'yoy_available')::boolean
+       then 'Keywords ' || coalesce(d->>'yoy_keywords_then','—') || ' → ' || coalesce(d->>'ranking_keywords','—')
+            || '; est. visits ' || coalesce(d->>'yoy_visits_then','—') || ' → ' || coalesce(d->>'est_visits','—')
+       else 'Year-over-year comparison unlocks at month 13 of the program.' end as yoy_note,
+  case when (d->>'cycle_fixes_deployed')::int > 0
+       then (d->>'cycle_fixes_deployed') || ' fixes deployed this cycle.'
+       else 'No fixes were marked deployed in this window — items staged in the platform are not claimed here until they ship.'
+  end                                                               as cycle_fixes_note
 from report_snapshots rs
 cross join lateral (select rs.data as d) j
 join clients c on c.id = rs.client_id
