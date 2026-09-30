@@ -167,7 +167,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.9.3";
+const ENGINE_VERSION = "5.9.4";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -889,7 +889,25 @@ async function runAuditPipeline(body: any): Promise<Response> {
     // claim. Without a crawl the technical score is capped and says why.
     let techScore = pillarScore("technical") ?? 0;
     if (!crawlUsed && !sitemapCrawled && techScore > 79) { techScore = 79; note.push("Technical score capped at 79 — no crawl configured, findings are sampled."); }
-    const perfScore = pillarScore("performance");
+    let perfScore = pillarScore("performance");
+    const perfMeasured = perfScore;
+    // Builder floor: WordPress sites credited to us or one of our white-label
+    // partners ("Site by 44i", "site by CF Digital") are not scored below C
+    // (65) on performance. Applied to the pillar score, so the grade and the
+    // overall audit score both reflect it. Partner names come live from
+    // partner_groups.
+    const PERF_FLOOR = 65;
+    if (perfScore != null && perfScore < PERF_FLOOR && /wp-content|wp-includes|wp-json/i.test(homeHtmlRaw)) {
+      try {
+        const { data: pgs } = await supa.from("partner_groups").select("name");
+        const names = [...OWN_BUILDER_NAMES, ...(pgs || []).map((g: any) => String(g.name || ""))];
+        const hit = findBuilderCredit(homeHtmlRaw, names, OWN_BUILDER_DOMAINS);
+        if (hit) {
+          note.push(`Performance scored ${PERF_FLOOR} (builder floor; measured ${perfScore}): WordPress build credited to “${hit}” on the site.`);
+          perfScore = PERF_FLOOR;
+        }
+      } catch (_) { /* best-effort */ }
+    }
     const onpageScore = pillarScore("onpage") ?? 0;
     const schemaScore = pillarScore("schema") ?? 0;
     const aeoScore = pillarScore("aeo") ?? 0;
@@ -902,18 +920,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
     const auditScore = _w ? Math.round(_s / _w) : 0;
 
     const grades = { grade_technical: grade(techScore), grade_onpage: grade(onpageScore), grade_schema: grade(schemaScore), grade_aeo: grade(aeoScore), grade_eeat: grade(eeatScore), grade_local: grade(localScore) };
-    let grade_performance = perfScore == null ? null : grade(perfScore);
-    // Builder floor: WordPress sites credited to us or one of our white-label
-    // partners ("Site by 44i", "site by CF Digital") are not graded below C
-    // on performance. Partner names come live from partner_groups.
-    if (grade_performance && ["D", "F"].includes(grade_performance) && /wp-content|wp-includes|wp-json/i.test(homeHtmlRaw)) {
-      try {
-        const { data: pgs } = await supa.from("partner_groups").select("name");
-        const names = [...OWN_BUILDER_NAMES, ...(pgs || []).map((g: any) => String(g.name || ""))];
-        const hit = findBuilderCredit(homeHtmlRaw, names, OWN_BUILDER_DOMAINS);
-        if (hit) { grade_performance = "C"; note.push(`Performance graded C (builder floor): WordPress build credited to “${hit}” on the site.`); }
-      } catch (_) { /* best-effort */ }
-    }
+    const grade_performance = perfScore == null ? null : grade(perfScore);
 
     // ── 12. FINDINGS ENGINE ───────────────────────────────────────────────────
     const FN: any[] = [];
@@ -1060,7 +1067,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
       client_id: client.id, domain_rating, org_keywords, org_traffic, org_keywords_top3, live_backlinks, referring_domains, diagnosis, ...grades,
       grade_performance, score: auditScore,
       raw: {
-        scores: { techScore, perfScore, onpageScore, schemaScore, aeoScore, eeatScore, localScore, auditScore },
+        scores: { techScore, perfScore, perfMeasured, onpageScore, schemaScore, aeoScore, eeatScore, localScore, auditScore },
         checklist: CL,
         performance: psi,
         probes: { httpsRedirect, hostCanonical, altHost, notFoundOk, robotsFound, robotsOk, sitemapOk, sitemapDeclared, smUrls, llmsTxt, favicon,
