@@ -91,6 +91,30 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 const grade = (n: number) => n >= 90 ? "A" : n >= 78 ? "B" : n >= 65 ? "C" : n >= 50 ? "D" : "F";
+
+// Who built the site, per its credit line ("Site by 44i", "Website by CF
+// Digital"). Searches the whole page: footers often sit ahead of large
+// trailing script blocks. `names` are the builders to recognize (our own
+// agency names + the partner_groups list); `domains` are credit-link hosts.
+const OWN_BUILDER_NAMES = ["44i", "44 interactive", "44interactive", "44i digital", "your digital group"];
+const OWN_BUILDER_DOMAINS = ["44i.com", "44interactive.com", "44idigital.com", "yourdigitalgroup.com"];
+function findBuilderCredit(html: string, names: string[], domains: string[]): string | null {
+  const credit = /\b(?:site|website|web\s*site|web\s*design|designed|developed|built|powered|created|crafted|made)\s*(?:by|:)/gi;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const cleanNames = [...new Set(names.map((n) => String(n || "").trim()).filter((n) => n.length >= 3))]
+    .sort((a, b) => b.length - a.length);
+  let m: RegExpExecArray | null;
+  while ((m = credit.exec(html))) {
+    const after = html.slice(m.index + m[0].length, m.index + m[0].length + 300);
+    const hrefs = [...after.matchAll(/href\s*=\s*["']([^"']+)["']/gi)].map((h) => h[1].toLowerCase());
+    const dom = domains.find((d) => hrefs.some((h) => h.includes(d)));
+    if (dom) return dom;
+    const text = after.replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/g, " ").replace(/\s+/g, " ").trim().slice(0, 80).toLowerCase();
+    const hit = cleanNames.find((n) => new RegExp(`(^|[^a-z0-9])${esc(n.toLowerCase())}($|[^a-z0-9])`).test(text));
+    if (hit) return hit;
+  }
+  return null;
+}
 const rootOf = (d: string) => String(d || "").replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
 // ── KEYWORD VALIDATION GATE (code, not prompt — a filter can't be talked out
 //    of rejecting "ia"). junkKw() screens research pools; validTarget() is the
@@ -143,7 +167,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.9.2";
+const ENGINE_VERSION = "5.9.3";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -879,18 +903,15 @@ async function runAuditPipeline(body: any): Promise<Response> {
 
     const grades = { grade_technical: grade(techScore), grade_onpage: grade(onpageScore), grade_schema: grade(schemaScore), grade_aeo: grade(aeoScore), grade_eeat: grade(eeatScore), grade_local: grade(localScore) };
     let grade_performance = perfScore == null ? null : grade(perfScore);
-    // Partner-built WordPress sites get a performance floor of C: a footer
-    // credit like "site by CF Digital" means one of our own white-label
-    // partners built it, and policy is not to grade partner builds below C.
-    // Names come live from partner_groups (the dashboard's 42-partner list).
+    // Builder floor: WordPress sites credited to us or one of our white-label
+    // partners ("Site by 44i", "site by CF Digital") are not graded below C
+    // on performance. Partner names come live from partner_groups.
     if (grade_performance && ["D", "F"].includes(grade_performance) && /wp-content|wp-includes|wp-json/i.test(homeHtmlRaw)) {
       try {
         const { data: pgs } = await supa.from("partner_groups").select("name");
-        const footer = homeHtmlRaw.slice(-12000).toLowerCase();
-        const hit = (pgs || []).map((g: any) => String(g.name || "").trim())
-          .filter((n) => n.length > 3 && n.toLowerCase() !== "44i digital")
-          .find((n) => footer.includes(n.toLowerCase()));
-        if (hit) { grade_performance = "C"; note.push(`Performance graded C (partner floor): WordPress build credited to “${hit}” in the site footer.`); }
+        const names = [...OWN_BUILDER_NAMES, ...(pgs || []).map((g: any) => String(g.name || ""))];
+        const hit = findBuilderCredit(homeHtmlRaw, names, OWN_BUILDER_DOMAINS);
+        if (hit) { grade_performance = "C"; note.push(`Performance graded C (builder floor): WordPress build credited to “${hit}” on the site.`); }
       } catch (_) { /* best-effort */ }
     }
 
