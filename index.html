@@ -348,7 +348,7 @@ body[data-theme=dark] .bf-field input.bf-sug,body[data-theme=dark] .bf-kwrow inp
 .deploy-btn.deployed{background:var(--green-deep)}
 
 .intake{background:var(--mist);border:1px solid var(--line);border-radius:var(--r);padding:20px;margin-top:18px;display:flex;flex-direction:column;gap:16px}
-.intake-actions{display:flex;justify-content:flex-end;border-top:1px solid var(--line);padding-top:14px}
+.gen-row{display:flex;justify-content:flex-end;margin:4px 0 22px}
 .ifield{display:flex;flex-direction:column;gap:7px}
 .ifield label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.3px;text-transform:uppercase}
 .ifield input,.ifield select{font-family:inherit;font-size:15px;padding:11px 14px;border:1px solid var(--line);border-radius:var(--r-sm);color:var(--ink);background:var(--s-card)}
@@ -977,7 +977,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.22.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.22.2</div>
   </div>
   </div>
 </div>
@@ -1062,7 +1062,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.22.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.22.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1110,7 +1110,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.22.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.22.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1147,8 +1147,9 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <div class="ptab on" id="ptab-1">
       <div class="howto"><b>Step 1 — Set the client up.</b> (Once per client, then only when something changes.)
         <ol>
-          <li>Check the URL, target market and plan, then click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it.</li>
-          <li>Open <b>Local Listing Optimization</b> below and fill in the business facts. Amber fields were read off the client's website — verify them, then click <b>Approve &amp; save</b>.</li>
+          <li>Check the URL, target market and plan, then add the target keywords and targeted landing pages.</li>
+          <li>Fill in the <b>Local Listing Optimization</b> business facts. Amber fields were read off the client's website — verify them; everything saves as you type.</li>
+          <li>Click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it.</li>
           <li>In Platform Access, connect what you have: the WordPress key (from the client site's connector plugin — see tab ④), Search Console, Business Profile.</li>
         </ol>
       </div>
@@ -1167,10 +1168,10 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
             </div>
           </div>
         </div>
-        <div class="intake-actions"><button class="run" onclick="generatePackage()">Generate package →</button></div>
       </div>
-      <div class="datasrc" id="bizfacts" style="margin-top:14px"></div>
-      <div class="datasrc" id="content-targets"></div>
+      <div class="datasrc" id="content-targets" style="margin-top:14px"></div>
+      <div class="datasrc" id="bizfacts"></div>
+      <div class="gen-row"><button class="run" onclick="generatePackage()">Generate package →</button></div>
       <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
       <div class="acp" id="access-panel"></div>
       <div class="datasrc" id="datasrc"></div>
@@ -1268,7 +1269,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.22.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.22.2 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1302,7 +1303,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.22.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.22.2</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
