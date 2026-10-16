@@ -17,6 +17,11 @@
 //    ADVICE_LOCAL_API_KEY      partner API key (x-api-token header)
 //    ADVICE_LOCAL_PRODUCT_ID   optional — defaults to 4114 (the LLO product)
 //
+//  AL refuses a bad field with a bare "Invalid Request". When the full
+//  listing is refused, sync/order send the core NAP listing alone, then add
+//  email / description / categories / hours back one at a time — the listing
+//  still syncs and the refused fields come back as a warning to fix.
+//
 //  The AL location id / order id are remembered on the clients row
 //  (al_client_id, al_order_id, al_synced_at — advice_local.sql), so sync is
 //  idempotent: first call creates, later calls update the same location.
@@ -92,13 +97,65 @@ Deno.serve(async (req) => {
       });
       const text = await r.text();
       let j: any = null; try { j = JSON.parse(text); } catch (_) { /* non-JSON error page */ }
-      if (!r.ok) throw new Error(`Advice Local ${method} ${path} → HTTP ${r.status}: ${(j && (typeof j.error === "string" ? j.error : j.message)) || text.slice(0, 240)}`);
+      if (!r.ok) {
+        // Keep everything AL says beyond the headline (field-level details,
+        // when it sends them) so a refusal is diagnosable from the toast.
+        const head = (j && (typeof j.error === "string" ? j.error : j.message)) || "";
+        const extra = j && typeof j === "object"
+          ? JSON.stringify(Object.fromEntries(Object.entries(j).filter(([k, v]) => v != null && v !== "" && !["status", "success"].includes(k) && !(k === "error" && v === head) && !(k === "message" && v === head))))
+          : "";
+        throw new Error(`Advice Local ${method} ${path} → HTTP ${r.status}: ${head || text.slice(0, 240)}${extra && extra !== "{}" ? " " + extra.slice(0, 300) : ""}`);
+      }
       if (j && typeof j === "object" && "success" in j) {
         if (j.success !== true) throw new Error(`Advice Local ${method} ${path}: ${JSON.stringify(j.error ?? j).slice(0, 240)}`);
         return j.data;
       }
       return j;
     };
+    // Create (POST) or update (PUT) the AL location. AL answers a bad field
+    // with a bare "Invalid Request" and no field name, so when the full
+    // listing is refused: send the core NAP listing alone, then add each
+    // optional field back one at a time — the listing still syncs, and the
+    // refused fields are named for the specialist to fix.
+    const CORE = ["name", "street", "city", "state", "zipcode", "country", "phone", "website"];
+    const OPTIONAL = ["email", "description", "services", "hours"];
+    const pick = (keys: string[]) => Object.fromEntries(keys.filter((k) => payload[k]).map((k) => [k, payload[k]]));
+    const refused = (e: unknown) => /HTTP 4(00|22)|Invalid Request/i.test(String((e as any)?.message || e));
+    const msg = (e: unknown) => String((e as any)?.message || e).replace(/^Advice Local \w+ \S+ → /, "");
+    const upsertLocation = async (existing: number | null): Promise<{ id: number; rejected: string[]; created: unknown }> => {
+      const send = (id: number | null, data: Record<string, string>) =>
+        id ? al("PUT", `/legacyclients/${id}`, data) : al("POST", "/legacyclients", data);
+      try {
+        const r = await send(existing, payload);
+        return { id: existing ?? Number(r?.id), rejected: [], created: r };
+      } catch (e) {
+        if (!refused(e)) throw e;
+        console.warn(`advice-local: full listing refused for ${client.url} (${msg(e)}) — isolating fields`);
+        const core = pick(CORE);
+        let r: any;
+        try { r = await send(existing, core); }
+        catch (e2) {
+          throw new Error(`Advice Local refused the core listing (${msg(e2)}). Check the name, street, city, state, ZIP, phone and website in Business Facts — sent: ${JSON.stringify(core).slice(0, 300)}`);
+        }
+        const id = existing ?? Number(r?.id);
+        if (!id) return { id: 0, rejected: [], created: r };
+        const kept: Record<string, string> = { ...core };
+        const rejected: string[] = [];
+        for (const k of OPTIONAL) {
+          if (!payload[k]) continue;
+          try { await al("PUT", `/legacyclients/${id}`, { ...kept, [k]: payload[k] }); kept[k] = payload[k]; }
+          // never throw here: the location exists now, and its id must be saved
+          catch (e3) { console.warn(`advice-local: ${k} refused (${msg(e3)})`); rejected.push(k); }
+        }
+        console.warn(`advice-local: ${client.url} synced as #${id} without: ${rejected.join(", ") || "(none)"}`);
+        return { id, rejected, created: r };
+      }
+    };
+    const FIELD_LABEL: Record<string, string> = { email: "email", description: "business description", services: "categories", hours: "hours" };
+    const rejectedNote = (rej: string[]) => rej.length
+      ? `Advice Local refused the ${rej.map((k) => FIELD_LABEL[k] || k).join(", ")} — the listing synced without ${rej.length > 1 ? "them" : "it"}; adjust ${rej.length > 1 ? "those" : "that"} in Business Facts and Sync again`
+      : null;
+
     // clients.al_* live behind advice_local.sql — persist best-effort and
     // surface a warning instead of failing the whole call if it's missing.
     const remember = async (patch: Record<string, unknown>): Promise<string | null> => {
@@ -114,18 +171,12 @@ Deno.serve(async (req) => {
 
     if (action === "sync") {
       if (missing.length) return json({ error: "business facts incomplete — missing: " + missing.join(", ") + ". Fill them in the LLO panel and Approve & save first." }, 400);
-      let alId = client.al_client_id ? Number(client.al_client_id) : null;
-      let mode = "updated";
-      if (alId) {
-        await al("PUT", `/legacyclients/${alId}`, payload);
-      } else {
-        const created = await al("POST", "/legacyclients", payload);
-        alId = Number(created?.id);
-        if (!alId) return json({ error: "Advice Local did not return a location id", response: created }, 502);
-        mode = "created";
-      }
-      const warn = await remember({ al_client_id: alId, al_synced_at: new Date().toISOString() });
-      return json({ ok: true, mode, al_client_id: alId, payload, warning: warn });
+      const existing = client.al_client_id ? Number(client.al_client_id) : null;
+      const up = await upsertLocation(existing);
+      if (!up.id) return json({ error: "Advice Local did not return a location id", response: up.created }, 502);
+      const warn = await remember({ al_client_id: up.id, al_synced_at: new Date().toISOString() });
+      return json({ ok: true, mode: existing ? "updated" : "created", al_client_id: up.id, payload, rejected: up.rejected,
+        warning: [rejectedNote(up.rejected), warn].filter(Boolean).join(" · ") || null });
     }
 
     if (action === "status") {
@@ -146,10 +197,11 @@ Deno.serve(async (req) => {
       const test = body.test === true;
       if (missing.length) return json({ error: "business facts incomplete — missing: " + missing.join(", ") }, 400);
       let alId = client.al_client_id ? Number(client.al_client_id) : null;
+      let rejected: string[] = [];
       if (!alId) {   // first-time flow: create the location, then order
-        const created = await al("POST", "/legacyclients", payload);
-        alId = Number(created?.id);
-        if (!alId) return json({ error: "Advice Local did not return a location id", response: created }, 502);
+        const up = await upsertLocation(null);
+        if (!up.id) return json({ error: "Advice Local did not return a location id", response: up.created }, 502);
+        alId = up.id; rejected = up.rejected;
         await remember({ al_client_id: alId, al_synced_at: new Date().toISOString() });
       }
       if (!test && client.al_order_id) {
@@ -159,6 +211,7 @@ Deno.serve(async (req) => {
       const orderId = res?.order?.id ? Number(res.order.id) : null;
       let warn: string | null = null;
       if (!test && orderId) warn = await remember({ al_order_id: orderId });
+      warn = [rejectedNote(rejected), warn].filter(Boolean).join(" · ") || null;
       console.log(`advice-local order ${test ? "(TEST) " : ""}client=${client.url || client.name} al=${alId} order=${orderId} by ${caller.user.email}`);
       return json({ ok: true, test, al_client_id: alId, order_id: orderId,
         price: res?.order?.price ?? null, products: res?.order?.products || [PRODUCT_ID], warning: warn });
