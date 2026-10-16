@@ -905,7 +905,7 @@ footer .fbadges{display:flex;gap:18px}
 .ccard{position:relative;background:var(--s-card);border:1px solid var(--s-border);border-radius:var(--r-lg);padding:16px 18px 14px;cursor:pointer;transition:transform 170ms var(--ease),box-shadow 170ms var(--ease);box-shadow:var(--shadow-sm)}
 .ccard:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
 /* hover Edit — swaps in over the status dot so the card stays uncluttered */
-.ccard-edit{position:absolute;top:12px;right:14px;display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border:1px solid var(--s-border);border-radius:999px;background:var(--s-card);color:var(--blue);font:inherit;font-size:12px;font-weight:700;cursor:pointer;opacity:0;pointer-events:none;transition:opacity 140ms var(--ease);box-shadow:var(--shadow-sm)}
+.ccard-edit{position:absolute;top:12px;right:14px;display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border:1px solid var(--s-border);border-radius:999px;background:var(--s-card);color:var(--blue);font:inherit;font-size:12px;font-weight:700;cursor:pointer;opacity:0;pointer-events:none;transition:opacity 140ms var(--ease);box-shadow:var(--shadow-sm)}
 .ccard:hover .ccard-edit{opacity:1;pointer-events:auto}
 .ccard-edit:hover{border-color:var(--blue);background:rgba(75,155,215,.08)}
 .ccard:hover .ccard-top .status-dot{opacity:0}
@@ -913,7 +913,7 @@ footer .fbadges{display:flex;gap:18px}
 .ccard .dn{font-size:15px;font-weight:800;letter-spacing:-.2px;color:var(--s-head);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ccard .nm{font-size:12px;color:var(--s-mut);margin-top:1px}
 .ccard-mid{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;flex-wrap:wrap}
-.ccard-tr{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0}
+.ccard-tr{display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0}
 .ccard-notes{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:700;color:var(--s-mut);background:var(--s-sunk2);border:none;border-radius:999px;padding:3px 9px;cursor:pointer;transition:.12s}
 .ccard-notes:hover{color:var(--blue);filter:brightness(.97)}
 .ccard-notes.has{color:var(--blue);background:rgba(75,155,215,.14)}
@@ -982,7 +982,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.23.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.23.1</div>
   </div>
   </div>
 </div>
@@ -1067,7 +1067,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.23.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.23.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1115,7 +1115,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.23.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.23.1</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1276,7 +1276,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.23.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.23.1 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1310,7 +1310,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.23.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.23.1</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2775,7 +2775,7 @@ function renderRows(rows){
       <div class="ccard-top">
         <div style="min-width:0"><div class="dn">${c.url}</div><div class="nm">${c.name}${c.market?' · '+c.market:''}</div></div>
         <div class="ccard-tr"><span class="status-dot sd-${c.status}"><i></i>${cap(c.status)}</span>
-          ${OFFLINE?'':`<button class="ccard-notes${String(c.notes||'').trim()?' has':''}" title="${esc(String(c.notes||'').trim()?String(c.notes).trim().slice(0,240):'Add notes about this client')}" onclick="event.stopPropagation();openNotesModal('${c.id}')"><i class="fa-${String(c.notes||'').trim()?'solid':'regular'} fa-note-sticky"></i> notes</button>`}</div>
+          ${OFFLINE?'':`<button class="ccard-notes${String(c.notes||'').trim()?' has':''}" title="${esc(String(c.notes||'').trim()?String(c.notes).trim().slice(0,240):'Add notes about this client')}" onclick="event.stopPropagation();openNotesModal('${c.id}')"><i class="fa-${String(c.notes||'').trim()?'solid':'regular'} fa-note-sticky"></i> Notes</button>`}</div>
         ${OFFLINE?'':`<button class="ccard-edit" title="Edit the campaign details" onclick="event.stopPropagation();openEditModal('${c.id}')"><i class="fa-solid fa-pen"></i> Edit</button>`}
       </div>
       <div class="ccard-mid">
