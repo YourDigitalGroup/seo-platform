@@ -65,6 +65,14 @@ the package Setup tab, and folds the old onboarding/paused statuses into
 automates 'active' clients). Without it, suspending still works but the date
 and reason aren't stored.
 
+## 1a-4b. Client notes  (Supabase → SQL Editor)
+
+Paste `supabase/migrations/client_notes.sql` and Run (idempotent). Adds
+`clients.notes`: the Client Notes box on the Setup tab and the "notes" chip
+on each client card. The Trello handoff card copies the notes into its
+description and attaches the campaign doc (redeploy `trello`). Applied on
+the live project 2026-10-16 together with `platform_extras.sql`.
+
 ## 1a-5. Plan add-ons  (Supabase → SQL Editor)
 
 Paste `supabase/migrations/addons.sql` and Run (idempotent; AFTER

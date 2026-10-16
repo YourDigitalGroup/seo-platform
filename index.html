@@ -913,6 +913,11 @@ footer .fbadges{display:flex;gap:18px}
 .ccard .dn{font-size:15px;font-weight:800;letter-spacing:-.2px;color:var(--s-head);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ccard .nm{font-size:12px;color:var(--s-mut);margin-top:1px}
 .ccard-mid{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0;flex-wrap:wrap}
+.ccard-tr{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0}
+.ccard-notes{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;font-weight:700;color:var(--s-mut);background:var(--s-sunk2);border:none;border-radius:999px;padding:3px 9px;cursor:pointer;transition:.12s}
+.ccard-notes:hover{color:var(--blue);filter:brightness(.97)}
+.ccard-notes.has{color:var(--blue);background:rgba(75,155,215,.14)}
+.cn-area{width:100%;min-height:130px;font:inherit;font-size:13.5px;line-height:1.55;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);color:var(--ink);resize:vertical;box-sizing:border-box}
 .cscore{margin:2px 0 12px}
 .cscore-lab{display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:var(--s-mut);margin-bottom:5px}
 .cscore-lab b{font-weight:800}
@@ -977,7 +982,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.22.4</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.23.0</div>
   </div>
   </div>
 </div>
@@ -1062,7 +1067,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.22.4</span>
+        <span>44i, Inc. · Internal Ops Console · V5.23.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1110,7 +1115,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.22.4</span>
+        <span>44i, Inc. · Internal Ops Console · V5.23.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1149,7 +1154,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <ol>
           <li>Check the URL, target market and plan, then fill in the <b>Business Facts</b>. Amber fields were read off the client's website — verify them; everything saves as you type.</li>
           <li>Add the target keywords and targeted landing pages, then the <b>Local Listing Optimization</b> citation pack and Advice Local sync.</li>
-          <li>Hand the package off to an SEO/AEO specialist if one is taking it, then click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it.</li>
+          <li>Add any <b>Client notes</b> the team should know. Hand the package off to an SEO/AEO specialist if one is taking it, then click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it.</li>
           <li>In Platform Access, connect what you have: the WordPress key (from the client site's connector plugin — see tab ④), Search Console, Business Profile.</li>
         </ol>
       </div>
@@ -1172,6 +1177,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div class="datasrc" id="bizfacts"></div>
       <div class="datasrc" id="content-targets"></div>
       <div class="datasrc" id="llo"></div>
+      <div class="datasrc" id="client-notes"></div>
       <div class="ctrlzone" id="kickoff-submit" style="display:none"></div>
       <div class="gen-row"><button class="run" onclick="generatePackage()">Generate package →</button></div>
       <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
@@ -1270,7 +1276,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.22.4 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.23.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1304,7 +1310,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.22.4</span>
+      <span>44i, Inc. · Internal Ops Console · V5.23.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1600,6 +1606,7 @@ function mapClient(r){
     gsc:r.gsc_connected, gbp:r.gbp_connected, wp:r.wp_connected, ga4:r.ga4_connected,
     suspended_at:r.suspended_at||null, suspend_reason:r.suspend_reason||null,
     trello_card_id:r.trello_card_id||null,
+    notes:r.notes||'',
     addons:Array.isArray(r.addons)?r.addons:[],
     wp_api_key:r.wp_api_key||null,
     last_audit: r.last_audit_at ? r.last_audit_at.slice(0,10) : null,
@@ -1729,7 +1736,7 @@ function dialog(opts){
       f.type==='select'
         ?`<select id="dlg-f-${f.id}">${(f.options||[]).map(o=>`<option value="${esc(o.value)}"${String(f.value)===String(o.value)?' selected':''}>${esc(o.label)}</option>`).join('')}</select>`
       :f.type==='textarea'
-        ?`<textarea id="dlg-f-${f.id}" rows="3" placeholder="${esc(f.placeholder||'')}">${esc(f.value||'')}</textarea>`
+        ?`<textarea id="dlg-f-${f.id}" rows="${f.rows||3}" placeholder="${esc(f.placeholder||'')}">${esc(f.value||'')}</textarea>`
         :`<input id="dlg-f-${f.id}" type="${f.type||'text'}" placeholder="${esc(f.placeholder||'')}" value="${esc(f.value||'')}">`}</div>`).join('');
     const ok=document.getElementById('dlg-ok');
     ok.textContent=opts.okLabel||'Confirm';
@@ -2767,7 +2774,8 @@ function renderRows(rows){
     return `<div class="ccard rise" style="animation-delay:${Math.min(idx,12)*55}ms" onclick="openClient('${c.id}')">
       <div class="ccard-top">
         <div style="min-width:0"><div class="dn">${c.url}</div><div class="nm">${c.name}${c.market?' · '+c.market:''}</div></div>
-        <span class="status-dot sd-${c.status}" style="flex-shrink:0"><i></i>${cap(c.status)}</span>
+        <div class="ccard-tr"><span class="status-dot sd-${c.status}"><i></i>${cap(c.status)}</span>
+          ${OFFLINE?'':`<button class="ccard-notes${String(c.notes||'').trim()?' has':''}" title="${esc(String(c.notes||'').trim()?String(c.notes).trim().slice(0,240):'Add notes about this client')}" onclick="event.stopPropagation();openNotesModal('${c.id}')"><i class="fa-${String(c.notes||'').trim()?'solid':'regular'} fa-note-sticky"></i> notes</button>`}</div>
         ${OFFLINE?'':`<button class="ccard-edit" title="Edit the campaign details" onclick="event.stopPropagation();openEditModal('${c.id}')"><i class="fa-solid fa-pen"></i> Edit</button>`}
       </div>
       <div class="ccard-mid">
@@ -3047,7 +3055,7 @@ function renderPackage(){
   document.getElementById('domtag').textContent=c.url+(c.last_audit?' · loaded':' · not yet run');
   document.getElementById('tiertag').textContent=planLabel(c.tier)+' plan';
 
-  renderCampaignControls(); renderKickoffSubmit(); renderAddonRow();
+  renderCampaignControls(); renderClientNotes(); renderKickoffSubmit(); renderAddonRow();
   renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderAuditHistory(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
@@ -4042,17 +4050,94 @@ async function imgPick(i){
   const lab=document.getElementById('dm-img-lab'); if(lab) lab.textContent='Image ✓';
   imgClose(); renderQueue(); showToast('Image attached — it ships as the featured image / post photo',false,true);
 }
+// ── CLIENT NOTES — free-form team notes per client (clients.notes). Edited
+// on the Setup tab (auto-saves) or from the "notes" chip on a client card;
+// the Trello handoff card carries them in its description.
+function renderClientNotes(){
+  const el=document.getElementById('client-notes'); if(!el) return;
+  const c=activeClient; if(!c||OFFLINE){ el.innerHTML=''; return; }
+  // never clobber notes mid-edit when the package re-renders around them
+  const cur=document.getElementById('cn-text');
+  if(cur&&cur.dataset.cid===c.id&&(_cnTimer||document.activeElement===cur)) return;
+  el.innerHTML=`
+    <div class="section-h" style="margin-top:22px"><h2>Client Notes</h2><div class="ln"></div><span class="tag" id="cn-state">internal · saves as you type</span></div>
+    <div class="bf-sec"><textarea class="cn-area" id="cn-text" data-cid="${esc(c.id)}" placeholder="Anything the team should know about this client: preferences, contacts, history, do's and don'ts…" oninput="cnAutoSave()">${esc(c.notes||'')}</textarea></div>`;
+}
+let _cnTimer=null;
+function cnAutoSave(){
+  clearTimeout(_cnTimer);
+  const st=document.getElementById('cn-state'); if(st) st.textContent='saving…';
+  _cnTimer=setTimeout(async()=>{ _cnTimer=null;
+    const t=document.getElementById('cn-text'); if(!t||!activeClient) return;
+    const ok=await saveClientNotes(activeClient.id, t.value);
+    const s=document.getElementById('cn-state'); if(s) s.textContent=ok?'saved':'not saved';
+  }, 700);
+}
+async function cnFlush(){
+  if(!_cnTimer) return;
+  clearTimeout(_cnTimer); _cnTimer=null;
+  const t=document.getElementById('cn-text'); if(t&&activeClient) await saveClientNotes(activeClient.id, t.value);
+}
+async function saveClientNotes(id, text){
+  const notes=String(text||'').replace(/\s+$/,'');
+  const {error}=await sb.from('clients').update({notes}).eq('id',id);
+  if(error){
+    showToast(/notes/i.test(error.message||'')?'Notes need the clients.notes column — run supabase/migrations/client_notes.sql':'Notes not saved — '+error.message,true);
+    return false;
+  }
+  [groupClients.find(x=>x.id===id), activeClient&&activeClient.id===id?activeClient:null].forEach(x=>{ if(x) x.notes=notes; });
+  return true;
+}
+async function openNotesModal(id){
+  const c=groupClients.find(x=>x.id===id); if(!c) return;
+  const v=await dialog({ title:'Client notes',
+    body:`Internal notes for <b>${esc(c.name||c.url)}</b>. They also show on the client's Setup tab and go on the Trello card at hand-off.`,
+    okLabel:'Save notes',
+    fields:[{id:'notes', type:'textarea', rows:9, notrim:true, value:c.notes||'', placeholder:'Preferences, contacts, history, do’s and don’ts…'}]});
+  if(!v) return;
+  if(await saveClientNotes(id, v.notes)){ showToast('Notes saved',false,true); loadPage(); }
+}
 // ── HANDOFF — "Submit to SEO/AEO specialist": Trello card in the
 // strategist's list with a 2-day deadline, described with the kickoff facts.
+// The campaign document rides along as a card attachment: at hand-off when
+// the package exists, otherwise as soon as Generate package finishes.
+function campaignDocFile(){
+  if(OFFLINE||!PK||!PK.audit) return null;
+  const qa=assembleQA();
+  const base=String((activeClient&&activeClient.url)||'site').replace(/^https?:\/\//,'').replace(/[^a-z0-9.-]/gi,'_')+'-'+new Date().toISOString().slice(0,10);
+  // QA-blocked: the client-facing document isn't produced (rule 6.4) — the
+  // strategist gets the internal review listing what to resolve instead.
+  if(qa.blocking.length) return { name:'INTERNAL-review-'+base+'.html', html:buildInternalReview(qa), blocked:qa.blocking.length };
+  return { name:'campaign-'+base+'.html', html:buildCampaignDoc(), blocked:0 };
+}
+async function attachCampaignDocToTrello(auto){
+  const c=activeClient; if(!c||OFFLINE||!c.trello_card_id||c.trello_card_id==='pending') return;
+  const doc=campaignDocFile();
+  if(!doc){ if(!auto) showToast('Generate the package first — the campaign doc comes from it',true); return; }
+  const b=document.getElementById('ks-attach'); if(b){ b.disabled=true; b.textContent='Attaching…'; }
+  try{
+    const {data,error}=await sb.functions.invoke('trello',{body:{action:'attach', client_id:c.id, card_id:c.trello_card_id, doc_name:doc.name, doc_html:doc.html}});
+    if(error||(data&&data.error)){
+      let m=(data&&data.error)||error?.message;
+      try{ if(error&&error.context){ const x=await error.context.json(); m=x.error||m; } }catch(_){}
+      if(/unknown action/i.test(String(m))) m='redeploy the trello Edge Function to enable attachments';
+      throw new Error(String(m));
+    }
+    showToast(doc.blocked?`Trello card: attached the internal review (${doc.blocked} QA failure${doc.blocked>1?'s':''} block the client campaign doc)`:'Campaign doc attached to the Trello card',false,true);
+  }catch(e){ showToast('Campaign doc not attached — '+String(e.message||e),true); }
+  finally{ const b2=document.getElementById('ks-attach'); if(b2){ b2.disabled=false; b2.innerHTML='<i class="fa-solid fa-paperclip"></i> Attach campaign doc'; } }
+}
 function renderKickoffSubmit(){
   const el=document.getElementById('kickoff-submit'); if(!el) return;
   const c=activeClient; if(!c||OFFLINE){ el.style.display='none'; return; }
   el.style.display='';
   if(c.trello_card_id){
-    el.innerHTML=`<div><b>Submitted to the SEO/AEO team</b><div class="wmeta">A Trello card tracks this package (2-day turnaround). Approvals post to it automatically.</div></div>
-      <a class="tbtn" href="https://trello.com/c/${esc(c.trello_card_id)}" target="_blank" rel="noopener">Open Trello card</a>`;
+    el.innerHTML=`<div><b>Submitted to the SEO/AEO team</b><div class="wmeta">A Trello card tracks this package (2-day turnaround). Approvals post to it automatically, and the campaign doc is attached whenever the package is generated.</div></div>
+      <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="tbtn" id="ks-attach" onclick="attachCampaignDocToTrello(false)" title="Attach the latest campaign document to the card"><i class="fa-solid fa-paperclip"></i> Attach campaign doc</button>
+        <a class="tbtn" href="https://trello.com/c/${esc(c.trello_card_id)}" target="_blank" rel="noopener">Open Trello card</a></span>`;
   } else {
-    el.innerHTML=`<div><b>Hand off to an SEO/AEO specialist</b><div class="wmeta">Creates a Trello card in their list on the web board with a 2-day deadline and the kickoff facts from this page.</div></div>
+    el.innerHTML=`<div><b>Hand off to an SEO/AEO specialist</b><div class="wmeta">Creates a Trello card in their list on the web board with a 2-day deadline, the kickoff facts and client notes from this page, and the campaign doc attached.</div></div>
       <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select class="fsel" id="ks-strat">${STRATEGISTS.map(s=>`<option value="${esc(s.id)}" data-name="${esc(s.name)}">${esc(s.name)}</option>`).join('')||'<option value="">— no strategists —</option>'}</select>
         <button class="tbtn" id="ks-btn" onclick="submitToSpecialist()">Submit to specialist</button></span>`;
@@ -4063,10 +4148,12 @@ async function submitToSpecialist(){
   const sel=document.getElementById('ks-strat'), pid=sel&&sel.value;
   const name=sel&&sel.selectedOptions[0]?sel.selectedOptions[0].dataset.name:'';
   if(!pid||!name){ showToast('Add a strategist account in Team & access first',true); return; }
-  await bfFlush();
+  await bfFlush(); await cnFlush();
   const b=document.getElementById('ks-btn'); if(b){ b.disabled=true; b.textContent='Submitting…'; }
   try{
-    const {data,error}=await sb.functions.invoke('trello',{body:{action:'submit', client_id:c.id, strategist_name:name, strategist_profile_id:pid}});
+    let doc=null; try{ doc=campaignDocFile(); }catch(e){ console.warn('campaign doc for Trello', e); }
+    const {data,error}=await sb.functions.invoke('trello',{body:{action:'submit', client_id:c.id, strategist_name:name, strategist_profile_id:pid,
+      ...(doc?{doc_name:doc.name, doc_html:doc.html}:{})}});
     if(error||(data&&data.error)){
       let m=(data&&data.error)||error?.message;
       try{ if(error&&error.context){ const x=await error.context.json(); m=x.error||m; } }catch(_){}
@@ -4076,7 +4163,8 @@ async function submitToSpecialist(){
     c.trello_card_id=(String(data.card_url||'').split('/c/')[1])||'pending';
     const gc=groupClients.find(x=>x.id===c.id); if(gc) gc.trello_card_id=c.trello_card_id;
     renderKickoffSubmit();
-    showToast(`Handed to ${name} — “${data.title||'card'}” created${data.months?` with ${data.months} month checklist${data.months>1?'s':''}`:''}${data.tagged?' · strategist tagged':''}, due in 2 days`+(data.warning?` · ${data.warning}`:''), false, true);
+    const attached=data.attached?(doc&&doc.blocked?' · internal review attached (QA blocks the campaign doc)':' · campaign doc attached'):(doc?'':' · campaign doc attaches when the package is generated');
+    showToast(`Handed to ${name} — “${data.title||'card'}” created${data.months?` with ${data.months} month checklist${data.months>1?'s':''}`:''}${data.tagged?' · strategist tagged':''}, due in 2 days${attached}`+(data.warning?` · ${data.warning}`:''), false, true);
   }catch(e){ showToast('Submit failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.textContent='Submit to specialist'; } }
 }
 // ── CLIENT DOC — a clean, partner-branded summary of the approved content,
@@ -4613,6 +4701,9 @@ async function generatePackage(){
       await liveBuildReport(data.package_id || (PK && PK.package_id));
       await loadLiveAudit(); renderPackage();
       showToast('Package complete — audit, directive, drafts, fixes and report all generated. Review + approve, then click “Deploy file” to export everything.', false, true);
+      if(activeClient===c&&c.trello_card_id&&c.trello_card_id!=='pending'){
+        try{ await attachCampaignDocToTrello(true); }catch(e){ console.warn('trello attach', e); }
+      }
     }
   }catch(e){ console.error(e); showToast('Audit error — see console', true); c.pkg_status='none'; renderPackage(); }
   finally{ const b=document.querySelector('#v-package .run'); if(b){ b.disabled=false; b.textContent='Generate package →'; } }
