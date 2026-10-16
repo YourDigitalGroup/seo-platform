@@ -322,6 +322,16 @@ body[data-theme=dark] .sctile[data-tip]:hover::after{background:#0d1728;border:1
 .bf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px 14px}
 .bf-field{display:flex;flex-direction:column;gap:5px;min-width:0}
 .bf-field.bf-wide{grid-column:1/-1}
+.al-sum{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
+.al-pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.al-pill.ok{background:rgba(94,168,82,.15);color:var(--green-deep)}
+.al-pill.retry{background:rgba(201,162,39,.16);color:var(--s-warn-text)}
+.al-pill.warn{background:rgba(230,126,34,.15);color:#b35c0e}
+.al-pill.bad{background:rgba(192,57,43,.13);color:#c0392b}
+.al-pill.q{background:var(--s-sunk2);color:var(--s-mut)}
+.bf-count{font-size:11.5px;font-weight:600;color:var(--muted);text-align:right}
+.bf-count .warn{color:var(--s-warn-text)}
+.bf-count .ok{color:var(--green-deep)}
 .bf-field label{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bf-field input,.bf-field textarea,.bf-kwrow input{font-family:inherit;font-size:13px;border:1px solid #b6c2d2;border-radius:var(--r-sm);padding:9px 11px;color:var(--ink);background:var(--s-card);resize:vertical;box-shadow:inset 0 1px 2px rgba(15,30,60,.05)}
 .bf-field input:focus,.bf-field textarea:focus,.bf-kwrow input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.15)}
@@ -982,7 +992,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.23.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.23.2</div>
   </div>
   </div>
 </div>
@@ -1067,7 +1077,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.23.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.23.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1115,7 +1125,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.23.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.23.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1276,7 +1286,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.23.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.23.2 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1310,7 +1320,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.23.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.23.2</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -4788,7 +4798,8 @@ async function renderBizFacts(){
     const isSug=!iv[k]&&sug[k];
     const hint=isSug?' <span style="color:var(--s-warn-text);text-transform:none;letter-spacing:0">· from site — verify</span>':'';
     if(k==='description'||k==='landing_targets') return `<div class="bf-field bf-wide">${noLabel?'':`<label>${m.l}${hint}</label>`}
-      <textarea id="bf-${k}" rows="3" placeholder="${esc(m.ph)}" oninput="bfAutoSave()">${esc(iv[k]||sug[k]||'')}</textarea></div>`;
+      <textarea id="bf-${k}" rows="3" placeholder="${esc(m.ph)}" oninput="bfAutoSave()${k==='description'?';bfDescCount()':''}">${esc(iv[k]||sug[k]||'')}</textarea>${
+      k==='description'?`<div class="bf-count" id="bf-desc-count">${bfDescCountHtml(iv[k]||sug[k]||'')}</div>`:''}</div>`;
     return `<div class="bf-field ${extra||''}"><label>${m.l}${hint}</label>
       <input id="bf-${k}" value="${esc(iv[k]||sug[k]||'')}" placeholder="${esc(m.ph)}" oninput="bfAutoSave()" ${isSug?'class="bf-sug"':''}></div>`;
   };
@@ -4820,6 +4831,28 @@ async function renderBizFacts(){
     </div>
     <div class="bf-sec"><h4>Targeted landing pages</h4><div class="bf-grid">${field('landing_targets','',true)}</div></div>`;
   renderALPanel();
+}
+// Advice Local refuses a business description outside 100–2048 characters
+// ("description must be between 100 and 2048 characters"), and directories
+// that show one want a real paragraph — so the field counts as you type.
+const AL_DESC_MIN=100, AL_DESC_MAX=2048;
+function alDescProblem(text){
+  const n=String(text||'').trim().length;
+  if(!n) return '';
+  if(n<AL_DESC_MIN) return `The business description is ${n} characters — Advice Local needs at least ${AL_DESC_MIN}. Add ${AL_DESC_MIN-n} more (services, areas served, credentials).`;
+  if(n>AL_DESC_MAX) return `The business description is ${n} characters — Advice Local allows at most ${AL_DESC_MAX}. Trim ${n-AL_DESC_MAX}.`;
+  return '';
+}
+function bfDescCountHtml(text){
+  const n=String(text||'').trim().length;
+  if(!n) return `<span>0 characters · Advice Local needs ${AL_DESC_MIN}–${AL_DESC_MAX}</span>`;
+  if(n<AL_DESC_MIN) return `<span class="warn"><i class="fa-solid fa-triangle-exclamation"></i> ${n} / ${AL_DESC_MIN} minimum · add ${AL_DESC_MIN-n} more for Advice Local</span>`;
+  if(n>AL_DESC_MAX) return `<span class="warn"><i class="fa-solid fa-triangle-exclamation"></i> ${n} / ${AL_DESC_MAX} maximum · trim ${n-AL_DESC_MAX} for Advice Local</span>`;
+  return `<span class="ok"><i class="fa-solid fa-check"></i> ${n} characters</span>`;
+}
+function bfDescCount(){
+  const t=document.getElementById('bf-description'), c=document.getElementById('bf-desc-count');
+  if(t&&c) c.innerHTML=bfDescCountHtml(t.value);
 }
 function bfSummaryText(){
   const missReq=intakeMissing().length;
@@ -4898,10 +4931,18 @@ async function renderALPanel(){
     <div id="al-status" style="margin-top:10px"></div>
   </div>`;
 }
+function alDescGuard(){
+  const prob=alDescProblem(((activeClient&&activeClient._intake)||{}).description);
+  if(!prob) return true;
+  showToast(prob,true);
+  const t=document.getElementById('bf-description'); if(t){ t.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>t.focus(),350); }
+  return false;
+}
 async function alSync(){
   await bfFlush();
   const miss=intakeMissing();
   if(miss.length){ showToast('Complete + save the business facts first — missing: '+miss.join(', '),true); return; }
+  if(!alDescGuard()) return;
   const b=document.getElementById('al-sync-btn'); if(b){ b.disabled=true; b.textContent='Syncing…'; }
   try{
     const d=await alInvoke({action:'sync', client_id:activeClient.id});
@@ -4912,6 +4953,7 @@ async function alSync(){
 }
 async function alOrder(){
   await bfFlush();
+  if(!alDescGuard()) return;
   const ok=await dialog({ title:'Place LLO order', okLabel:'Place order',
     body:'Activates the Local Listing Optimization product with Advice Local for this client — directory submissions start on their side. <b>This bills the 44i account</b> (monthly, per their contract). The listing syncs first if needed.'});
   if(!ok) return;
@@ -4923,16 +4965,52 @@ async function alOrder(){
     renderALPanel();
   }catch(e){ showToast('Order failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.innerHTML='<i class="fa-solid fa-file-invoice-dollar"></i> Place LLO order'; } }
 }
+// Advice Local fulfillment statuses → plain-English groups. rank: which of
+// a directory's duplicate records wins; order: table order (action first).
+const AL_GROUPS=[
+  {key:'attn',  label:'Needs attention', cls:'bad',   rank:1, order:0, help:'refused or failed — raise it with Advice Local if it persists'},
+  {key:'verify',label:'Verification',    cls:'warn',  rank:4, order:1, help:'the directory wants a phone/email/postcard confirmation from the business'},
+  {key:'live',  label:'Live',            cls:'ok',    rank:5, order:2, help:'listed and claimed'},
+  {key:'retry', label:'Retrying',        cls:'retry', rank:3, order:3, help:'a temporary hiccup at the directory; Advice Local resubmits automatically, usually within days'},
+  {key:'queued',label:'Queued',          cls:'q',     rank:2, order:4, help:'not submitted yet'},
+  {key:'other', label:'Other',           cls:'q',     rank:0, order:5, help:'see the raw status on hover'},
+];
+function alGroup(status){
+  const t=String(status||'').toLowerCase().replace(/_/g,' ');
+  const k=/temporar|retry/.test(t)?'retry'
+    :/verif|confirm|postcard|action required|manual/.test(t)?'verify'
+    :/reject|fail|error|denied|unavailable|not available|duplicate|closed|removed/.test(t)?'attn'
+    :/added|claimed|updated|live|listed|complete|synced/.test(t)?'live'
+    :/initial|pending|queue|submitted|processing|progress|scheduled/.test(t)?'queued'
+    :'other';
+  return AL_GROUPS.find(g=>g.key===k);
+}
 async function alStatus(){
   const el=document.getElementById('al-status'); if(el) el.innerHTML='<div class="wmeta">Checking fulfillment…</div>';
   try{
     const d=await alInvoke({action:'status', client_id:activeClient.id});
     const dirs=d.directories||[];
     if(!dirs.length){ el.innerHTML='<div class="wmeta">No directory submissions reported yet — Advice Local typically starts within a couple of business days of the order.</div>'; return; }
-    const nice=s=>String(s||'—').replace(/_/g,' ');
-    el.innerHTML=`<div style="overflow-x:auto"><table class="team-tbl"><thead><tr><th>Directory</th><th>Status</th><th>Was</th><th>Live URL</th><th>Updated</th></tr></thead><tbody>${
-      dirs.map(f=>`<tr><td><b>${esc(f.directory||'—')}</b></td><td>${esc(nice(f.status))}</td><td>${esc(nice(f.initial))}</td>
-        <td>${f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener">open ↗</a>`:'—'}</td>
+    // One row per directory (AL keeps several records for some), the most
+    // advanced state winning, in plain English with a summary on top.
+    const byDir=new Map();
+    dirs.forEach(f=>{
+      const key=String(f.directory||'—').trim().toLowerCase(), g=alGroup(f.status), cur=byDir.get(key);
+      if(!cur){ byDir.set(key,{...f, g}); return; }
+      if(g.rank>cur.g.rank) Object.assign(cur,{status:f.status, initial:f.initial, g});
+      if(!cur.url&&f.url) cur.url=f.url;
+      if(String(f.updated||'')>String(cur.updated||'')) cur.updated=f.updated;
+    });
+    const rows=[...byDir.values()].sort((a,b)=>a.g.order-b.g.order||String(a.directory).localeCompare(String(b.directory)));
+    const counts={}; rows.forEach(r=>{ counts[r.g.key]=(counts[r.g.key]||0)+1; });
+    const summary=AL_GROUPS.filter(g=>counts[g.key]).map(g=>`<span class="al-pill ${g.cls}">${counts[g.key]} ${g.label.toLowerCase()}</span>`).join(' ');
+    const was=s=>{ const t=String(s||'').toLowerCase(); return !t?'—':/not\s*present/.test(t)?'Not listed':/present/.test(t)?'Already listed':String(s).replace(/_/g,' '); };
+    el.innerHTML=`<div class="al-sum"><b>${rows.length} directories</b> ${summary}</div>
+      <div class="wmeta" style="margin:4px 0 10px">${AL_GROUPS.filter(g=>counts[g.key]).map(g=>`<b>${g.label}</b>: ${g.help}`).join(' · ')}</div>
+      <div style="overflow-x:auto"><table class="team-tbl"><thead><tr><th>Directory</th><th>Status</th><th>Before</th><th>Listing</th><th>Updated</th></tr></thead><tbody>${
+      rows.map(f=>`<tr><td><b>${esc(f.directory||'—')}</b></td>
+        <td><span class="al-pill ${f.g.cls}" title="Advice Local status: ${esc(String(f.status||'—'))}">${f.g.label}</span></td><td>${esc(was(f.initial))}</td>
+        <td>${f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener">open <i class="fa-solid fa-arrow-up-right-from-square"></i></a>`:'—'}</td>
         <td>${f.updated?fmtDate(String(f.updated).slice(0,10)):'—'}</td></tr>`).join('')}</tbody></table></div>`;
   }catch(e){ if(el) el.innerHTML=`<div class="wmeta" style="color:#c0392b">${esc(String(e.message||e))}</div>`; }
 }
