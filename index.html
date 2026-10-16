@@ -977,7 +977,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.22.3</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.22.4</div>
   </div>
   </div>
 </div>
@@ -1062,7 +1062,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.22.3</span>
+        <span>44i, Inc. · Internal Ops Console · V5.22.4</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1110,7 +1110,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.22.3</span>
+        <span>44i, Inc. · Internal Ops Console · V5.22.4</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1147,9 +1147,9 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <div class="ptab on" id="ptab-1">
       <div class="howto"><b>Step 1 — Set the client up.</b> (Once per client, then only when something changes.)
         <ol>
-          <li>Check the URL, target market and plan, then add the target keywords and targeted landing pages.</li>
-          <li>Click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it.</li>
-          <li>Fill in the <b>Local Listing Optimization</b> business facts. Amber fields were read off the client's website — verify them; everything saves as you type.</li>
+          <li>Check the URL, target market and plan, then fill in the <b>Business Facts</b>. Amber fields were read off the client's website — verify them; everything saves as you type.</li>
+          <li>Add the target keywords and targeted landing pages, then the <b>Local Listing Optimization</b> citation pack and Advice Local sync.</li>
+          <li>Hand the package off to an SEO/AEO specialist if one is taking it, then click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it.</li>
           <li>In Platform Access, connect what you have: the WordPress key (from the client site's connector plugin — see tab ④), Search Console, Business Profile.</li>
         </ol>
       </div>
@@ -1169,13 +1169,14 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
           </div>
         </div>
       </div>
-      <div class="datasrc" id="content-targets" style="margin-top:14px"></div>
-      <div class="gen-row"><button class="run" onclick="generatePackage()">Generate package →</button></div>
       <div class="datasrc" id="bizfacts"></div>
+      <div class="datasrc" id="content-targets"></div>
+      <div class="datasrc" id="llo"></div>
+      <div class="ctrlzone" id="kickoff-submit" style="display:none"></div>
+      <div class="gen-row"><button class="run" onclick="generatePackage()">Generate package →</button></div>
       <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
       <div class="acp" id="access-panel"></div>
       <div class="datasrc" id="datasrc"></div>
-      <div class="ctrlzone" id="kickoff-submit" style="display:none"></div>
       <div class="ctrlzone" id="campaign-controls" style="display:none"></div>
     </div>
 
@@ -1269,7 +1270,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.22.3 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.22.4 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1303,7 +1304,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.22.3</span>
+      <span>44i, Inc. · Internal Ops Console · V5.22.4</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -4676,7 +4677,9 @@ const DIRECTORIES=[
 ];
 async function renderBizFacts(){
   const el=document.getElementById('bizfacts'); if(!el) return;
-  if(OFFLINE||!activeClient){ el.innerHTML=''; return; }
+  if(OFFLINE||!activeClient){ el.innerHTML='';
+    ['content-targets','llo'].forEach(id=>{ const x=document.getElementById(id); if(x) x.innerHTML=''; });
+    return; }
   if(activeClient._intake===undefined){
     try{ const {data,error}=await sb.from('clients').select('intake').eq('id',activeClient.id).single();
       activeClient._intake=(!error&&data&&data.intake)||{}; }catch(_){ activeClient._intake={}; }
@@ -4701,9 +4704,12 @@ async function renderBizFacts(){
   el.innerHTML=`
     <div class="section-h"><h2>Business Facts — Kickoff</h2><div class="ln"></div><span class="tag"><span id="bf-summary">${esc(bfSummaryText())}</span> <span id="bf-savestate"></span></span></div>
     ${INTAKE_SECTIONS.map(([sec,keys])=>`
-      <div class="bf-sec"><h4>${sec}</h4><div class="bf-grid">${keys.map(k=>field(k)).join('')}</div></div>`).join('')}
-    <div class="bf-sec"><h4>Local Listing Optimization</h4>
-      <div class="wmeta" style="margin-bottom:10px">The facts above power the citation pack and the Advice Local submission — fields auto-save as you type.</div>
+      <div class="bf-sec"><h4>${sec}</h4><div class="bf-grid">${keys.map(k=>field(k)).join('')}</div></div>`).join('')}`;
+  const llo=document.getElementById('llo');
+  if(llo) llo.innerHTML=`
+    <div class="section-h" style="margin-top:22px"><h2>Local Listing Optimization</h2><div class="ln"></div><span class="tag">citation pack · Advice Local</span></div>
+    <div class="bf-sec">
+      <div class="wmeta" style="margin-bottom:10px">The business facts above power the citation pack and the Advice Local submission — fields auto-save as you type.</div>
       <div class="bf-actions" style="justify-content:flex-start;margin-top:0">
         <button class="ds-save" style="background:var(--blue)" onclick="downloadCitationPack()"><i class="fa-solid fa-address-card"></i> Citation pack</button>
         <button class="ds-save" style="background:#6FA53C" onclick="downloadCitationCSV()"><i class="fa-solid fa-download"></i> Citations CSV</button>
@@ -4726,7 +4732,7 @@ async function renderBizFacts(){
 }
 function bfSummaryText(){
   const missReq=intakeMissing().length;
-  return `Local Listing Optimization (LLO) — business facts & citation pack · ${5-missReq}/5 required saved`;
+  return `Business facts & citation pack · ${5-missReq}/5 required saved`;
 }
 function bfKwRow(n,kw,loc,isSug){
   return `<div class="bf-kwrow">
