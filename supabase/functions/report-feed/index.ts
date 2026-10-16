@@ -10,7 +10,7 @@
 //             Secrets. The token travels in the URL because SmartConnectors
 //             can't send custom headers — treat the URL itself as a secret.)
 //   · view    audits | clients | content | deliverables | reports |
-//             report_grades | report_items — the looker_* views
+//             report_grades | report_items (+ _monthly variants) — the looker_* views
 //             from supabase/migrations/looker_views.sql (run that first).
 //             Whitelisted names only; nothing else is reachable.
 //   · format  csv (default) | json
@@ -44,6 +44,10 @@ const VIEWS: Record<string, { table: string; order: string; asc: boolean }> = {
   reports:       { table: "looker_reports",       order: "report_date",  asc: false },
   report_grades: { table: "looker_report_grades", order: "report_date",  asc: false },
   report_items:  { table: "looker_report_items",  order: "report_date",  asc: false },
+  // one report per client per calendar month (the month's final report)
+  reports_monthly:       { table: "looker_reports_monthly",       order: "report_date", asc: false },
+  report_grades_monthly: { table: "looker_report_grades_monthly", order: "report_date", asc: false },
+  report_items_monthly:  { table: "looker_report_items_monthly",  order: "report_date", asc: false },
 };
 
 const csvCell = (v: unknown): string => {

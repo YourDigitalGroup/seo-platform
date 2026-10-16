@@ -19,6 +19,23 @@ the fallback for TapClicks plans without a database connector.
 | `looker_report_grades` | pillar per report | §7: baseline / last cycle / now, not-assessed + coverage, regression, and the "Notes & next moves" text |
 | `looker_report_items` | list line per report | every table in the report, keyed by `section`: `content_by_type`, `schema_types` (§2) · `fixes_deployed`, `content_published` (§3) · `gsc_trend`, `early_movement` (§4) · `position_improvements`, `newly_ranking` (§5) · `citation_trend` (§6) · `next_actions`, `verified_fixed`, `not_pursuing`, `roadmap` (§8) |
 
+**Monthly dashboards: use the `_monthly` versions.** The weekly rebuild
+(plus any manual Rebuild) leaves several reports per client per month, so a
+month-long date range returns several rows and scorecards add them up.
+`looker_reports_monthly`, `looker_report_grades_monthly` and
+`looker_report_items_monthly` keep only each client's **last report of each
+calendar month**: same columns, one report per client per month. Put the
+dashboard's date range on `report_date` and every widget stays in step.
+
+Display-ready text fields on `looker_reports` (scorecards can't show text,
+so use a table or text chart): `phase_banner` ("FOUNDATION | Months 1–3
+build & deploy assets"), `phase_title`, `phase_detail`, `program_label`,
+`checks_change_label` ("+8 since baseline (33 → 41 of 61)"),
+`checks_passing_pct` / `checks_baseline_pct`, `ai_citation_status`,
+`aeo_readiness_label`, `yoy_note`, `cycle_fixes_note`. On
+`looker_report_items`: `position_before_label` / `position_after_label`
+("#6").
+
 **Platform data** (live, not tied to a report build):
 
 | View | One row per |
@@ -79,7 +96,8 @@ For TapClicks plans without a database connector (SmartConnector pulls a URL):
 
    `https://YOURPROJECT.supabase.co/functions/v1/report-feed?token=TOKEN&view=reports`
 
-   - `view=` `reports` · `report_grades` · `report_items` · `audits` ·
+   - `view=` `reports_monthly` · `report_grades_monthly` · `report_items_monthly` ·
+     `reports` · `report_grades` · `report_items` · `audits` ·
      `clients` · `content` · `deliverables`
    - `&format=json` for JSON instead of CSV
    - `&group=Partner Name` for a per-partner feed
