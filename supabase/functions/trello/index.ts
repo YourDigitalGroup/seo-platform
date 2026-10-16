@@ -17,6 +17,11 @@
 //         mid-campaign import are left out);
 //       - tagging the strategist: added as a card member and @mentioned in
 //         a comment, via profiles.trello_username.
+//       - with the client notes (clients.notes) in the description and the
+//         campaign document attached (doc_name + doc_html from the console,
+//         when the package has been generated).
+//   · attach  — attaches the campaign document to the client's card (the
+//       console calls it after Generate package, or from "Attach campaign doc").
 //   · comment — approval-trail comments on the client's card.
 //   · lists   — board columns (id + name) for the settings dashboard.
 //
@@ -60,6 +65,19 @@ Deno.serve(async (req) => {
     const BOARD = String(settings.board_id || Deno.env.get("TRELLO_BOARD_ID") || "").trim();
 
     const auth = `key=${KEY}&token=${TOKEN}`;
+    // Campaign doc → card attachment (multipart upload; Trello caps files at
+    // 10 MB on free workspaces, so oversize docs are refused up front).
+    const MAX_DOC = 9 * 1024 * 1024;
+    const docName = (n: unknown) => (String(n || "campaign.html").replace(/[^\w.\-]+/g, "_").slice(0, 120) || "campaign.html").replace(/(\.html)?$/i, ".html");
+    const attachDoc = async (cardId: string, name: string, html: string) => {
+      if (new TextEncoder().encode(html).length > MAX_DOC) throw new Error("campaign doc is over 9 MB — too large for a Trello attachment");
+      const fd = new FormData();
+      fd.append("file", new Blob([html], { type: "text/html" }), name);
+      fd.append("name", name);
+      fd.append("mimeType", "text/html");
+      const r = await fetch(`https://api.trello.com/1/cards/${encodeURIComponent(cardId)}/attachments?${auth}`, { method: "POST", body: fd });
+      if (!r.ok) throw new Error(`Trello attachment → HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    };
     const trello = async (method: string, path: string, params: Record<string, string> = {}) => {
       const qs = new URLSearchParams(params).toString();
       const r = await fetch(`https://api.trello.com/1${path}?${auth}${qs ? "&" + qs : ""}`, { method });
@@ -137,6 +155,7 @@ Deno.serve(async (req) => {
         iv.description ? `\n${String(iv.description).slice(0, 600)}` : "",
         kws.length ? `\n**Target keywords:** ${kws.join("; ")}` : "",
         iv.landing_targets ? `**Landing pages:** ${String(iv.landing_targets).replace(/\n+/g, "; ").slice(0, 400)}` : "",
+        String(client.notes || "").trim() ? `\n**Client notes:**\n${String(client.notes).trim().slice(0, 4000)}` : "",
         `\nDue: ${DUE_DAYS} days per package. Open the client in the SEO console to start.`,
       ].filter(Boolean).join("\n");
 
@@ -190,11 +209,28 @@ Deno.serve(async (req) => {
         } catch (_) { warnings.push("card created but the handoff comment failed"); }
       }
 
+      // Campaign document as an attachment (only once a package exists — the
+      // console attaches it after Generate package otherwise).
+      let attached = false;
+      if (typeof body.doc_html === "string" && body.doc_html.length) {
+        try { await attachDoc(card.id, docName(body.doc_name), body.doc_html); attached = true; }
+        catch (e) { warnings.push(`campaign doc not attached (${String((e as any)?.message || e).slice(0, 120)})`); }
+      }
+
       const { error: uErr } = await supa.from("clients").update({ trello_card_id: card.id }).eq("id", client.id);
       if (uErr) warnings.push(`card created but id not saved (${uErr.message}) — run platform_extras.sql`);
       return json({ ok: true, card_url: card.shortUrl || card.url, list: listName, title: name, due,
-        months: Object.keys(byMonth).length, check_items: checkItems, tagged: !!memberId,
+        months: Object.keys(byMonth).length, check_items: checkItems, tagged: !!memberId, attached,
         warning: warnings.length ? warnings.join("; ") : null });
+    }
+
+    if (action === "attach") {
+      // The saved card id wins; the console's copy covers a missing column.
+      const cardId = String(client.trello_card_id || body.card_id || "").trim();
+      if (!/^[A-Za-z0-9]{6,32}$/.test(cardId)) return json({ error: "no Trello card on this client — submit to a specialist first" }, 400);
+      if (typeof body.doc_html !== "string" || !body.doc_html.length) return json({ error: "doc_html required" }, 400);
+      await attachDoc(cardId, docName(body.doc_name), body.doc_html);
+      return json({ ok: true });
     }
 
     if (action === "comment") {
