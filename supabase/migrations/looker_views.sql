@@ -67,6 +67,10 @@ left join partner_groups g on g.id = c.partner_group_id;
 --    looker_report_grades  one row per pillar per report (§7)
 --    looker_report_items   one row per list line per report (§2, §3, §4, §5,
 --                          §6, §8 tables and lists), keyed by `section`
+--    looker_reports_monthly / looker_report_grades_monthly /
+--    looker_report_items_monthly   the same three, keeping only each client's
+--                          LAST report of each calendar month — use these
+--                          for a monthly dashboard so nothing doubles up
 --  Snapshots start with the first report built after redeploying
 --  generate-report; fire `select seop_invoke_scheduler('weekly-reports');`
 --  to build one for every active client right away.
@@ -86,6 +90,18 @@ create unique index if not exists report_snapshots_pkg_audit on report_snapshots
 create index if not exists report_snapshots_client_date on report_snapshots (client_id, report_date desc);
 -- service role (the report builder) bypasses RLS; nobody else reads the table directly
 alter table report_snapshots enable row level security;
+
+-- Rank each client's reports: newest overall, and newest within each calendar
+-- month (the month's final report). Internal helper; not granted to the
+-- reader role directly, only surfaced through the views below.
+create or replace view report_snapshot_rank as
+select
+  id, client_id,
+  date_trunc('month', report_date)::date as report_month,
+  (row_number() over (partition by client_id order by report_date desc, built_at desc) = 1) as is_latest,
+  (row_number() over (partition by client_id, date_trunc('month', report_date)
+                      order by report_date desc, built_at desc) = 1) as is_month_final
+from report_snapshots;
 
 -- One row per report: every headline number in sections 1–8.
 create or replace view looker_reports as
@@ -190,9 +206,34 @@ select
   case when (d->>'cycle_fixes_deployed')::int > 0
        then (d->>'cycle_fixes_deployed') || ' fixes deployed this cycle.'
        else 'No fixes were marked deployed in this window — items staged in the platform are not claimed here until they ship.'
-  end                                                               as cycle_fixes_note
+  end                                                               as cycle_fixes_note,
+  -- §1 phase banner, worded as the PDF's phase strip
+  upper(d->>'phase')                                                as phase_title,
+  case d->>'phase' when 'foundation'  then 'Months 1–3 build & deploy assets'
+                   when 'emergence'   then 'Months 4–6 impressions & positions move'
+                   when 'compounding' then 'Month 7+ traffic & leads follow' end as phase_detail,
+  upper(d->>'phase') || ' | ' ||
+  case d->>'phase' when 'foundation'  then 'Months 1–3 build & deploy assets'
+                   when 'emergence'   then 'Months 4–6 impressions & positions move'
+                   when 'compounding' then 'Month 7+ traffic & leads follow' end as phase_banner,
+  -- §2 audit checks vs baseline
+  round(100.0 * (d->>'checks_passing')::numeric / nullif((d->>'checks_total')::numeric, 0))          as checks_passing_pct,
+  round(100.0 * (d->>'checks_passing_baseline')::numeric / nullif((d->>'checks_total')::numeric, 0)) as checks_baseline_pct,
+  case when (d->>'checks_passing_baseline')::int > 0
+       then (d->>'checks_passing')::int - (d->>'checks_passing_baseline')::int end                  as checks_change_vs_baseline,
+  case when (d->>'checks_passing_baseline')::int > 0
+       then (case when (d->>'checks_passing')::int >= (d->>'checks_passing_baseline')::int then '+' else '' end)
+            || ((d->>'checks_passing')::int - (d->>'checks_passing_baseline')::int)
+            || ' since baseline (' || (d->>'checks_passing_baseline') || ' → ' || (d->>'checks_passing')
+            || ' of ' || (d->>'checks_total') || ')'
+       else 'Baseline cycle — future reports compare against these ' || (d->>'checks_passing') || ' checks'
+  end                                                               as checks_change_label,
+  -- one report per client per month (see looker_*_monthly below)
+  rk.report_month,
+  rk.is_month_final
 from report_snapshots rs
 cross join lateral (select rs.data as d) j
+join report_snapshot_rank rk on rk.id = rs.id
 join clients c on c.id = rs.client_id
 left join partner_groups g on g.id = c.partner_group_id;
 
@@ -209,9 +250,13 @@ select
   (e->>'not_assessed')::boolean  as not_assessed,
   (e->>'coverage_pct')::int      as coverage_pct,
   (e->>'regression')::boolean    as regression,
-  e->>'notes'                    as notes_and_next_moves
+  e->>'notes'                    as notes_and_next_moves,
+  rk.is_latest,
+  rk.report_month,
+  rk.is_month_final
 from report_snapshots rs
 cross join lateral jsonb_array_elements(coalesce(rs.data->'grades','[]'::jsonb)) e
+join report_snapshot_rank rk on rk.id = rs.id
 join clients c on c.id = rs.client_id
 left join partner_groups g on g.id = c.partner_group_id;
 
@@ -234,8 +279,10 @@ left join partner_groups g on g.id = c.partner_group_id;
 create or replace view looker_report_items as
 with s as (
   select rs.id as report_id, rs.client_id, c.name as client_name, c.url as client_url,
-         c.tier as plan, g.name as partner_group, rs.report_date, rs.data as d
+         c.tier as plan, g.name as partner_group, rs.report_date, rs.data as d,
+         rk.is_latest, rk.report_month, rk.is_month_final
   from report_snapshots rs
+  join report_snapshot_rank rk on rk.id = rs.id
   join clients c on c.id = rs.client_id
   left join partner_groups g on g.id = c.partner_group_id
 ), items as (
@@ -295,8 +342,20 @@ select s.report_id, s.client_id, s.client_name, s.client_url, s.plan, s.partner_
        i.section_number, i.section, i.item_order::int as item_order,
        i.title, i.detail, i.category, i.item_date, i.count_value, i.volume,
        i.position_before, i.position_after, i.gsc_queries, i.gsc_impressions, i.gsc_clicks,
-       i.ai_mentions, i.ai_sov_pct
+       i.ai_mentions, i.ai_sov_pct,
+       s.is_latest, s.report_month, s.is_month_final,
+       case when i.position_before is not null then '#' || trim_scale(i.position_before)::text end as position_before_label,
+       case when i.position_after  is not null then '#' || trim_scale(i.position_after)::text  end as position_after_label
 from items i join s on s.report_id = i.report_id;
+
+-- ── Monthly views: each client's LAST report of each calendar month ─────────
+-- The weekly rebuild (plus any manual Rebuild) leaves several reports per
+-- client per month. With the dashboard date range on report_date, these
+-- views give exactly one report per client per month, so scorecards and
+-- tables never double up. Same columns as the views they filter.
+create or replace view looker_reports_monthly       as select * from looker_reports       where is_month_final;
+create or replace view looker_report_grades_monthly as select * from looker_report_grades where is_month_final;
+create or replace view looker_report_items_monthly  as select * from looker_report_items  where is_month_final;
 
 -- Read-only role for the Looker Studio PostgreSQL connector.
 -- After running this, set a password:  alter role looker_reader password '…';
@@ -307,4 +366,5 @@ do $$ begin
 end $$;
 grant usage on schema public to looker_reader;
 grant select on looker_audits, looker_clients, looker_content, looker_deliverables,
-  looker_reports, looker_report_grades, looker_report_items to looker_reader;
+  looker_reports, looker_report_grades, looker_report_items,
+  looker_reports_monthly, looker_report_grades_monthly, looker_report_items_monthly to looker_reader;
