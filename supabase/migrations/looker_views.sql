@@ -368,3 +368,14 @@ grant usage on schema public to looker_reader;
 grant select on looker_audits, looker_clients, looker_content, looker_deliverables,
   looker_reports, looker_report_grades, looker_report_items,
   looker_reports_monthly, looker_report_grades_monthly, looker_report_items_monthly to looker_reader;
+
+-- These views run with their owner's rights, so they bypass the row-level
+-- security on the tables underneath. Supabase grants new views to the public
+-- web-API roles by default, and the console's anon key is public — so take
+-- them away: only looker_reader (and the service role) may read them. The
+-- console never queries these views.
+revoke all on looker_audits, looker_clients, looker_content, looker_deliverables,
+  looker_reports, looker_report_grades, looker_report_items,
+  looker_reports_monthly, looker_report_grades_monthly, looker_report_items_monthly,
+  report_snapshot_rank
+  from anon, authenticated;
