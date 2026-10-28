@@ -73,6 +73,19 @@ on each client card. The Trello handoff card copies the notes into its
 description and attaches the campaign doc (redeploy `trello`). Applied on
 the live project 2026-10-16 together with `platform_extras.sql`.
 
+## 1a-4c. WordPress AI proxy  (Supabase → SQL Editor + Edge Functions)
+
+Paste `supabase/migrations/wp_ai_usage.sql` and Run, then deploy
+`supabase/functions/wp-ai` with **Enforce JWT verification OFF** (WordPress
+can't send a Supabase JWT — each site's own connector API key is the gate).
+It uses the same `ANTHROPIC_API_KEY` / optional `ANTHROPIC_WORKSPACE_ID`
+secrets as the other AI functions. Connector 1.10+ calls it for the AI
+auto-fix, so no Anthropic key is baked into the plugin or typed on a site
+(1.10 also wipes keys saved by older versions). Requirements per site: the
+client is active and its connector API key is saved in Platform Access.
+Guard rails: Haiku only, max 1,200 output tokens, 400 calls per site per day
+(`wp_ai_usage`). Applied on the live project 2026-10-28.
+
 ## 1a-5. Plan add-ons  (Supabase → SQL Editor)
 
 Paste `supabase/migrations/addons.sql` and Run (idempotent; AFTER

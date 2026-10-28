@@ -8,6 +8,11 @@ alter table clients
   add column if not exists suspended_at   date,
   add column if not exists suspend_reason text;
 
+-- The console writes status = 'suspended'; the enum never had that value, so
+-- every "Suspend campaign" failed with "invalid input value for enum
+-- client_status" (found in the 2026-10-28 QA pass).
+alter type client_status add value if not exists 'suspended';
+
 -- One-time normalization: the old onboarding/paused statuses fold into
 -- 'active' so existing clients keep their scheduled audits and show under
 -- the Active filter. (Nothing was ever set to 'churned' by the console.)
