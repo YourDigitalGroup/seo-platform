@@ -32,6 +32,25 @@ const CORS = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
+// ── Caller gate (QA 2026-10-28). verify_jwt alone is not access control here:
+// the public anon key shipped in the console is itself a valid JWT, and email
+// sign-up is open. Every request must come from the service role (scheduler,
+// function-to-function) or a staff member (a row in profiles), optionally
+// holding one of `roles`.
+async function gateCaller(req: Request, roles?: string[]): Promise<{ userId: string | null; role: string } | Response> {
+  const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  const svc = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!tok) return json({ error: "sign in required" }, 401);
+  if (svc && tok === svc) return { userId: null, role: "service" };
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, svc, { auth: { persistSession: false } });
+  const { data } = await admin.auth.getUser(tok);
+  if (!data?.user) return json({ error: "sign in required" }, 401);
+  const { data: prof } = await admin.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
+  if (!prof) return json({ error: "staff only — this account has no staff profile" }, 403);
+  if (roles && !roles.includes(String(prof.role))) return json({ error: "your role can't do this" }, 403);
+  return { userId: data.user.id, role: String(prof.role) };
+}
+
 // Build the writing brief for a given topic kind.
 // v2: HARD RULES from the delivery-QA critique — fact provenance is a legal
 // constraint (FTC fake-review rule), every piece ships publish-complete, and
@@ -74,9 +93,14 @@ function buildPrompt(kind: string, title: string, keyword: string, biz: string, 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  const who = await gateCaller(req);
+  if (who instanceof Response) return who;
 
+  let activeTopic: string | null = null;   // for the catch: never leave a topic stuck in 'drafting'
   try {
-    const { topic_id, instruction, editor_id } = await req.json().catch(() => ({}));
+    const { topic_id, instruction, editor_id: bodyEditor } = await req.json().catch(() => ({}));
+    // the audit trail records the real caller; only the service role may name one
+    const editor_id = who.userId ?? bodyEditor ?? null;
     if (!topic_id) return json({ error: "topic_id is required" }, 400);
 
     const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY");
@@ -104,6 +128,7 @@ Deno.serve(async (req) => {
     const maxTokens = MAX_TOKENS[topic.kind] ?? 4000;
 
     await supa.from("content_topics").update({ status: "drafting" }).eq("id", topic_id);
+    activeTopic = topic_id;
 
     // 2. Build the prompt (rewrite-aware)
     let prompt = buildPrompt(topic.kind, topic.title, keyword, biz, market, (topic as any).location || null);
@@ -129,6 +154,7 @@ Deno.serve(async (req) => {
         max_tokens: maxTokens,
         messages: [{ role: "user", content: prompt }],
       }),
+      signal: AbortSignal.timeout(140_000),   // inside the platform wall clock, so the catch below still runs
     });
     if (!aRes.ok) {
       const t = await aRes.text();
@@ -142,6 +168,11 @@ Deno.serve(async (req) => {
       .replace(/^\s*```[a-z]*\s*\n/i, "").replace(/\n```\s*$/i, "")
       .replace(/^\s*```[a-z]*\s*$/gim, "").trim();
     const usage = data.usage ?? null;
+    if (data.stop_reason === "max_tokens") {
+      // a cut-off piece must never land as a finished draft
+      await supa.from("content_topics").update({ status: "queued" }).eq("id", topic_id);
+      return json({ error: `the draft ran past the ${maxTokens}-token limit and was cut off — try again, or shorten the brief` }, 502);
+    }
     if (!body) {
       await supa.from("content_topics").update({ status: "queued" }).eq("id", topic_id);
       return json({ error: "empty response from model", raw: data }, 502);
@@ -153,6 +184,9 @@ Deno.serve(async (req) => {
     if (existing) {
       await supa.from("content_drafts").update({
         body, model: modelEnum, revision: newRev, kind: topic.kind, title: topic.title,
+        // new copy needs a fresh human approval — an approved flag must not
+        // carry over to text nobody has reviewed (the report counts approved)
+        approved: false,
         last_instruction: instruction ?? null, edited_by: editor_id ?? null, updated_at: new Date().toISOString(),
       }).eq("id", existing.id);
     } else {
@@ -174,6 +208,13 @@ Deno.serve(async (req) => {
     return json({ ok: true, draft_id, revision: newRev, model: apiModel, kind: topic.kind, chars: body.length, usage });
   } catch (e) {
     console.error("generate-content fatal", e);
+    // don't leave the topic stuck in 'drafting' (the console would re-send it)
+    if (activeTopic) {
+      try {
+        const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+        await supa.from("content_topics").update({ status: "queued" }).eq("id", activeTopic).eq("status", "drafting");
+      } catch (_) { /* best effort */ }
+    }
     return json({ error: "unhandled", detail: String((e as any)?.stack || e).slice(0, 500) }, 500);
   }
 });

@@ -41,6 +41,25 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
+// ── Caller gate (QA 2026-10-28). verify_jwt alone is not access control here:
+// the public anon key shipped in the console is itself a valid JWT, and email
+// sign-up is open. Every request must come from the service role (scheduler,
+// function-to-function) or a staff member (a row in profiles), optionally
+// holding one of `roles`.
+async function gateCaller(req: Request, roles?: string[]): Promise<{ userId: string | null; role: string } | Response> {
+  const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  const svc = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!tok) return json({ error: "sign in required" }, 401);
+  if (svc && tok === svc) return { userId: null, role: "service" };
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, svc, { auth: { persistSession: false } });
+  const { data } = await admin.auth.getUser(tok);
+  if (!data?.user) return json({ error: "sign in required" }, 401);
+  const { data: prof } = await admin.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
+  if (!prof) return json({ error: "staff only — this account has no staff profile" }, 403);
+  if (roles && !roles.includes(String(prof.role))) return json({ error: "your role can't do this" }, 403);
+  return { userId: data.user.id, role: String(prof.role) };
+}
+
 // Which model writes which kind (kept internal; never surfaced to the team).
 const MODEL_FOR: Record<string, string> = {
   page_copy: "claude-opus-4-8", faq_schema: "claude-sonnet-4-6",
@@ -63,15 +82,19 @@ const FILE_KINDS = new Set([
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  const who = await gateCaller(req);
+  if (who instanceof Response) return who;
 
   // The AI writer key (secret name unchanged so the deployed config keeps working).
   const AI_KEY = Deno.env.get("ANTHROPIC_API_KEY");
   try {
     const body = await req.json().catch(() => ({}));
-    const ids: string[] = body.fix_ids ?? (body.fix_id ? [body.fix_id] : []);
+    const ids: string[] = (Array.isArray(body.fix_ids) ? body.fix_ids : (body.fix_id ? [body.fix_id] : [])).map(String);
     const instruction: string | null = body.instruction ?? null;
-    const editor_id: string | null = body.editor_id ?? null;
+    // the audit trail records the real caller; only the service role may name one
+    const editor_id: string | null = who.userId ?? body.editor_id ?? null;
     if (!ids.length) return json({ error: "fix_ids (or fix_id) required" }, 400);
+    if (ids.length > 60) return json({ error: "at most 60 fixes per call" }, 400);
 
     const supa = createClient(
       Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -96,9 +119,11 @@ Deno.serve(async (req) => {
         headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json",
           ...(wsid ? { "anthropic-workspace-id": wsid } : {}) },
         body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
+        signal: AbortSignal.timeout(90_000),
       });
       if (!r.ok) throw new Error(`AI writer ${r.status}: ${(await r.text()).slice(0, 200)}`);
       const data = await r.json();
+      if (data.stop_reason === "max_tokens") throw new Error(`AI output hit the ${maxTokens}-token limit and was cut off`);
       return (data.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
     };
 
@@ -150,22 +175,28 @@ Deno.serve(async (req) => {
         } else {
           // ── AI copy kinds ─────────────────────────────────────────────────────
           const model = MODEL_FOR[kind] || MODEL_FOR._default; usedModel = model;
-          const { system, user, max } = promptFor(kind, { name, city, kw, page, before: fix.before_text || "", instruction });
+          // a rewrite revises the CURRENT copy rather than starting over
+          const before = instruction && fix.after_text ? `${fix.before_text || ""}\n\nCURRENT DRAFT (revise this):\n${fix.after_text}` : (fix.before_text || "");
+          const { system, user, max } = promptFor(kind, { name, city, kw, page, before, instruction });
           after_text = await writeAI(model, PROVENANCE + system, user, max);
           if (kind === "faq_schema") schema_jsonld = faqToJsonLd(after_text);
         }
 
+        // A fix already live on the site keeps its pushed/verified status (the
+        // report counts those); everything else lands back in review.
+        const keep = fix.status === "pushed" || fix.status === "verified";
         const update: Record<string, unknown> = {
-          after_text, schema_jsonld, status: "ready", updated_at: new Date().toISOString(),
+          after_text, schema_jsonld, status: keep ? fix.status : "ready", updated_at: new Date().toISOString(),
           revision: (fix.revision || 1) + (instruction ? 1 : 0),
         };
         if (usedModel) update.model = MODEL_ENUM[usedModel] ?? null;
         if (instruction) update.last_instruction = instruction;
         if (editor_id) update.edited_by = editor_id;
         await supa.from("fixes").update(update).eq("id", id);
-        results.push({ id, kind, status: "ready" });
+        results.push({ id, kind, status: update.status });
       } catch (e) {
-        await supa.from("fixes").update({ status: "suggested" }).eq("id", id); // leave re-runnable
+        // leave re-runnable — but never knock a live (pushed/verified) fix out of the report
+        if (fix.status !== "pushed" && fix.status !== "verified") await supa.from("fixes").update({ status: "suggested" }).eq("id", id);
         results.push({ id, kind, error: String(e) });
       }
     }
@@ -202,7 +233,7 @@ function promptFor(kind: string, a: { name: string; city: string; kw: string; pa
       return { max: 600, system: "You produce an internal-linking plan: for each suggested anchor text, give the source page idea and target page. Output a concise list.",
         user: `Business: ${a.name}${loc}. Keyword theme: "${a.kw}". Suggest 5 internal links that strengthen topical relevance and funnel toward conversion pages.${tail}` };
     case "gbp_post":
-      return { max: 350, system: "You write Google Business Profile posts. STRICT SHAPE: 100-300 words of plain text, no headings, no lists, no markdown, exactly one call to action. Never an article. Output only the post.",
+      return { max: 700, system: "You write Google Business Profile posts. STRICT SHAPE: 100-300 words of plain text, no headings, no lists, no markdown, exactly one call to action. Never an article. Output only the post.",
         user: `Business: ${a.name}${loc}. Theme/keyword: "${a.kw}". Write one Business Profile post for this month.${tail}` };
     case "llms_txt":
       return { max: 900, system: "You write llms.txt files — the markdown file AI assistants read to understand a website. Format: '# <Business Name>' heading, one-paragraph plain-language summary, then '## Services' and '## Key Pages' sections with markdown links. Factual, declarative, no marketing fluff. Output only the file content.",

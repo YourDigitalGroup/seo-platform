@@ -48,10 +48,13 @@ Deno.serve(async (req) => {
     if (!KEY || !TOKEN) return json({ error: "Trello not configured — set TRELLO_KEY and TRELLO_TOKEN under Edge Functions → trello → Secrets" }, 500);
     const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
-    // signed-in staff only
+    // staff only: a signed-in account WITHOUT a profiles row is a stranger
+    // (email sign-up is open), not a team member.
     const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
     const { data: caller } = await supa.auth.getUser(jwt);
     if (!caller?.user) return json({ error: "sign in required" }, 401);
+    const { data: staff } = await supa.from("profiles").select("id").eq("id", caller.user.id).maybeSingle();
+    if (!staff) return json({ error: "staff only — this account has no staff profile" }, 403);
 
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
@@ -225,8 +228,9 @@ Deno.serve(async (req) => {
     }
 
     if (action === "attach") {
-      // The saved card id wins; the console's copy covers a missing column.
-      const cardId = String(client.trello_card_id || body.card_id || "").trim();
+      // Only the card saved on this client: a caller-supplied id could aim the
+      // upload at any card the agency's Trello token can reach.
+      const cardId = String(client.trello_card_id || "").trim();
       if (!/^[A-Za-z0-9]{6,32}$/.test(cardId)) return json({ error: "no Trello card on this client — submit to a specialist first" }, 400);
       if (typeof body.doc_html !== "string" || !body.doc_html.length) return json({ error: "doc_html required" }, 400);
       await attachDoc(cardId, docName(body.doc_name), body.doc_html);
@@ -244,6 +248,7 @@ Deno.serve(async (req) => {
     return json({ error: "unknown action" }, 400);
   } catch (e) {
     console.error("trello fatal", e);
-    return json({ error: String((e as any)?.message || e).slice(0, 400) }, 500);
+    // network errors echo the full URL — never hand the Trello key/token back
+    return json({ error: String((e as any)?.message || e).replace(/\b(key|token)=[^&\s"']+/gi, "$1=***").slice(0, 400) }, 500);
   }
 });

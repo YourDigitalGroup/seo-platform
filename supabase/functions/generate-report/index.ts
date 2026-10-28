@@ -52,6 +52,25 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
+// ── Caller gate (QA 2026-10-28). verify_jwt alone is not access control here:
+// the public anon key shipped in the console is itself a valid JWT, and email
+// sign-up is open. Every request must come from the service role (scheduler,
+// function-to-function) or a staff member (a row in profiles), optionally
+// holding one of `roles`.
+async function gateCaller(req: Request, roles?: string[]): Promise<{ userId: string | null; role: string } | Response> {
+  const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  const svc = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!tok) return json({ error: "sign in required" }, 401);
+  if (svc && tok === svc) return { userId: null, role: "service" };
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, svc, { auth: { persistSession: false } });
+  const { data } = await admin.auth.getUser(tok);
+  if (!data?.user) return json({ error: "sign in required" }, 401);
+  const { data: prof } = await admin.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
+  if (!prof) return json({ error: "staff only — this account has no staff profile" }, 403);
+  if (roles && !roles.includes(String(prof.role))) return json({ error: "your role can't do this" }, 403);
+  return { userId: data.user.id, role: String(prof.role) };
+}
+
 const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const num = (n: unknown, def = "—") => (n == null || (typeof n === "number" && !isFinite(n))) ? def : (typeof n === "number" ? n.toLocaleString() : String(n));
 const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "—";
@@ -89,6 +108,8 @@ function laggingDelta(nowV: number | null, beforeV: number | null, windowDays: n
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  const who = await gateCaller(req);
+  if (who instanceof Response) return who;
   try {
     const body = await req.json().catch(() => ({}));
     const pkgIdInput: string | null = body.package_id ?? null;
@@ -118,20 +139,34 @@ Deno.serve(async (req) => {
     // Immutable engagement baseline: locked once on the client, never reset.
     const { data: allAudits } = await supa.from("audits")
       .select("id, run_at, domain_rating, org_keywords, org_traffic, org_keywords_top3, referring_domains, grade_technical, grade_onpage, grade_schema, grade_aeo, grade_eeat, grade_local, score, raw")
-      .eq("client_id", client.id).order("run_at", { ascending: true }).limit(200);
-    const audits = allAudits || [];
+      // Newest 400 up to THIS report's audit (daily audits passed the old
+      // oldest-first 200 cap within months, dropping the current audit out).
+      .eq("client_id", client.id).lte("run_at", currentAudit.run_at).order("run_at", { ascending: false }).limit(400);
+    const audits = (allAudits || []).slice().reverse();
     let baseline: any = null; let baselineLocked = false;
     if (client.baseline_audit_id) {
       baseline = audits.find((a: any) => a.id === client.baseline_audit_id) || null;
+      if (!baseline) {   // older than the window — load it directly
+        const { data: b } = await supa.from("audits")
+          .select("id, run_at, domain_rating, org_keywords, org_traffic, org_keywords_top3, referring_domains, grade_technical, grade_onpage, grade_schema, grade_aeo, grade_eeat, grade_local, score, raw")
+          .eq("id", client.baseline_audit_id).maybeSingle();
+        baseline = b || null;
+      }
       baselineLocked = !!baseline;
     }
     if (!baseline) {
       baseline = audits.length ? audits[0] : currentAudit;
-      // Lock it (best effort — column ships in report_baseline.sql).
-      try { await supa.from("clients").update({ baseline_audit_id: baseline.id, baseline_locked_at: new Date().toISOString() }).eq("id", client.id); baselineLocked = true; } catch (_) { /* migration pending */ }
+      // Lock it (column ships in report_baseline.sql; supabase-js returns errors, it doesn't throw).
+      const { error: lockErr } = await supa.from("clients").update({ baseline_audit_id: baseline.id, baseline_locked_at: new Date().toISOString() }).eq("id", client.id);
+      baselineLocked = !lockErr;
     }
     const priors = audits.filter((a: any) => a.id !== currentAudit.id && new Date(a.run_at) < new Date(currentAudit.run_at));
-    const lastPrior = priors.length ? priors[priors.length - 1] : null;
+    // "Last cycle" is the reporting cycle, not yesterday's daily audit: the
+    // newest audit at least 28 days older than this one (or, in a program's
+    // first month, the oldest one available).
+    const CYCLE_MIN_DAYS = 28;
+    const cyclePriors = priors.filter((a: any) => days(a.run_at, currentAudit.run_at) >= CYCLE_MIN_DAYS);
+    const lastPrior = cyclePriors.length ? cyclePriors[cyclePriors.length - 1] : (priors.length ? priors[0] : null);
     const isFirstCycle = baseline.id === currentAudit.id || !priors.length;
 
     const engagementStart: string = client.engagement_start_date ? String(client.engagement_start_date) + "T00:00:00Z" : baseline.run_at;
@@ -272,7 +307,9 @@ Deno.serve(async (req) => {
     const auditIds = audits.map((a: any) => a.id);
     let cumulativeFixes = 0;
     if (auditIds.length) {
-      const { count } = await supa.from("fixes").select("id", { count: "exact", head: true }).in("audit_id", auditIds).in("status", ["pushed", "verified"]);
+      // join on the client instead of an id list (hundreds of ids overflow the request URL)
+      const { count } = await supa.from("fixes").select("id, audits!inner(client_id)", { count: "exact", head: true })
+        .eq("audits.client_id", client.id).in("status", ["pushed", "verified"]);
       cumulativeFixes = count || 0;
     }
     const schemaTypes: string[] = raw.schema?.all || [];
@@ -293,7 +330,9 @@ Deno.serve(async (req) => {
       : (laggingMoving && leadingMoving) ? "compounding"
       : leadingMoving ? "emerging"
       : !windowOK ? "foundation"
-      : (programMonth >= 7 ? "plateau" : "building");
+      // plateau is judged on measured time (since the baseline audit), not the
+      // contract start — a client imported in month 7 has weeks of data, not months
+      : (programDays >= 180 ? "plateau" : "building");
 
     // ── 10. Next-cycle plan from the directive (never a copy of section 1) ───
     const dirItems: any[] = (pkg.directive?.items || []).filter((i: any) => i.in_plan && i.status !== "done");

@@ -108,7 +108,9 @@ Deno.serve(async (req) => {
       }
       // The last admin must never demote themselves into a lockout.
       if (patch.role && !ADMIN_ROLES.includes(patch.role) && String(body.user_id) === caller.user.id) {
-        const { count } = await supa.from("profiles").select("id", { count: "exact", head: true }).in("role", ADMIN_ROLES);
+        // staff_role has no 'admin' value, so filtering on it would error and the
+        // guard would block every self-demotion — count super_admins only.
+        const { count } = await supa.from("profiles").select("id", { count: "exact", head: true }).eq("role", "super_admin");
         if ((count || 0) <= 1) return json({ error: "you are the only admin — assign another admin first" }, 400);
       }
       const uid = String(body.user_id);
