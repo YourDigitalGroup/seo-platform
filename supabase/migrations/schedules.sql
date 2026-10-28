@@ -19,7 +19,7 @@ create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
 create or replace function seop_invoke_scheduler(mode text) returns bigint
-language sql security definer as $$
+language sql security definer set search_path = public as $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/run-scheduled',
     headers := jsonb_build_object(
@@ -33,6 +33,13 @@ $$;
 -- Daily audit-only re-runs: 11:00 UTC = 6:00 AM Central (winter) / 5:00 AM (summer).
 -- Fresh scores + history + fix verification every morning; no packages rebuilt.
 select cron.schedule('seop-daily-audits', '0 11 * * *', $$select seop_invoke_scheduler('daily-audits')$$);
+-- Catch-up sweep 20 minutes later: picks up anyone the 11:00 run couldn't
+-- reach (platform rate limits / a dead worker). Clients audited in the last
+-- 20h are skipped, so it costs nothing when the first run was complete.
+select cron.schedule('seop-daily-audits-catchup', '20 11 * * *', $$select seop_invoke_scheduler('daily-audits')$$);
+
+-- Only pg_cron and the SQL Editor may fire the scheduler (security_hardening.sql).
+revoke execute on function seop_invoke_scheduler(text) from public, anon, authenticated;
 
 -- Weekly report rebuilds: Mondays 13:00 UTC, AFTER that morning's audits —
 -- the white-label client report is never more than a week stale.
