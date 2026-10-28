@@ -992,7 +992,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.23.2</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.24.0</div>
   </div>
   </div>
 </div>
@@ -1077,7 +1077,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.23.2</span>
+        <span>44i, Inc. · Internal Ops Console · V5.24.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1125,7 +1125,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.23.2</span>
+        <span>44i, Inc. · Internal Ops Console · V5.24.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1286,7 +1286,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.23.2 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.24.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1320,7 +1320,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.23.2</span>
+      <span>44i, Inc. · Internal Ops Console · V5.24.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1937,7 +1937,7 @@ async function replanCampaign(c){
     engine:svc.engine, kind:svc.engine==='content'?(svc.kind||campaignKind(svc.name)):null,
     name:`${label} — Month ${m}`, cadence:cadenceLabel(svc), cadence_type:svc.cadence,
     service_template_id:svc.id||null, auto:!!svc.auto, state:'planned' });
-  planServices(c.tier).forEach(svc=>{
+  planServices(c.tier, clientAddons(c)).forEach(svc=>{
     if(svc.cadence==='continuous') return;                       // always-on: no scheduled rows
     const kept=keep.filter(d=>svcRowsMatch(d,svc));
     if(svc.cadence==='one_time'){ if(!kept.length && cur<=1) push(svc,1,svc.name); return; }
@@ -2362,9 +2362,9 @@ function renderRoadmap(){
   const ofLab=len?`of ${len}`:'· evergreen';
   if(tagEl) tagEl.textContent=`Month ${cur} ${ofLab}`;
   let h=`<div class="rm-sum"><b>Month ${cur} ${ofLab}</b> · ${planLabel(c.tier)} · ${contractLabel(c)} contract · ${cycDone}/${cyc.length} this cycle · ${doneTotal}/${total} across engagement</div>`;
-  const alwaysOn=planServices(c.tier).filter(s=>s.cadence==='continuous');
+  const alwaysOn=planServices(c.tier, clientAddons(c)).filter(s=>s.cadence==='continuous');
   if(alwaysOn.length) h+=`<div class="rm-cont"><span class="rm-cont-lab">Always-on</span>${alwaysOn.map(s=>
-    `<span class="rm-cont-item" title="${s.engine} · continuous monitoring — runs the whole engagement"><span class="rm-dot" style="background:${ENG_COLOR[s.engine]||'#888'}"></span>${s.name}</span>`).join('')}</div>`;
+    `<span class="rm-cont-item" title="${s.engine} · continuous monitoring — runs the whole engagement"><span class="rm-dot" style="background:${ENG_COLOR[s.engine]||'#888'}"></span>${esc(s.name)}</span>`).join('')}</div>`;
   h+=`<div class="rm-grid" style="grid-template-columns:repeat(${Math.min(span,6)},1fr)">`;
   for(let m=1;m<=span;m++){
     const items=camp.filter(d=>d.month_offset===m);
@@ -2397,20 +2397,24 @@ let PK={competitors:[], comp_pages:[], gaps:[], topics:[], fixes:[], metrics:[],
 
 // Load the latest live audit for the active client and map it into PK
 async function loadLiveAudit(){
-  PK={competitors:[], comp_pages:[], gaps:[], topics:[], fixes:[], metrics:[], severity:[], diag:null, audit:null, history:[]};
-  if(OFFLINE || !activeClient) return;
+  // Writes go to THIS load's object: if another client is opened while this
+  // load is awaiting, its late results land in an orphaned object instead of
+  // the newly opened client's PK (which showed A's audit/package under B).
+  const pk = PK = {competitors:[], comp_pages:[], gaps:[], topics:[], fixes:[], metrics:[], severity:[], diag:null, audit:null, history:[]};
+  const forClient = activeClient;
+  if(OFFLINE || !forClient) return;
   await loadAuditHistory();
   const { data: aud } = await sb.from('audits').select('*')
-    .eq('client_id', activeClient.id).order('run_at',{ascending:false}).limit(1).maybeSingle();
+    .eq('client_id', forClient.id).order('run_at',{ascending:false}).limit(1).maybeSingle();
   if(!aud) return;  // no audit yet → placeholder state
-  PK.audit=aud;
-  PK.grades={technical:aud.grade_technical, onpage:aud.grade_onpage, schema:aud.grade_schema, aeo:aud.grade_aeo, eeat:aud.grade_eeat, local:aud.grade_local, performance:aud.grade_performance||null};
-  PK.raw=aud.raw||{};
+  pk.audit=aud;
+  pk.grades={technical:aud.grade_technical, onpage:aud.grade_onpage, schema:aud.grade_schema, aeo:aud.grade_aeo, eeat:aud.grade_eeat, local:aud.grade_local, performance:aud.grade_performance||null};
+  pk.raw=aud.raw||{};
   // v5 directive engine payloads (written by run-audit into raw; schema-safe)
-  PK.directive=PK.raw.directive||null;
-  PK.checklist=PK.raw.checklist||null;
+  pk.directive=pk.raw.directive||null;
+  pk.checklist=pk.raw.checklist||null;
   const num=v=> v==null?'—':Number(v).toLocaleString();
-  PK.metrics=[
+  pk.metrics=[
     {k:'Domain Rating',    v:aud.domain_rating??'—', s:'/100', d:'', dc:''},
     {k:'Organic keywords', v:num(aud.org_keywords),   s:'', d:'', dc:''},
     {k:'Monthly organic',  v:num(aud.org_traffic),    s:'', d:'', dc:''},
@@ -2426,11 +2430,11 @@ async function loadLiveAudit(){
     sb.from('fixes').select('*').eq('audit_id', aud.id),
   ]);
   let fixRows=ff.data||[];
-  if(!fixRows.length&&(PK.history||[]).length>1){
+  if(!fixRows.length&&(pk.history||[]).length>1){
     // Self-heal a broken re-audit chain: fixes live on an OLDER audit when a
     // re-run happened against a stale run-audit deployment. Find the newest
     // prior audit that still owns the queue and show that.
-    const priorIds=(PK.history||[]).map(h=>h.id).filter(id=>id!==aud.id).reverse(); // newest first
+    const priorIds=(pk.history||[]).map(h=>h.id).filter(id=>id!==aud.id).reverse(); // newest first
     if(priorIds.length){
       const { data: fx2 } = await sb.from('fixes').select('*').in('audit_id', priorIds.slice(0,20));
       if(fx2&&fx2.length){
@@ -2440,35 +2444,35 @@ async function loadLiveAudit(){
       }
     }
   }
-  PK.fixes=fixRows.map(mapFix);
-  PK.competitors=(cr.data||[]).map(c=>({_id:c.id, domain:c.domain, dr:c.domain_rating,
+  pk.fixes=fixRows.map(mapFix);
+  pk.competitors=(cr.data||[]).map(c=>({_id:c.id, domain:c.domain, dr:c.domain_rating,
     common:c.common_keywords, total:c.total_keywords, overlap:c.overlap_pct, traffic:c.org_traffic, manual:c.is_manual}));
   const domById={}; (cr.data||[]).forEach(c=>{ domById[c.id]=c.domain; });
-  PK.comp_pages=(cp.data||[]).map(p=>({ page:p.page_path, site:domById[p.competitor_id]||'', kw:p.top_keyword||'—', traffic:p.est_traffic||0 }));
-  PK.gaps=(gr.data||[]).map(g=>({_id:g.id, kw:g.keyword, who:g.competitor_domain||'—',
+  pk.comp_pages=(cp.data||[]).map(p=>({ page:p.page_path, site:domById[p.competitor_id]||'', kw:p.top_keyword||'—', traffic:p.est_traffic||0 }));
+  pk.gaps=(gr.data||[]).map(g=>({_id:g.id, kw:g.keyword, who:g.competitor_domain||'—',
     pos:g.their_position||0, vol:g.volume||0, kd:g.difficulty||0, sel:g.selected}));
   const COL={critical:'#C0392B',high:'#E67E22',medium:'#4B9BD7',low:'#9FCC6B'}, ORD=['critical','high','medium','low'];
   const counts={critical:0,high:0,medium:0,low:0};
   (fr.data||[]).forEach(f=>{ counts[f.severity]=(counts[f.severity]||0)+1; });
-  PK.severity=ORD.map(s=>({l:cap(s), v:counts[s], c:COL[s]}));
+  pk.severity=ORD.map(s=>({l:cap(s), v:counts[s], c:COL[s]}));
   const top=(fr.data||[]).slice().sort((a,b)=>ORD.indexOf(a.severity)-ORD.indexOf(b.severity))[0];
-  PK.diag={ h: top? top.title : 'Audit complete', p: aud.diagnosis||'',
+  pk.diag={ h: top? top.title : 'Audit complete', p: aud.diagnosis||'',
             focus: top&&top.recommended_fix? 'Recommended: '+top.recommended_fix : '' };
   // Live content plan: load the auto-recommended topics + their latest drafts.
   const { data: pkgRow } = await sb.from('packages').select('id, report_html, report_built_at, report_meta').eq('audit_id', aud.id).maybeSingle();
-  PK.package_id = pkgRow?.id || null;
-  PK.report_html = pkgRow?.report_html || '';
-  PK.report_meta = pkgRow?.report_built_at ? { built_at: pkgRow.report_built_at, ...(pkgRow.report_meta||{}) } : null;
-  PK.topics=[];
-  if(PK.package_id){
+  pk.package_id = pkgRow?.id || null;
+  pk.report_html = pkgRow?.report_html || '';
+  pk.report_meta = pkgRow?.report_built_at ? { built_at: pkgRow.report_built_at, ...(pkgRow.report_meta||{}) } : null;
+  pk.topics=[];
+  if(pk.package_id){
     const M2K={'sonnet-4-6':'sonnet','opus-4-8':'opus','haiku-4-5':'haiku'};
     let [tr, drf] = await Promise.all([
-      sb.from('content_topics').select('*').eq('package_id', PK.package_id),
-      sb.from('content_drafts').select('id,topic_id,body,revision,approved,image_url,image_alt').eq('package_id', PK.package_id),
+      sb.from('content_topics').select('*').eq('package_id', pk.package_id),
+      sb.from('content_drafts').select('id,topic_id,body,revision,approved,image_url,image_alt').eq('package_id', pk.package_id),
     ]);
-    if(drf.error) drf = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', PK.package_id); // platform_extras.sql not run yet
+    if(drf.error) drf = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', pk.package_id); // platform_extras.sql not run yet
     const byTopic={}; (drf.data||[]).forEach(d=>{ const c=byTopic[d.topic_id]; if(!c||(d.revision||1)>(c.revision||1)) byTopic[d.topic_id]=d; });
-    PK.topics=(tr.data||[]).filter(t=>t.status!=='retired').map(t=>{ const d=byTopic[t.id];
+    pk.topics=(tr.data||[]).filter(t=>t.status!=='retired').map(t=>{ const d=byTopic[t.id];
       return { _id:t.id, title:t.title, keyword:t.target_keyword||'', kind:t.kind||'blog', model:M2K[t.model]||'sonnet',
         status: d?(t.status==='approved'?'approved':'drafted'):(t.status||'queued'), source:t.source||'', body:d?d.body:'', revision:d?d.revision:1,
         link:t.link_target||'', image:(d&&d.image_url)||'', image_alt:(d&&d.image_alt)||'' }; });
@@ -2609,10 +2613,10 @@ function renderCrumb(view){
   c.style.display='flex';
   let html=`<button onclick="navigate('groups')">Partner Groups</button>`;
   if(activeGroup){ html+=`<span class="sep">/</span>`;
-    if(view==='group') html+=`<span class="here">${activeGroup.name}</span>`;
-    else html+=`<button onclick="openGroup('${activeGroup.id}')">${activeGroup.name}</button>`;
+    if(view==='group') html+=`<span class="here">${esc(activeGroup.name)}</span>`;
+    else html+=`<button onclick="openGroup('${activeGroup.id}')">${esc(activeGroup.name)}</button>`;
   }
-  if(view==='package' && activeClient){ html+=`<span class="sep">/</span><span class="here">${activeClient.url}</span>`; }
+  if(view==='package' && activeClient){ html+=`<span class="sep">/</span><span class="here">${esc(activeClient.url)}</span>`; }
   c.innerHTML=html;
 }
 
@@ -2625,9 +2629,9 @@ function logoTile(g, cls){
   // try the partner logo; fall back to a brand-colored monogram tile
   const bg=g.color||'#4B9BD7';
   if(g.logo){
-    return `<div class="${cls}" style="background:${bg}"><img src="${g.logo}" alt="" onerror="this.parentNode.innerHTML='${monogram(g.name)}'"></div>`;
+    return `<div class="${cls}" style="background:${esc(bg)}"><img src="${esc(g.logo)}" alt="" onerror="this.parentNode.innerHTML='${monogram(g.name)}'"></div>`;
   }
-  return `<div class="${cls}" style="background:${bg}">${monogram(g.name)}</div>`;
+  return `<div class="${cls}" style="background:${esc(bg)}">${monogram(g.name)}</div>`;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2669,7 +2673,7 @@ function populateGroupFilters(){
   const amSel=document.getElementById('g-am');
   if(amSel.dataset.filled) return;
   const ams=[...new Set(GROUPS.map(g=>g.am).filter(Boolean))].sort();
-  amSel.innerHTML=`<option value="all">All account managers</option>`+ams.map(a=>`<option value="${a}">${a}</option>`).join('');
+  amSel.innerHTML=`<option value="all">All account managers</option>`+ams.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('');
   amSel.dataset.filled='1';
 }
 function onGroupSearch(v){ clearTimeout(_gt); _gt=setTimeout(()=>{groupFilters.search=v.trim().toLowerCase();renderGroups();},180); }
@@ -2696,8 +2700,8 @@ function renderGroups(){
       <div class="gbody">
         <div class="ghead">
           ${logoTile(g,'glogo')}
-          <div><div class="gname">${g.name}</div>
-          <div class="gpeople">${g.am||'—'} · AM</div></div>
+          <div><div class="gname">${esc(g.name)}</div>
+          <div class="gpeople">${esc(g.am||'—')} · AM</div></div>
         </div>
         <div class="gstats">
           <div class="gstat"><div class="gv ${ct.total?'':'zero'}">${ct.total}</div><div class="gl">Clients</div></div>
@@ -2717,7 +2721,7 @@ function renderGroupHeader(){
   const g=activeGroup;
   document.getElementById('gh-logo').outerHTML=logoTile(g,'glogo').replace('class="glogo"','class="glogo" id="gh-logo"');
   document.getElementById('gh-name').textContent=g.name+'.';
-  document.getElementById('gh-meta').innerHTML=`<b>${g.am||'—'}</b> · account manager &nbsp;·&nbsp; <span style="color:var(--muted)">strategists assigned per account</span>`;
+  document.getElementById('gh-meta').innerHTML=`<b>${esc(g.am||'—')}</b> · account manager &nbsp;·&nbsp; <span style="color:var(--muted)">strategists assigned per account</span>`;
   const route=document.getElementById('gh-routing');
   const bits=[];
   if(g.trello) bits.push(`<span class="rk">Trello board</span> connected`);
@@ -2765,7 +2769,7 @@ async function loadPage(){
 }
 function pkgBadge(s){
   const map={none:['pkg-none','No package'],generating:['pkg-generating','Generating'],ready:['pkg-ready','Ready'],deployed:['pkg-deployed','Deployed']};
-  const [cls,lab]=map[s||'none']; return `<span class="pkg-badge ${cls}"><i></i>${lab}</span>`;
+  const [cls,lab]=map[s]||(s==='deploying'?map.generating:map.none); return `<span class="pkg-badge ${cls}"><i></i>${lab}</span>`;
 }
 function renderRows(rows){
   const el=document.getElementById('client-rows');
@@ -2774,7 +2778,7 @@ function renderRows(rows){
     const stale=needsAudit(c);
     const su=userById(c.strategist_id);
     const stratCell = su
-      ? `<div class="strat-cell"><span class="strat-av">${su.initials}</span>${su.name}</div>`
+      ? `<div class="strat-cell"><span class="strat-av">${esc(su.initials)}</span>${esc(su.name)}</div>`
       : (canAssign()
           ? `<button class="strat-unassigned" onclick="event.stopPropagation();openClient('${c.id}')">Assign strategist</button>`
           : `<span class="strat-unassigned" style="cursor:default">Unassigned</span>`);
@@ -2783,7 +2787,7 @@ function renderRows(rows){
     const sLab=score==null?'not run':`${score}/100`;
     return `<div class="ccard rise" style="animation-delay:${Math.min(idx,12)*55}ms" onclick="openClient('${c.id}')">
       <div class="ccard-top">
-        <div style="min-width:0"><div class="dn">${c.url}</div><div class="nm">${c.name}${c.market?' · '+c.market:''}</div></div>
+        <div style="min-width:0"><div class="dn">${esc(c.url)}</div><div class="nm">${esc(c.name)}${c.market?' · '+esc(c.market):''}</div></div>
         <div class="ccard-tr"><span class="status-dot sd-${c.status}"><i></i>${cap(c.status)}</span>
           ${OFFLINE?'':`<button class="ccard-notes${String(c.notes||'').trim()?' has':''}" title="${esc(String(c.notes||'').trim()?String(c.notes).trim().slice(0,240):'Add notes about this client')}" onclick="event.stopPropagation();openNotesModal('${c.id}')"><i class="fa-${String(c.notes||'').trim()?'solid':'regular'} fa-note-sticky"></i> Notes</button>`}</div>
         ${OFFLINE?'':`<button class="ccard-edit" title="Edit the campaign details" onclick="event.stopPropagation();openEditModal('${c.id}')"><i class="fa-solid fa-pen"></i> Edit</button>`}
@@ -2835,12 +2839,13 @@ function openAddModal(){
   document.getElementById('m-tier').value='starter';
   document.getElementById('m-addon-landing').checked=false;
   document.getElementById('m-addon-wrap').style.display='';
+  document.querySelectorAll('#m-contract option[data-current]').forEach(o=>o.remove());   // left by the edit modal
   document.getElementById('m-contract').value='6';
   document.getElementById('m-started').checked=false;
   document.getElementById('m-startmonth-wrap').style.display='none';
   document.getElementById('m-startmonth').innerHTML=Array.from({length:23},(_,i)=>`<option value="${i+2}">Month ${i+2}</option>`).join('');
-  document.getElementById('m-strat').innerHTML=`<option value="">— assign later —</option>`+STRATEGISTS.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
-  document.getElementById('modal-grp').innerHTML=`Adding to <b>${activeGroup.name}</b> — package deploys in this partner's brand. As ${ROLE_LABEL[me.role]||'staff'}, assign the SEO/AEO strategist here.`;
+  document.getElementById('m-strat').innerHTML=`<option value="">— assign later —</option>`+STRATEGISTS.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+  document.getElementById('modal-grp').innerHTML=`Adding to <b>${esc(activeGroup.name)}</b> — package deploys in this partner's brand. As ${ROLE_LABEL[me.role]||'staff'}, assign the SEO/AEO strategist here.`;
   document.getElementById('modal').classList.add('open');
 }
 // Hover-Edit on a client card: the same form the campaign was set up with,
@@ -2858,15 +2863,22 @@ function openEditModal(id){
   document.getElementById('m-tier').value=c.tier||'starter';
   document.getElementById('m-addon-wrap').style.display=(c.tier||'starter')==='pro'?'none':'';
   document.getElementById('m-addon-landing').checked=clientAddons(c).includes('landing_pages');
-  document.getElementById('m-contract').value=c.contract_is_evergreen?'evergreen':String(contractLengthOf(c)||6);
+  // Every select must offer the client's CURRENT value, or saving an
+  // unrelated edit silently changes it (a 9-month contract became 6).
+  const mc=document.getElementById('m-contract'), curLen=c.contract_is_evergreen?'evergreen':String(contractLengthOf(c)||6);
+  [...mc.querySelectorAll('option[data-current]')].forEach(o=>o.remove());
+  if(![...mc.options].some(o=>o.value===curLen)) mc.insertAdjacentHTML('beforeend',`<option value="${esc(curLen)}" data-current="1">${esc(curLen)} months (current)</option>`);
+  mc.value=curLen;
   // edit mode: no "already started" checkbox — the month select is always
   // shown, prefilled with where the campaign stands today
   document.getElementById('m-started-wrap').style.display='none';
   document.getElementById('m-started').checked=true;
   document.getElementById('m-startmonth-wrap').style.display='';
   const curM=cycleOf(c);
-  document.getElementById('m-startmonth').innerHTML=Array.from({length:24},(_,i)=>`<option value="${i+1}"${i+1===curM?' selected':''}>Month ${i+1}</option>`).join('');
-  document.getElementById('m-strat').innerHTML=`<option value="">— unassigned —</option>`+STRATEGISTS.map(s=>`<option value="${s.id}"${s.id===c.strategist_id?' selected':''}>${s.name}</option>`).join('');
+  document.getElementById('m-startmonth').innerHTML=Array.from({length:Math.max(24,curM||1)},(_,i)=>`<option value="${i+1}"${i+1===curM?' selected':''}>Month ${i+1}</option>`).join('');
+  const keepStrat=c.strategist_id&&!STRATEGISTS.some(s=>s.id===c.strategist_id)
+    ? `<option value="${esc(c.strategist_id)}" selected>${esc((userById(c.strategist_id)||{}).name||'Current assignee')} (current)</option>` : '';
+  document.getElementById('m-strat').innerHTML=`<option value="">— unassigned —</option>`+keepStrat+STRATEGISTS.map(s=>`<option value="${esc(s.id)}"${s.id===c.strategist_id?' selected':''}>${esc(s.name)}</option>`).join('');
   document.getElementById('modal-grp').innerHTML=`Editing <b>${esc(c.url||c.name)}</b> — changing the plan, add-on, contract length or campaign month re-plans the remaining tactics. Delivered and drafted work is never touched.`;
   document.getElementById('gen-note').textContent='On save, the remaining planned tactics are re-spread to match the new details. Anything already delivered, approved or drafted is kept as-is.';
   document.getElementById('modal').classList.add('open');
@@ -3002,9 +3014,13 @@ async function openClient(id){
   if(OFFLINE){ initPackageData(); navigate('package'); return; }
   PK={competitors:[], comp_pages:[], gaps:[], topics:[], fixes:[], metrics:[], severity:[], diag:null, audit:null};
   navigate('package');          // show the shell immediately
+  const c=activeClient;          // another client opened mid-load wins; this load stops
   await loadCatalog();           // plan/service catalog (service_templates)
+  if(activeClient!==c) return;
   await loadLiveAudit();         // fetch any existing audit
+  if(activeClient!==c) return;
   await loadCampaign();          // fetch the campaign roadmap
+  if(activeClient!==c) return;
   renderPackage();               // re-render with real data (or the empty state)
 }
 // hydrate the editable working copy from the audit run (//SB: from competitors/content_gaps rows)
@@ -3048,7 +3064,7 @@ function renderPackage(){
   const c=activeClient, g=groupOf(c);
   document.getElementById('pk-logo').outerHTML=logoTile(g,'glogo').replace('class="glogo"','class="glogo" id="pk-logo"');
   document.getElementById('pk-title').textContent=c.url;
-  document.getElementById('pk-meta').innerHTML=`<b>${c.name}</b> · ${c.market||'—'} &nbsp;·&nbsp; ${g.name} (AM: ${g.am||'—'})`;
+  document.getElementById('pk-meta').innerHTML=`<b>${esc(c.name)}</b> · ${esc(c.market||'—')} &nbsp;·&nbsp; ${esc(g.name)} (AM: ${esc(g.am||'—')})`;
   renderStratLine();
   const sb=pkgStatBig(c.pkg_status), el=document.getElementById('pk-statbig');
   el.style.background='var(--mist)';
@@ -3079,11 +3095,11 @@ function renderStratLine(){
     el.innerHTML=`<span class="pks-lab">SEO/AEO Strategist</span>
       <select onchange="assignStrategist(this.value)">
         <option value="">— unassigned —</option>
-        ${STRATEGISTS.map(s=>`<option value="${s.id}" ${s.id===c.strategist_id?'selected':''}>${s.name}</option>`).join('')}
+        ${STRATEGISTS.map(s=>`<option value="${esc(s.id)}" ${s.id===c.strategist_id?'selected':''}>${esc(s.name)}</option>`).join('')}
       </select>`;
   } else {
     el.innerHTML=`<span class="pks-lab">SEO/AEO Strategist</span>
-      <span class="pks-static">${su?`<span class="strat-av">${su.initials}</span>${su.name}`:'<span style="color:var(--high)">Unassigned</span>'}</span>`;
+      <span class="pks-static">${su?`<span class="strat-av">${esc(su.initials)}</span>${esc(su.name)}`:'<span style="color:var(--high)">Unassigned</span>'}</span>`;
   }
 }
 function assignStrategist(id){
@@ -3281,7 +3297,12 @@ function saveDraft(){
   if(_draftIdx==null||!canEditContent()) return;
   const t=PK.topics[_draftIdx]; t.body=dmGetBody(); dmSetBody(t.body);
   t.edited=true; if(t.status==='queued') t.status='drafted';
-  if(!OFFLINE&&t._id){ sb.from('content_drafts').update({body:t.body, updated_at:new Date().toISOString()}).eq('topic_id', t._id).then(()=>{}); }
+  if(!OFFLINE&&t._id){
+    // report a failed save instead of claiming success (RLS / network)
+    sb.from('content_drafts').update({body:t.body, updated_at:new Date().toISOString()}).eq('topic_id', t._id)
+      .then(({error})=>{ if(error) showToast('Save FAILED — '+error.message+' (your text is still in the editor; copy it before closing)',true); },
+            e=>showToast('Save FAILED — '+String(e&&e.message||e),true));
+  }
   renderQueue(); showToast('Draft saved — your edits overwrite the generated copy');
 }
 // ── QA gate (code, not prompt): a draft cannot be APPROVED while it still
@@ -3320,8 +3341,11 @@ function approveDraft(){
   if(qa.warnings.length) showToast('Approved with a style note: '+qa.warnings[0]);
   t.status='approved';
   if(!OFFLINE&&t._id){
-    sb.from('content_drafts').update({approved:true, body:t.body}).eq('topic_id', t._id).then(()=>{});
-    sb.from('content_topics').update({status:'approved'}).eq('id', t._id).then(()=>{});
+    Promise.all([
+      sb.from('content_drafts').update({approved:true, body:t.body}).eq('topic_id', t._id),
+      sb.from('content_topics').update({status:'approved'}).eq('id', t._id),
+    ]).then(rs=>{ const e=rs.find(r=>r&&r.error); if(e){ t.status='drafted'; renderQueue(); showToast('Approval NOT saved — '+e.error.message,true); } },
+            e=>{ t.status='drafted'; renderQueue(); showToast('Approval NOT saved — '+String(e&&e.message||e),true); });
   }
   // Approval trail: post to the client's Trello card (best-effort, silent).
   if(!OFFLINE&&activeClient&&activeClient.trello_card_id){
@@ -3338,8 +3362,25 @@ function requestRewrite(){
   const m=MODELS[t.model];
   t.status='drafting'; t.revision=(t.revision||1)+1; t.lastInstruction=instr;
   document.getElementById('dm-sub').innerHTML=`<span class="mtag ${m.cls}">${m.label}</span><span class="dm-rev">rewriting…</span>`;
-  // //SB: invoke('generate-content',{topic:t, model:m.api, instruction:instr, prior:t.body}) → new draft revision
   showToast(`Sending to ${m.label} with your notes…`);
+  if(!OFFLINE && t._id){
+    // Live: the real rewrite (generate-content revises the CURRENT draft per
+    // the instruction and clears approval). The old path pasted a canned
+    // template into the editor, which a following Save wrote over the real draft.
+    const idx=_draftIdx, btn=document.getElementById('dm-rewrite-btn'); if(btn) btn.disabled=true;
+    sb.functions.invoke('generate-content',{ body:{ topic_id:t._id, instruction:instr } }).then(async ({data,error})=>{
+      if(error||(data&&data.error)){
+        let msg=(data&&data.error)||error.message; try{ const x=await error.context.json(); msg=x.error||msg; }catch(_){}
+        throw new Error(msg);
+      }
+      await reloadDrafts(); t.status='drafted';
+      if(_draftIdx===idx){ dmSetBody(t.body); document.getElementById('dm-instr').value='';
+        document.getElementById('dm-sub').innerHTML=`<span class="mtag ${m.cls}">${m.label}</span><span class="dm-kw">↳ ${esc(t.keyword)}</span><span class="dm-rev">rev ${esc(t.revision)}</span><span class="qstatus qs-drafted">Drafted</span>`; }
+      renderQueue(); showToast(`${m.label} returned a new revision — review and approve it again`, false, true);
+    }).catch(e=>{ t.status='drafted'; renderQueue(); showToast('Rewrite failed — '+String(e&&e.message||e),true); })
+      .finally(()=>{ const b=document.getElementById('dm-rewrite-btn'); if(b) b.disabled=false; });
+    return;
+  }
   setTimeout(()=>{
     t.body=`[Rev ${t.revision} — rewritten per: "${instr}"]\n\n`+genBody(t);
     t.status='drafted';
@@ -3496,14 +3537,15 @@ async function reRunAudit(){
   finally{ const b=document.getElementById('reaudit-btn'); if(b){ b.disabled=false; b.innerHTML='↻ Re-run audit'; } }
 }
 async function loadAuditHistory(){
-  PK.history=[];
-  if(OFFLINE||!activeClient) return;
+  const pk=PK, forClient=activeClient;   // same client-switch guard as loadLiveAudit
+  pk.history=[];
+  if(OFFLINE||!forClient) return;
   // score lives in audits.score (directive_engine.sql); older rows carry it in raw only
   const {data,error}=await sb.from('audits')
     .select('id, run_at, score, rawscore:raw->scores->>auditScore, grade_technical, grade_performance, grade_onpage, grade_schema, grade_aeo, grade_eeat, grade_local, domain_rating, org_keywords, org_traffic')
-    .eq('client_id',activeClient.id).order('run_at',{ascending:true}).limit(120);
+    .eq('client_id',forClient.id).order('run_at',{ascending:true}).limit(120);
   if(error){ console.error('audit history',error); return; }
-  PK.history=(data||[]).map(a=>({ id:a.id, at:a.run_at,
+  pk.history=(data||[]).map(a=>({ id:a.id, at:a.run_at,
     score:a.score!=null?Number(a.score):(a.rawscore!=null?Number(a.rawscore):null),
     grades:[a.grade_technical,a.grade_performance,a.grade_onpage,a.grade_schema,a.grade_aeo,a.grade_eeat,a.grade_local].map(g=>g||'·'),
     dr:a.domain_rating, kw:a.org_keywords, traffic:a.org_traffic }));
@@ -3646,13 +3688,16 @@ function dirDetail(i){
   const how=DIR_HOWTO[i.fix_kind]||DIR_HOWTO_CHECK[i.check_id]||'';
   const affect=DIR_AFFECT[i.fix_kind];
   const pages=affect?((PK.raw&&PK.raw.pages)||[]).filter(affect):[];
-  const fixBy={}; (PK.fixes||[]).filter(f=>f.kind===i.fix_kind&&f.after).forEach(f=>{ fixBy[String(f.target||'').replace(/\/+$/,'')]=f; });
+  // Key by PATH: fixes carry a path (mapFix strips the host) while the
+  // directive's pages carry the full URL, so the two never matched.
+  const pathKey=u=>(String(u||'').replace(/^https?:\/\/[^/]+/i,'').replace(/[?#].*$/,'').replace(/\/+$/,'')||'/').toLowerCase();
+  const fixBy={}; (PK.fixes||[]).filter(f=>f.kind===i.fix_kind&&f.after).forEach(f=>{ fixBy[pathKey(f.target)]=f; });
   const staged=(PK.fixes||[]).some(f=>f.kind===i.fix_kind&&(f.after||f.schema)&&f.status!=='dismissed');
   let rows='';
   if(pages.length){
     rows=`<table class="dd-table"><tr><th>Page</th><th>Current</th><th>Ready to paste</th></tr>`+
       pages.slice(0,12).map(p=>{
-        const f=fixBy[String(p.url||'').replace(/\/+$/,'')];
+        const f=fixBy[pathKey(p.url)];
         const paste=f&&f.after?`<span class="dd-paste">${esc(String(f.after).slice(0,140))}</span> <button class="dd-copy" data-t="${esc(f.after)}" onclick="event.stopPropagation();navigator.clipboard.writeText(this.dataset.t);showToast('Copied — paste it in WordPress')"><i class="fa-solid fa-clipboard"></i> Copy</button>`:'<span class="ev">write per the steps above</span>';
         return `<tr><td><a href="${esc(p.url)}" target="_blank" onclick="event.stopPropagation()">${esc(String(p.url||'').replace(/^https?:\/\/[^/]+/,'')||'/')}</a></td><td>${esc((DIR_CURRENT[i.fix_kind]||(()=>''))(p))}</td><td>${paste}</td></tr>`;
       }).join('')+`</table>`;
@@ -3679,7 +3724,7 @@ function renderDirective(){
   const delta=d.progress?d.progress.delta:null;
   const row=i=>{
     const openNow=_dirOpen.has(i.check_id);
-    return `<div class="dir-row ${i.status==='done'?'done':''} ${openNow?'open':''}" onclick="toggleDir('${esc(i.check_id)}')" title="Click for step-by-step instructions and the exact pages">
+    return `<div class="dir-row ${i.status==='done'?'done':''} ${openNow?'open':''}" onclick="toggleDir(${jsq(i.check_id)})" title="Click for step-by-step instructions and the exact pages">
     <span class="dir-dot" style="background:${SEV_C[i.severity]||'#9AA'}"></span>
     <div class="dir-main">
       <div class="dir-title"><span class="dir-chev">${openNow?'▾':'▸'}</span> ${esc(i.title)}${i.evidence?` <span class="ev">· ${esc(i.evidence)}</span>`:''}</div>
@@ -4328,15 +4373,18 @@ async function autoFixFlagged(){
   for(const f of flagged){ f.t.status='drafting'; } renderQueue();
   const iv=(activeClient&&activeClient._intake)||{};
   const facts=INTAKE_FIELDS.map(([k,l])=>iv[k]?`${l}: ${iv[k]}`:null).filter(Boolean).join('; ');
+  const failed=[];
   await Promise.all(flagged.map(async f=>{
     const instruction='COMPLIANCE REWRITE — remove every one of these violations and replace with compliant copy (no invented facts; use [CLIENT TO CONFIRM: …] only if a real fact is required): '
       +f.qa.blocking.join(' | ')
       +'. Also remove ALL testimonials/quotes, invented credentials, uncited statistics, and bracketed placeholders anywhere in the piece.'
       +(facts?` VERIFIED CLIENT FACTS you may state and should use to replace placeholders: ${facts}.`:'');
     try{ const {data,error}=await sb.functions.invoke('generate-content',{ body:{ topic_id:f.t._id, instruction } });
-      f.t.status=(error||(data&&data.error))?'drafted':'drafted';
-    }catch(_){ f.t.status='drafted'; }
+      f.t.status='drafted';
+      if(error||(data&&data.error)) failed.push(f.t.title||'a draft');
+    }catch(_){ f.t.status='drafted'; failed.push(f.t.title||'a draft'); }
   }));
+  if(failed.length) showToast(`Auto-fix failed for ${failed.length}: ${failed.slice(0,2).join(', ')}${failed.length>2?'…':''} — try again, or fix by hand`,true);
   await reloadDrafts(); renderQueue();
   const still=PK.topics.filter(t=>t.body&&qaScan(t.body).blocking.length).length;
   showToast(still?`Rewrites done — ${still} draft(s) still flagged; open them to review or retire.`:`All flagged drafts rewritten clean ✓`, false, !still);
@@ -4373,7 +4421,13 @@ function generateDrafts(){
   }
   return liveGenerateDrafts();
 }
+let _draftingRun=null;   // one drafting run at a time — a double click paid twice
 async function liveGenerateDrafts(){
+  if(_draftingRun){ showToast('Drafts are already being written — hang on',true); return _draftingRun; }
+  _draftingRun=liveGenerateDraftsRun().finally(()=>{ _draftingRun=null; });
+  return _draftingRun;
+}
+async function liveGenerateDraftsRun(){
   const pending=PK.topics.filter(t=>t._id && t.status!=='drafted' && t.status!=='approved');
   if(!pending.length){ showToast('Nothing to draft',true); return; }
   pending.forEach(t=>t.status='drafting'); renderQueue();
@@ -4550,7 +4604,7 @@ function renderDeliverables(){
   SECTIONS.forEach(([key,label])=>{
     const rows=svcs.filter(s=>s.cadence===key); if(!rows.length) return;
     h+=`<div class="drow dgrp"><span></span><span>${label}</span><span></span><span></span></div>`;
-    rows.forEach(s=>{ h+=`<div class="drow"><span class="chk ${s.auto?'':'pend'}">${s.auto?'✓':'…'}</span><span style="font-weight:600">${s.name}</span><span class="dpill">${cap(s.engine)}</span><span class="dtag cad-${s.cadence}">${cadenceLabel(s)}</span></div>`; });
+    rows.forEach(s=>{ h+=`<div class="drow"><span class="chk ${s.auto?'':'pend'}">${s.auto?'✓':'…'}</span><span style="font-weight:600">${esc(s.name)}</span><span class="dpill">${cap(s.engine)}</span><span class="dtag cad-${s.cadence}">${cadenceLabel(s)}</span></div>`; });
   });
   document.getElementById('deliv').innerHTML=h;
 }
@@ -4629,9 +4683,9 @@ function renderReportWL(){
     <div class="rwl-body">
       ${logoTile(g,'rwl-logo')}
       <div class="rwl-txt">
-        <div class="rwl-eye" style="color:${c1}">${g.name} · ${monthName()} ${new Date().getFullYear()}</div>
-        <h4>${c.name} — SEO/AEO Monthly Report</h4>
-        <p>White-labeled in ${g.name}'s brand — the one artifact the end client sees. Movement, deliverables shipped, next cycle.</p>
+        <div class="rwl-eye" style="color:${esc(c1)}">${esc(g.name)} · ${monthName()} ${new Date().getFullYear()}</div>
+        <h4>${esc(c.name)} — SEO/AEO Monthly Report</h4>
+        <p>White-labeled in ${esc(g.name)}'s brand — the one artifact the end client sees. Movement, deliverables shipped, next cycle.</p>
       </div>
       <div class="rwl-spacer"></div>
       <button class="rwl-btn" style="background:${c1}" onclick="downloadReport()">↓ Generate report</button>
@@ -4639,8 +4693,8 @@ function renderReportWL(){
 }
 function downloadReport(){
   const c=activeClient, g=groupOf(c);
-  // //SB: invoke('build-report',{client_id,cycle_month}) → renders branded .docx using
-  // //SB:   partner_groups.brand_color + logo_url → returns signed report_url → download
+  // Live: the real white-label report (generate-report), then open it.
+  if(!OFFLINE){ rebuildReport().then(()=>{ if(PK.report_html) openReport(); }); return; }
   showToast(`Generating ${monthName()} report for ${c.name}…`);
   setTimeout(()=>showToast(`Report ready — branded in ${g.name}'s colors`, false, true), 1300);
 }
@@ -4689,7 +4743,13 @@ async function generatePackage(){
     } else {
       c.pkg_status='ready'; c.last_audit=new Date().toISOString().slice(0,10);
       const gc=groupClients.find(x=>x.id===c.id); if(gc){ gc.pkg_status='ready'; gc.last_audit=c.last_audit; }
-      await loadLiveAudit(); renderPackage();
+      // The steps below read the OPEN client's PK. If someone switched clients
+      // during the multi-minute audit, stop here rather than drafting topics,
+      // spending on AI and rebuilding a report for the wrong client.
+      if(activeClient!==c){ showToast(`Audit for ${c.url} finished — reopen it and click Generate drafts to continue`, false, true); return; }
+      await loadLiveAudit();
+      if(activeClient!==c) return;
+      renderPackage();
       // audits-table fallback (audit_jobs.sql not run yet): no result payload,
       // so derive what the post-steps need from the freshly loaded package.
       const n=data.counts||{content_topics:(PK&&PK.topics?PK.topics.length:0)};
@@ -4701,6 +4761,7 @@ async function generatePackage(){
       // Auto-fill any contracted content slots the audit couldn't fund from
       // its keyword pools — no "Suggest topics" click required.
       const autoAdded = await autoFillTopics();
+      if(activeClient!==c) return;
       const tasks = [];
       if((n.content_topics||0)+autoAdded > 0) tasks.push(liveGenerateDrafts());
       // v1.8.1+: run-audit dispatches fix-writing server-side; we just watch
@@ -4708,8 +4769,11 @@ async function generatePackage(){
       if(fixIds.length > 0 && !data.fixes_dispatched) tasks.push(liveGenerateFixes(fixIds));
       else if(data.fixes_dispatched) tasks.push(waitForFixes());
       if(tasks.length) await Promise.all(tasks);
-      await liveBuildReport(data.package_id || (PK && PK.package_id));
-      await loadLiveAudit(); renderPackage();
+      await liveBuildReport(data.package_id || (activeClient===c && PK && PK.package_id) || null);
+      if(activeClient!==c) return;
+      await loadLiveAudit();
+      if(activeClient!==c) return;
+      renderPackage();
       showToast('Package complete — audit, directive, drafts, fixes and report all generated. Review + approve, then click “Deploy file” to export everything.', false, true);
       if(activeClient===c&&c.trello_card_id&&c.trello_card_id!=='pending'){
         try{ await attachCampaignDocToTrello(true); }catch(e){ console.warn('trello attach', e); }
@@ -4778,12 +4842,15 @@ const DIRECTORIES=[
 ];
 async function renderBizFacts(){
   const el=document.getElementById('bizfacts'); if(!el) return;
+  el.dataset.cid='';   // no client owns the form until this render finishes
   if(OFFLINE||!activeClient){ el.innerHTML='';
     ['content-targets','llo'].forEach(id=>{ const x=document.getElementById(id); if(x) x.innerHTML=''; });
     return; }
   if(activeClient._intake===undefined){
-    try{ const {data,error}=await sb.from('clients').select('intake').eq('id',activeClient.id).single();
-      activeClient._intake=(!error&&data&&data.intake)||{}; }catch(_){ activeClient._intake={}; }
+    const c=activeClient;
+    try{ const {data,error}=await sb.from('clients').select('intake').eq('id',c.id).single();
+      c._intake=(!error&&data&&data.intake)||{}; }catch(_){ c._intake={}; }
+    if(activeClient!==c) return;   // another client was opened meanwhile
   }
   const iv=activeClient._intake||{};
   // Fields auto-save as they're edited — the real "approval" moment is when
@@ -4807,6 +4874,7 @@ async function renderBizFacts(){
     <div class="section-h"><h2>Business Facts — Kickoff</h2><div class="ln"></div><span class="tag"><span id="bf-summary">${esc(bfSummaryText())}</span> <span id="bf-savestate"></span></span></div>
     ${INTAKE_SECTIONS.map(([sec,keys])=>`
       <div class="bf-sec"><h4>${sec}</h4><div class="bf-grid">${keys.map(k=>field(k)).join('')}</div></div>`).join('')}`;
+  el.dataset.cid=activeClient.id;
   const llo=document.getElementById('llo');
   if(llo) llo.innerHTML=`
     <div class="section-h" style="margin-top:22px"><h2>Local Listing Optimization</h2><div class="ln"></div><span class="tag">citation pack · Advice Local</span></div>
@@ -4875,6 +4943,7 @@ function bfAddKw(){
 }
 let _bfTimer=null;
 function bfAutoSave(){
+  const a=document.activeElement; if(a&&a.id&&a.id.startsWith('bf-')) a.dataset.touched='1';
   clearTimeout(_bfTimer);
   const st=document.getElementById('bf-savestate'); if(st) st.textContent='· saving…';
   _bfTimer=setTimeout(()=>{ _bfTimer=null; saveBizFacts(true); }, 700);
@@ -4888,9 +4957,9 @@ async function bfFlush(){
   if(_bfTimer){ clearTimeout(_bfTimer); _bfTimer=null; }
   if(!activeClient||!document.getElementById('bf-phone')) return;
   const iv=activeClient._intake||{};
-  const cur=bfCollect();
+  const cur=bfCollect(true);
   const dirty=Object.keys(cur).some(k=>cur[k]!==String(iv[k]||''));
-  if(dirty) await saveBizFacts(true);
+  if(dirty) await saveBizFacts(true, true);
 }
 // ── ADVICE LOCAL — automated citation submission (LLO fulfillment) ──────────
 // The advice-local Edge Function holds the partner API key and does the
@@ -4986,7 +5055,8 @@ function alGroup(status){
   return AL_GROUPS.find(g=>g.key===k);
 }
 async function alStatus(){
-  const el=document.getElementById('al-status'); if(el) el.innerHTML='<div class="wmeta">Checking fulfillment…</div>';
+  const el=document.getElementById('al-status'); if(!el) return;
+  el.innerHTML='<div class="wmeta">Checking fulfillment…</div>';
   try{
     const d=await alInvoke({action:'status', client_id:activeClient.id});
     const dirs=d.directories||[];
@@ -5017,16 +5087,32 @@ async function alStatus(){
 // Auto-saves on edit. Deliberately does NOT re-render the accordion — a
 // re-render would collapse it and steal focus mid-typing; the summary count
 // and save-state chip update in place instead.
-function bfCollect(){
-  const iv={};
-  INTAKE_FIELDS.forEach(([k])=>{ const e=document.getElementById('bf-'+k); if(e) iv[k]=e.value.trim(); });
+// Starts from the saved intake so keys that aren't on screen (kw41+, fields
+// written by other tools) survive a save. An untouched amber suggestion read
+// off the client's site is not a fact yet: it commits only on an explicit
+// save, sync or download (includeSuggested), never because some OTHER field
+// was typed in.
+function bfCollect(includeSuggested){
+  const saved=(activeClient&&activeClient._intake)||{};
+  const sug=((PK&&PK.raw)||{}).intake_suggested||{};
+  const iv={...saved};
+  const take=(k,e)=>{
+    const v=e.value.trim();
+    if(!includeSuggested && !e.dataset.touched && !saved[k] && sug[k] && v===String(sug[k]).trim()) return;
+    iv[k]=v;
+  };
+  INTAKE_FIELDS.forEach(([k])=>{ const e=document.getElementById('bf-'+k); if(e) take(k,e); });
   // dynamic target-keyword rows (kw1/kwl1 … kwN/kwlN — the + button adds rows)
-  document.querySelectorAll('input[id^="bf-kw"]').forEach(e=>{ iv[e.id.slice(3)]=e.value.trim(); });
+  document.querySelectorAll('input[id^="bf-kw"]').forEach(e=>take(e.id.slice(3),e));
   return iv;
 }
-async function saveBizFacts(auto){
+async function saveBizFacts(auto, includeSuggested){
   if(!activeClient) return;
-  const iv=bfCollect();
+  // the form on screen must belong to the client being saved (a debounce can
+  // fire while the next client's intake is still loading)
+  const box=document.getElementById('bizfacts');
+  if(box && box.dataset.cid && box.dataset.cid!==activeClient.id) return;
+  const iv=bfCollect(includeSuggested || !auto);
   activeClient._intake=iv;
   const {error}=await sb.from('clients').update({intake:iv}).eq('id',activeClient.id);
   const st=document.getElementById('bf-savestate');
@@ -5534,8 +5620,19 @@ function deployPackage(){
   const c=activeClient, g=groupOf(c);
   if(c.pkg_status==='deployed'){ showToast(`Already deployed to ${g.name}`); return; }
   if(c.pkg_status!=='ready'){ showToast('Generate the package first',true); return; }
-  // //SB: deploy = create Trello cards on g.trello_board_id (via g.trello_email),
-  // //SB:   email IO to g.io_recipients, publish content_drafts, mark package 'deployed'.
+  if(!OFFLINE){
+    // Live: nothing is emailed or published from here — the site gets the
+    // Deploy file (WordPress plugin) and the IO goes out by email. This button
+    // records that hand-off on the package (it used to only pretend: "IO to
+    // N recipients" with nothing sent and nothing saved).
+    if(!PK.package_id){ showToast('No package to mark',true); return; }
+    sb.from('packages').update({status:'deployed'}).eq('id', PK.package_id).then(({error})=>{
+      if(error){ showToast('Could not mark deployed — '+error.message,true); return; }
+      c.pkg_status='deployed'; const gc=groupClients.find(x=>x.id===c.id); if(gc) gc.pkg_status='deployed';
+      renderPackage(); showToast('Marked deployed. Make sure the Deploy file is on the site and the IO has gone to the partner — this button records it, it doesn\'t send them.', false, true);
+    });
+    return;
+  }
   c.pkg_status='deploying'; renderPackage();
   showToast(`Deploying to ${g.name}${g.trello?' · Trello board':''}…`);
   setTimeout(()=>{ c.pkg_status='deployed'; renderPackage();
@@ -5560,11 +5657,15 @@ document.getElementById('l-pass').addEventListener('keydown',e=>{ if(e.key==='En
 // ════════════════════════════════════════════════════════════
 //  UTILS
 // ════════════════════════════════════════════════════════════
-const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const cap=s=>{ s=String(s||''); return s.charAt(0).toUpperCase()+s.slice(1); };
 const fmtDate=d=>new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const monthName=()=>new Date().toLocaleDateString('en-US',{month:'long'});
-const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// Escapes for element text AND quoted attribute values (value="…", title="…").
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+// A JS string literal for an inline handler: onclick="f(${jsq(x)})". (esc alone
+// is not enough there — the browser decodes &#39; back to ' before the JS runs.)
+const jsq=s=>esc(JSON.stringify(String(s??'')));
 let _toastTimer;
 function showToast(msg,isErr=false,isGold=false){
   const t=document.getElementById('toast'); clearTimeout(_toastTimer);
