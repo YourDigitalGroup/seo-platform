@@ -31,7 +31,7 @@ create extension if not exists pg_net;
 
 -- 2 · hardened invoker ────────────────────────────────────────────────────────
 create or replace function seop_invoke_scheduler(mode text) returns bigint
-language plpgsql security definer as $fn$
+language plpgsql security definer set search_path = public as $fn$
 declare
   p_url text; p_key text; rid bigint;
 begin
@@ -53,6 +53,8 @@ end $fn$;
 
 -- 3 · (re)schedule — upsert by job name ──────────────────────────────────────
 select cron.schedule('seop-daily-audits',   '0 11 * * *', $$select seop_invoke_scheduler('daily-audits')$$);
+select cron.schedule('seop-daily-audits-catchup', '20 11 * * *', $$select seop_invoke_scheduler('daily-audits')$$);
+revoke execute on function seop_invoke_scheduler(text) from public, anon, authenticated;
 select cron.schedule('seop-weekly-reports', '0 13 * * 1', $$select seop_invoke_scheduler('weekly-reports')$$);
 
 -- 4 · fire the daily job right now (audits fresher than 20h are skipped, so
@@ -80,13 +82,13 @@ select item, status, detail, ran_at from (
   select 1, 'cron job: '||jobname,
          case when active then 'scheduled' else 'PAUSED — re-run schedules_doctor.sql' end,
          schedule, null
-  from cron.job where jobname in ('seop-daily-audits','seop-weekly-reports')
+  from cron.job where jobname in ('seop-daily-audits','seop-daily-audits-catchup','seop-weekly-reports')
   union all
   select * from (
     select 2, 'cron run: '||j.jobname, d.status,
            coalesce(nullif(d.return_message,''),'—'), d.start_time
     from cron.job_run_details d join cron.job j using (jobid)
-    where j.jobname in ('seop-daily-audits','seop-weekly-reports')
+    where j.jobname in ('seop-daily-audits','seop-daily-audits-catchup','seop-weekly-reports')
     order by d.start_time desc limit 10) runs
   union all
   select * from (
