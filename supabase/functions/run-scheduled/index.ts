@@ -44,7 +44,7 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const FRESH_HOURS = 20;
-const SCHED_VERSION = "1.2.0";   // echoed in every response so a stale deploy is self-evident
+const SCHED_VERSION = "1.2.1";   // echoed in every response so a stale deploy is self-evident
 const STALE_JOB_MIN = 30;        // a background audit never legitimately runs this long
 const MAX_RATE_RETRIES = 4;
 
@@ -160,6 +160,9 @@ Deno.serve(async (req) => {
       const CONC = 5;
       for (let i = 0; i < targets.length; i += CONC) {
         await Promise.allSettled(targets.slice(i, i + CONC).map(send));
+        // run-audit answers 202 in ~50ms, so back-to-back batches all land on
+        // one worker; a short gap lets the platform spread them out
+        if (i + CONC < targets.length) await sleep(2000);
       }
       console.log(`${mode}: dispatched ${targets.length} client(s) — ok ${stats.ok}, failed ${stats.failed}, rate-limit waits ${stats.rate_limited}`);
     })();

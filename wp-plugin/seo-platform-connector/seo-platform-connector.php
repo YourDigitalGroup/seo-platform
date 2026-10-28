@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Your Digital Group SEO Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from your agency's SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.9.1
+ * Version: 1.9.2
  * Author: Your Digital Group
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -19,7 +19,7 @@ if (defined('SEOP_VERSION')) {
     add_action('admin_init', function () {
         if (!function_exists('deactivate_plugins') || !current_user_can('activate_plugins')) return;
         $mine = plugin_basename(__FILE__);
-        if (version_compare(SEOP_VERSION, '1.9.1', '<')) {
+        if (version_compare(SEOP_VERSION, '1.9.2', '<')) {
             // the copy that loaded first is older — retire it, keep this one
             foreach ((array) get_option('active_plugins', []) as $p) {
                 if ($p !== $mine && basename($p) === basename(__FILE__)) deactivate_plugins($p, true);
@@ -38,7 +38,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.9.1');
+define('SEOP_VERSION', '1.9.2');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -230,20 +230,26 @@ function seop_upsert_content($p) {
         $data['post_date']     = get_date_from_gmt($data['post_date_gmt']);
     }
     $existing = seop_find_by_external($external);
+    $kept_live = false;
     if ($existing) {
         // Never demote content a human already published or scheduled: a
         // re-import whose console copy is still unapproved must not un-publish
         // a live page, and a published page must not be re-queued as future.
         $cur = get_post_status($existing);
-        if ($cur === 'publish' && $status !== 'publish') {
-            $status = 'publish'; unset($data['post_date_gmt'], $data['post_date']);
-        } elseif ($cur === 'future' && $status === 'draft') {
-            $status = 'future'; // keep its existing schedule
+        // v1.9.2: an unapproved (draft) copy arriving for a page that is
+        // already live or scheduled must not replace the copy readers see —
+        // status was protected before, but title/body/slug were still
+        // overwritten, putting unreviewed text live. Keep the page as it is;
+        // only the SEO fields below are refreshed.
+        if (($cur === 'publish' && $status !== 'publish') || ($cur === 'future' && $status === 'draft')) {
+            $id = $existing;
+            $kept_live = true;
+        } else {
+            $data['post_status'] = $status;
+            $data['ID'] = $existing; $id = wp_update_post(wp_slash($data), true);
         }
-        $data['post_status'] = $status;
-        $data['ID'] = $existing; $id = wp_update_post($data, true);
     }
-    else           { $id = wp_insert_post($data, true); }
+    else           { $id = wp_insert_post(wp_slash($data), true); }
     if (is_wp_error($id)) return $id;
     if ($external) update_post_meta($id, '_seoplatform_external_id', $external);
     if (!empty($p['focus_keyword'])) update_post_meta($id, '_seoplatform_focus_keyword', sanitize_text_field($p['focus_keyword']));
@@ -262,7 +268,8 @@ function seop_upsert_content($p) {
     if (!empty($p['seo_title']) || !empty($p['seo_description'])) {
         seop_write_meta($id, $p['seo_title'] ?? null, $p['seo_description'] ?? null, null);
     }
-    return ['ok' => true, 'post_id' => $id, 'status' => $status,
+    return ['ok' => true, 'post_id' => $id, 'status' => $kept_live ? get_post_status($id) : $status,
+        'kept_live_copy' => $kept_live,
         'scheduled_for' => get_post_status($id) === 'future' ? get_post_time('Y-m-d H:i', false, $id) : null,
         'edit_url' => admin_url('post.php?post=' . $id . '&action=edit'),
         'view_url' => get_permalink($id)];
@@ -284,10 +291,26 @@ function seop_seo_meta($request) {
     return ['ok' => true, 'post_id' => $id, 'seo_plugin' => seop_seo_plugin()];
 }
 
+/* v1.9.2: JSON-LD is decoded and re-encoded with <, >, & escaped as \u003C
+ * etc., so no stored value can close the <script> tag and inject markup
+ * ("</script><script>…"). Returns '' for anything that isn't valid JSON. */
+function seop_jsonld_safe($blob) {
+    if (is_array($blob) || is_object($blob)) $data = $blob;
+    else {
+        $blob = trim((string) $blob);
+        // tolerate a pasted <script type="application/ld+json"> wrapper
+        $blob = preg_replace('#^<script[^>]*>|</script>\s*$#i', '', $blob);
+        $data = json_decode($blob, true);
+    }
+    if ($data === null || $data === '' || is_scalar($data)) return '';
+    $out = wp_json_encode($data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    return is_string($out) ? $out : '';
+}
+
 /* Store JSON-LD for a page (or site-wide when the target is the front page). */
 function seop_store_schema($target, $jsonld) {
-    if (is_array($jsonld) || is_object($jsonld)) $jsonld = wp_json_encode($jsonld);
-    if (!is_string($jsonld) || json_decode($jsonld) === null) {
+    $jsonld = seop_jsonld_safe($jsonld);
+    if ($jsonld === '') {
         return new WP_Error('seop_jsonld', 'invalid JSON-LD', ['status' => 400]);
     }
     $id = seop_resolve_target($target);
@@ -311,31 +334,26 @@ function seop_store_schema($target, $jsonld) {
 
 function seop_schema($request) {
     $p = $request->get_json_params();
-    $res = seop_store_schema($p['target'] ?? '', $p['jsonld'] ?? null);
-    if (is_wp_error($res)) {
-        // preserve v1.0 behavior: single blob on the resolved post
-        $id = seop_resolve_target($p['target'] ?? '');
-        if ($id > 0 && is_string($p['jsonld'] ?? null)) {
-            update_post_meta($id, '_seoplatform_schema', wp_slash($p['jsonld']));
-            return ['ok' => true, 'post_id' => $id];
-        }
-    }
-    return $res;
+    // v1.9.2: no raw fallback — invalid JSON is refused, never stored as markup.
+    return seop_store_schema($p['target'] ?? '', $p['jsonld'] ?? null);
 }
 
 /* ── Head output: schema (legacy single + list + site-wide) and OG tags ── */
 add_action('wp_head', function () {
     if (is_front_page()) {
         foreach ((array) get_option(SEOP_OPT_SITE_SCHEMA, []) as $blob) {
-            if (is_string($blob) && $blob) echo "\n<script type=\"application/ld+json\">" . $blob . "</script>\n";
+            $safe = seop_jsonld_safe($blob);
+            if ($safe !== '') echo "\n<script type=\"application/ld+json\">" . $safe . "</script>\n";
         }
     }
     if (!is_singular()) return;
     $pid = get_queried_object_id();
-    $legacy = get_post_meta($pid, '_seoplatform_schema', true);
-    if ($legacy) echo "\n<script type=\"application/ld+json\">" . $legacy . "</script>\n";
+    // Re-encoded on output too, so blobs stored by older versions are safe.
+    $legacy = seop_jsonld_safe(get_post_meta($pid, '_seoplatform_schema', true));
+    if ($legacy !== '') echo "\n<script type=\"application/ld+json\">" . $legacy . "</script>\n";
     foreach ((array) get_post_meta($pid, '_seoplatform_schema_list', true) as $blob) {
-        if (is_string($blob) && $blob) echo "\n<script type=\"application/ld+json\">" . $blob . "</script>\n";
+        $safe = seop_jsonld_safe($blob);
+        if ($safe !== '') echo "\n<script type=\"application/ld+json\">" . $safe . "</script>\n";
     }
     $og = get_post_meta($pid, '_seoplatform_og_tags', true);
     if ($og) echo "\n" . $og . "\n"; // sanitized to <meta> tags only at import time
@@ -534,7 +552,7 @@ add_action('wp_head', function () {
 
     if ($graph) {
         echo "\n<script type=\"application/ld+json\">"
-            . wp_json_encode(['@context' => 'https://schema.org', '@graph' => $graph], JSON_UNESCAPED_SLASHES)
+            . wp_json_encode(['@context' => 'https://schema.org', '@graph' => $graph], JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP)
             . "</script>\n";
     }
     // Local geo hints on every page — harmless meta that reinforces the service area.
@@ -636,6 +654,12 @@ add_action('template_redirect', function () {
 // v1.4: the four safe headers are on BY DEFAULT — the audit fails sites without
 // them and they carry no rendering risk (unlike CSP, which stays manual-only).
 // Package-imported values override the defaults per header.
+// v1.9.2: only these may be set from a package — anything else (Set-Cookie,
+// Location, Refresh, Access-Control-*, Content-Type) could hijack the site.
+function seop_header_allowed($name) {
+    return in_array(strtolower((string) $name), ['strict-transport-security', 'x-content-type-options', 'x-frame-options',
+        'referrer-policy', 'permissions-policy', 'cross-origin-opener-policy', 'x-xss-protection'], true);
+}
 function seop_default_headers() {
     $h = ['X-Content-Type-Options' => 'nosniff',
           'X-Frame-Options' => 'SAMEORIGIN',
@@ -646,7 +670,7 @@ function seop_default_headers() {
 add_action('send_headers', function () {
     $headers = array_merge(seop_default_headers(), (array) get_option(SEOP_OPT_HEADERS, []));
     foreach ($headers as $name => $value) {
-        if (preg_match('/^[A-Za-z0-9-]+$/', $name) && is_string($value) && !headers_sent()) {
+        if (preg_match('/^[A-Za-z0-9-]+$/', $name) && seop_header_allowed($name) && is_string($value) && !headers_sent()) {
             header($name . ': ' . preg_replace('/[\r\n]/', '', $value));
         }
     }
@@ -705,11 +729,27 @@ function seop_apply_package($pkg) {
     if (!empty($files['sitemap_xml'])) $r['manual'][] = 'Sitemap: prefer your SEO plugin\'s sitemap (Yoast/Rank Math serve one automatically); the package includes a fallback file if you need it.';
     $rules = (array) (($pkg['redirects']['rules'] ?? []) ?: []);
     if ($rules) {
-        $cleanRules = [];
-        foreach ($rules as $rule) if (!empty($rule['from']) && !empty($rule['to'])) $cleanRules[] = ['from' => sanitize_text_field($rule['from']), 'to' => esc_url_raw($rule['to']), 'code' => 301];
-        $existing = (array) get_option(SEOP_OPT_REDIRECTS, []);
-        update_option(SEOP_OPT_REDIRECTS, array_values(array_unique(array_merge($existing, $cleanRules), SORT_REGULAR)));
-        $ok(count($cleanRules) . ' redirect rule(s)');
+        // v1.9.2: keyed by source path so a corrected rule REPLACES the old one
+        // (first-match-wins used to keep the mistake forever); targets must stay
+        // on this site; self-redirects and A→B→A loops are refused.
+        $pathOf = function ($u) { $p = wp_parse_url((string) $u, PHP_URL_PATH); return strtolower(untrailingslashit($p ?: '/') ?: '/'); };
+        $siteHost = strtolower(preg_replace('/^www\./', '', (string) wp_parse_url(home_url(), PHP_URL_HOST)));
+        $byFrom = [];
+        foreach ((array) get_option(SEOP_OPT_REDIRECTS, []) as $old) if (!empty($old['from'])) $byFrom[$pathOf($old['from'])] = $old;
+        $added = 0;
+        foreach ($rules as $rule) {
+            if (empty($rule['from']) || empty($rule['to'])) continue;
+            $from = sanitize_text_field($rule['from']); $to = esc_url_raw($rule['to']);
+            if (strpos($to, '//') === 0) { $skip('Redirect ' . $from, 'protocol-relative target'); continue; }
+            $toHost = strtolower(preg_replace('/^www\./', '', (string) wp_parse_url($to, PHP_URL_HOST)));
+            if ($toHost !== '' && $toHost !== $siteHost) { $skip('Redirect ' . $from, 'target is on another site (' . $toHost . ')'); continue; }
+            $f = $pathOf($from); $t = $pathOf($to);
+            if ($f === '/' || $f === $t) { $skip('Redirect ' . $from, $f === '/' ? 'the homepage cannot be redirected' : 'redirects to itself'); continue; }
+            if (isset($byFrom[$t]) && $pathOf($byFrom[$t]['to']) === $f) { $skip('Redirect ' . $from, 'would loop with the rule for ' . $t); continue; }
+            $byFrom[$f] = ['from' => $from, 'to' => $to, 'code' => 301]; $added++;
+        }
+        update_option(SEOP_OPT_REDIRECTS, array_values($byFrom));
+        $ok($added . ' redirect rule(s)');
     }
     if (!empty($pkg['redirects']['raw']) && !$rules) $r['manual'][] = 'Redirects: the package includes server rules (.htaccess/nginx) that need to be applied at the server level.';
     if (!empty($pkg['security_headers']['raw'])) {
@@ -721,16 +761,21 @@ function seop_apply_package($pkg) {
             unset($headers['Content-Security-Policy']);
             $r['manual'][] = 'Content-Security-Policy: test on staging and apply at the server level — auto-applying a CSP can break page rendering.';
         }
+        $blocked = array_diff(array_keys($headers), array_filter(array_keys($headers), 'seop_header_allowed'));
+        $headers = array_filter($headers, 'seop_header_allowed', ARRAY_FILTER_USE_KEY);
+        if ($blocked) $skip('Headers ' . implode(', ', $blocked), 'not on the security-header allowlist');
         if ($headers) { update_option(SEOP_OPT_HEADERS, $headers); $ok(count($headers) . ' security header(s) (sent by WordPress)'); }
         else $skip('Security headers', 'no parseable header lines');
     }
     // v1.3: approved business facts → powers site-wide LocalBusiness/E-E-A-T schema.
     if (!empty($pkg['business']) && is_array($pkg['business'])) {
-        $clean = function ($v) use (&$clean) {
-            if (is_array($v)) return array_map($clean, $v);
-            return sanitize_text_field((string) $v);
-        };
-        update_option(SEOP_OPT_BUSINESS, array_map($clean, $pkg['business']));
+        $biz = [];
+        foreach ($pkg['business'] as $k => $v) {
+            if ($k === 'sameas') { $biz[$k] = array_values(array_filter(array_map('esc_url_raw', array_filter((array) $v, 'is_scalar')))); continue; }
+            if (is_array($v)) $v = implode(', ', array_filter($v, 'is_scalar'));
+            $biz[$k] = is_scalar($v) ? sanitize_text_field((string) $v) : '';
+        }
+        update_option(SEOP_OPT_BUSINESS, $biz);
         $ok('Business profile (name, NAP, hours, service area — powers site-wide schema)');
     }
     $scheduled = 0; $drafted = 0;
@@ -821,7 +866,7 @@ function seop_alt_from_filename($file) {
 function seop_link_keyword($content, $kw, $url) {
     if (stripos($content, 'href="' . $url) !== false) return null; // already links there
     $parts = preg_split('/(<[^>]+>|\[[^\]]+\])/', $content, -1, PREG_SPLIT_DELIM_CAPTURE);
-    $inA = 0; $inH = 0; $inBtn = 0; $scStack = [];
+    $inA = 0; $inH = 0; $inBtn = 0; $inRaw = 0; $scStack = [];
     $rx = '/\b(' . preg_quote($kw, '/') . ')\b/i';
     foreach ($parts as $i => $seg) {
         if ($seg === '' ) continue;
@@ -832,6 +877,8 @@ function seop_link_keyword($content, $kw, $url) {
             elseif (preg_match('/^<\/h[1-6]>/i', $seg)) $inH = max(0, $inH - 1);
             elseif (preg_match('/^<button\b/i', $seg)) $inBtn++;
             elseif (preg_match('/^<\/button>/i', $seg)) $inBtn = max(0, $inBtn - 1);
+            elseif (preg_match('/^<(script|style|textarea|code|pre)\b/i', $seg)) $inRaw++;
+            elseif (preg_match('/^<\/(script|style|textarea|code|pre)>/i', $seg)) $inRaw = max(0, $inRaw - 1);
             continue;
         }
         if ($seg[0] === '[') {
@@ -845,13 +892,25 @@ function seop_link_keyword($content, $kw, $url) {
             }
             continue;
         }
-        if ($inA || $inH || $inBtn || $scStack) continue;
+        if ($inA || $inH || $inBtn || $inRaw || $scStack) continue;
         if (preg_match($rx, $seg)) {
             $parts[$i] = preg_replace($rx, '<a href="' . esc_url($url) . '">$1</a>', $seg, 1);
             return implode('', $parts);
         }
     }
     return null;
+}
+/* v1.9.2: save a body the plugin itself rewrote (alt text, one link, a
+ * trust sentence — all escaped at insertion). wp_update_post expects slashed
+ * data (unslashed input lost every backslash, breaking block attributes), and
+ * cron/REST runs have no user with unfiltered_html, so the kses filter used to
+ * strip the page's own iframes, forms and embeds on save. */
+function seop_save_rewritten($post_id, $content) {
+    $had_kses = has_filter('content_save_pre', 'wp_filter_post_kses');
+    if ($had_kses) kses_remove_filters();
+    $r = wp_update_post(wp_slash(['ID' => $post_id, 'post_content' => $content]), true);
+    if ($had_kses) kses_init_filters();
+    return $r;
 }
 function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
     if (!seop_ai_key()) return new WP_Error('seop_ai', 'Add an Anthropic API key on the SEO Platform settings page first.');
@@ -916,7 +975,7 @@ function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
             return $alt !== '' ? '<img alt="' . esc_attr($alt) . '"' . $m[1] . '>' : $m[0];
         }, $p->post_content);
         if ($content !== null && $content !== $p->post_content) {
-            wp_update_post(['ID' => $p->ID, 'post_content' => $content]);
+            seop_save_rewritten($p->ID, $content);
             $report['alts'][] = $p->post_title . ' (' . count($alts) . ' images)';
         }
         update_post_meta($p->ID, '_seoplatform_alts_done', 1);
@@ -982,7 +1041,7 @@ function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
             if ($donor->ID === $tp->ID) continue;
             $new = seop_link_keyword($donor->post_content, $kw, $turl);
             if ($new !== null) {
-                wp_update_post(['ID' => $donor->ID, 'post_content' => $new]);
+                seop_save_rewritten($donor->ID, $new);
                 $report['links'][] = '"' . $donor->post_title . '" → "' . $tp->post_title . '" (' . $kw . ')';
                 $linked++;
                 break; // one inbound link per target per run is plenty
@@ -1007,7 +1066,7 @@ function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
                 $sentence = seop_trust_sentence();
                 $creds = trim((string) ($bizT['credentials'] ?? ''));
                 $new = $pg->post_content . "\n\n<p>" . esc_html($sentence) . '</p>';
-                wp_update_post(['ID' => $pg->ID, 'post_content' => $new]);
+                seop_save_rewritten($pg->ID, $new);
                 $report['about_trust'] = 'Trust/credentials paragraph added to "' . $pg->post_title . '"' . ($creds ? ' (from the client\'s stated credentials)' : ' (general — add real credentials in the platform intake for stronger copy)');
             }
         }
@@ -1054,9 +1113,14 @@ function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
     //    template if the site has none (standard WP boilerplate, not invented
     //    facts) and register it so themes that show the privacy link pick it up.
     if (!get_option('wp_page_for_privacy_policy')) {
+        // The class lives in wp-admin and isn't loaded on cron/REST runs — that
+        // published an EMPTY "Privacy Policy" page. Load it, and skip if empty.
+        if (!class_exists('WP_Privacy_Policy_Content') && file_exists(ABSPATH . 'wp-admin/includes/class-wp-privacy-policy-content.php')) {
+            require_once ABSPATH . 'wp-admin/includes/class-wp-privacy-policy-content.php';
+        }
         $tpl = class_exists('WP_Privacy_Policy_Content') && method_exists('WP_Privacy_Policy_Content', 'get_default_content')
             ? WP_Privacy_Policy_Content::get_default_content() : '';
-        $pid = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish',
+        $pid = trim(wp_strip_all_tags($tpl)) === '' ? 0 : wp_insert_post(['post_type' => 'page', 'post_status' => 'publish',
             'post_title' => 'Privacy Policy', 'post_name' => 'privacy-policy', 'post_content' => $tpl]);
         if ($pid && !is_wp_error($pid)) {
             update_option('wp_page_for_privacy_policy', $pid);

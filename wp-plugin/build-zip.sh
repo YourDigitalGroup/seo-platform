@@ -11,11 +11,19 @@
 #                                                 the API then requires an
 #                                                 anthropic-workspace-id header)
 #
+#   SEOP_AI_KEY=sk-ant-xxxxx SEOP_AI_WORKSPACE=wrkspc_xxxxx ./build-zip.sh
+#                                               → same, without the key landing
+#                                                 in shell history / `ps`
+#
+# Every client zip carries the baked key, and any admin of a client site can
+# read it. Bake a key from a dedicated workspace with a spend limit, never the
+# org's main key.
+#
 # Output: seo-platform-connector.zip next to this script.
 set -euo pipefail
 cd "$(dirname "$0")"
-KEY="${1:-}"
-WORKSPACE="${2:-}"
+KEY="${1:-${SEOP_AI_KEY:-}}"
+WORKSPACE="${2:-${SEOP_AI_WORKSPACE:-}}"
 
 if [ -n "$KEY" ] && ! printf '%s' "$KEY" | grep -Eq '^[A-Za-z0-9_-]+$'; then
   echo "ERROR: key contains unexpected characters (quotes/spaces?) — aborting." >&2

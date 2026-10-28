@@ -90,6 +90,47 @@ const CORS = {
 };
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
+
+// ── Caller gate (QA 2026-10-28). verify_jwt alone is not access control here:
+// the public anon key shipped in the console is itself a valid JWT, and email
+// sign-up is open. Every request must come from the service role (scheduler,
+// function-to-function) or a staff member (a row in profiles), optionally
+// holding one of `roles`.
+async function gateCaller(req: Request, roles?: string[]): Promise<{ userId: string | null; role: string } | Response> {
+  const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  const svc = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!tok) return json({ error: "sign in required" }, 401);
+  if (svc && tok === svc) return { userId: null, role: "service" };
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, svc, { auth: { persistSession: false } });
+  const { data } = await admin.auth.getUser(tok);
+  if (!data?.user) return json({ error: "sign in required" }, 401);
+  const { data: prof } = await admin.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
+  if (!prof) return json({ error: "staff only — this account has no staff profile" }, 403);
+  if (roles && !roles.includes(String(prof.role))) return json({ error: "your role can't do this" }, 403);
+  return { userId: data.user.id, role: String(prof.role) };
+}
+
+// ── Outbound deadlines (QA 2026-10-28). A hung host used to stall the audit
+// until the platform killed the worker — taking every other audit sharing it
+// down too. Every fetch without its own signal now gets one; Supabase's own
+// API (DB writes, function-to-function dispatch) is left alone.
+const _rawFetch = globalThis.fetch;
+const SUPA_HOST = (() => { try { return new URL(Deno.env.get("SUPABASE_URL") || "").host; } catch { return ""; } })();
+globalThis.fetch = ((input: any, init: any = {}) => {
+  if (init?.signal) return _rawFetch(input, init);
+  let host = ""; try { host = new URL(typeof input === "string" ? input : input.url).host; } catch { /* relative */ }
+  if (!host || host === SUPA_HOST) return _rawFetch(input, init);
+  const ms = host === "api.anthropic.com" ? 60000 : /ahrefs\.com$/.test(host) ? 45000 : 15000;
+  return _rawFetch(input, { ...init, signal: AbortSignal.timeout(ms) });
+}) as typeof fetch;
+
+// Audits in flight on THIS worker. Background audits share one worker's CPU
+// budget (2s); ~30 scheduled audits packed into one worker blew it every
+// morning and killed the slowest three. The scheduler gets a 429 past the cap
+// and retries (landing on another worker); staff-initiated runs are never
+// refused.
+let inFlight = 0;
+const MAX_IN_FLIGHT = 3;
 const grade = (n: number) => n >= 90 ? "A" : n >= 78 ? "B" : n >= 65 ? "C" : n >= 50 ? "D" : "F";
 
 // Who built the site, per its credit line ("Site by 44i", "Website by CF
@@ -167,7 +208,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.9.4";
+const ENGINE_VERSION = "5.9.5";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -479,7 +520,8 @@ async function runAuditPipeline(body: any): Promise<Response> {
 
     if (!crawlProjectId) {
       const pj = await ah("site-audit/projects", { project_url: root });
-      const hit = (pj?.healthscores ?? []).find((p: any) => rootOf(p.target_url) === root) || (pj?.healthscores ?? [])[0];
+      // only this client's own project — never fall back to the first project in the account
+      const hit = (pj?.healthscores ?? []).find((p: any) => rootOf(p.target_url) === root);
       if (hit?.project_id) { crawlProjectId = Number(hit.project_id); healthScore = hit.health_score ?? null; crawlTotals = { total: hit.total, errors: hit.urls_with_errors, warnings: hit.urls_with_warnings, notices: hit.urls_with_notices }; }
     } else {
       const pj = await ah("site-audit/projects", { project_id: String(crawlProjectId) });
@@ -527,8 +569,14 @@ async function runAuditPipeline(body: any): Promise<Response> {
             .filter((u) => rootOf(u) === root && !/\.(jpg|jpeg|png|gif|webp|svg|pdf|xml)(\?|$)/i.test(u));
         }
       } catch { /* ignore */ }
+      // One entry per page: Ahrefs/sitemap URLs differ from `home` by www., a
+      // trailing slash or scheme, and auditing the homepage 2-3 times made
+      // "N pages share a title" fail on its own duplicates.
+      const pageKey = (u: string) => String(u || "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
+      const seenPages = new Set<string>();
       const targets = [home, ...clientTopPages.map((p: any) => p.url), ...smList]
-        .filter((u, i, a) => u && a.indexOf(u) === i).slice(0, smList.length ? SITEMAP_CRAWL : FETCH_PAGES);
+        .filter((u) => { if (!u) return false; const k = pageKey(u); if (seenPages.has(k)) return false; seenPages.add(k); return true; })
+        .slice(0, smList.length ? SITEMAP_CRAWL : FETCH_PAGES);
       const fetched = await Promise.all(targets.map((u) => u === home ? Promise.resolve(homePage) : fetchPage(u)));
       pages = fetched.filter(Boolean);
       const okN = pages.filter((p: any) => p.ok).length;
@@ -567,7 +615,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
     //       fabricated fail.
     let robotsOk = true, robotsFound = false, sitemapOk = false, sitemapDeclared = false, robotsTxt = "";
     try { const rb = await fetch(`https://${target}/robots.txt`); robotsFound = rb.ok; robotsTxt = rb.ok ? await rb.text() : "";
-      robotsOk = !/^\s*Disallow:\s*\/\s*$/im.test(robotsTxt); sitemapDeclared = /sitemap:/i.test(robotsTxt); } catch { /* ignore */ }
+      robotsOk = !robotsBlocksSite(robotsTxt); sitemapDeclared = /sitemap:/i.test(robotsTxt); } catch { /* ignore */ }
     const sitemapUrl = robotsTxt.match(/sitemap:\s*(\S+)/i)?.[1] || `https://${target}/sitemap.xml`;
     let smUrls: number | null = null, smIsIndex = false;
     try { const sm = await fetch(sitemapUrl); if (sm.ok) { const xml = await sm.text();
@@ -580,9 +628,16 @@ async function runAuditPipeline(body: any): Promise<Response> {
       httpsRedirect = r.status >= 300 && r.status < 400 && String(r.headers.get("location") || "").startsWith("https");
       await r.body?.cancel(); } catch { /* ignore */ }
     const altHost = target.startsWith("www.") ? target.replace(/^www\./, "") : `www.${target}`;
+    // The client's own host redirecting to the alt host (kjan.com → www.kjan.com)
+    // is just as canonical as the alt host redirecting to it.
+    let selfRedirects = false;
+    try { const r0 = await fetch(`https://${target}/`, { redirect: "manual" });
+      let locHost = ""; try { locHost = new URL(String(r0.headers.get("location") || ""), `https://${target}/`).host.toLowerCase(); } catch { /* bad header */ }
+      selfRedirects = r0.status >= 300 && r0.status < 400 && locHost === altHost.toLowerCase();
+      await r0.body?.cancel(); } catch { /* ignore */ }
     try { const r = await fetch(`https://${altHost}/`, { redirect: "manual" });
-      // alt host redirecting (30x) is correct; 200 on both hosts = duplicate content
-      hostCanonical = r.status >= 300; await r.body?.cancel();
+      // either host redirecting (30x) is correct; 200 on both hosts = duplicate content
+      hostCanonical = selfRedirects || r.status >= 300; await r.body?.cancel();
     } catch { hostCanonical = true; /* alt host doesn't resolve — no duplicate */ }
 
     // Soft-404 detection: a made-up URL must return a real 404/410.
@@ -591,9 +646,12 @@ async function runAuditPipeline(body: any): Promise<Response> {
       notFoundOk = r.status === 404 || r.status === 410; await r.body?.cancel(); } catch { /* ignore */ }
 
     // llms.txt (AI-crawler guidance) + favicon.
-    let llmsTxt = false; try { const r = await fetch(`https://${target}/llms.txt`); llmsTxt = r.ok && (await r.text()).trim().length > 0; } catch { /* ignore */ }
+    // Sites that answer every URL with an HTML page (no real 404) must not
+    // pass on that page: the file has to be text, not markup.
+    let llmsTxt = false; try { const r = await fetch(`https://${target}/llms.txt`); const t = r.ok ? (await r.text()).trim() : "";
+      llmsTxt = r.ok && t.length > 0 && !/text\/html/i.test(r.headers.get("content-type") || "") && !t.startsWith("<"); } catch { /* ignore */ }
     let favicon = /<link[^>]+rel=["'][^"']*icon[^"']*["']/i.test(homeHtmlRaw);
-    if (!favicon) { try { const r = await fetch(`https://${target}/favicon.ico`); favicon = r.ok; await r.body?.cancel(); } catch { /* ignore */ } }
+    if (!favicon) { try { const r = await fetch(`https://${target}/favicon.ico`); favicon = r.ok && !/text\/html/i.test(r.headers.get("content-type") || ""); await r.body?.cancel(); } catch { /* ignore */ } }
 
     // Security headers on the homepage response.
     const hdr = (n: string) => homeHeaders?.get(n) || "";
@@ -756,7 +814,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
       if (sov?.metrics || men?.metrics) {
         const sovRows = sov?.metrics ?? []; const menRows = men?.metrics ?? [];
         const norm = (s: string) => String(s || "").toLowerCase();
-        const isUs = (b: string) => norm(b) === norm(businessName) || norm(b).includes(rootOf(b)) || norm(businessName).includes(norm(b));
+        const isUs = (b: string) => norm(b) === norm(businessName) || norm(b).includes(root) || norm(businessName).includes(norm(b));
         const ourSov = sovRows.find((r: any) => isUs(r.brand))?.share_of_voice ?? 0;
         const ourMen = menRows.find((r: any) => isUs(r.brand));
         const compSov = sovRows.filter((r: any) => !isUs(r.brand)).reduce((a: number, r: any) => a + (r.share_of_voice || 0), 0);
@@ -889,7 +947,10 @@ async function runAuditPipeline(body: any): Promise<Response> {
     // claim. Without a crawl the technical score is capped and says why.
     let techScore = pillarScore("technical") ?? 0;
     if (!crawlUsed && !sitemapCrawled && techScore > 79) { techScore = 79; note.push("Technical score capped at 79 — no crawl configured, findings are sampled."); }
-    let perfScore = pillarScore("performance");
+    // Without a PageSpeed reading the pillar would rest on one TTFB sample from
+    // a busy worker (0/50/100 at random) — leave it unassessed instead.
+    let perfScore = psi.score == null ? null : pillarScore("performance");
+    if (psi.score == null) note.push("Performance not assessed — PageSpeed Insights returned no score this run.");
     const perfMeasured = perfScore;
     // Builder floor: WordPress sites credited to us or one of our white-label
     // partners ("Site by 44i", "site by CF Digital") are not scored below C
@@ -1637,13 +1698,39 @@ async function runAuditPipeline(body: any): Promise<Response> {
   }
 }
 
+// A site-wide block only counts when it applies to every crawler (User-agent: *)
+// or Googlebot — blocking one bot (e.g. PetalBot) is not a site-wide block.
+function robotsBlocksSite(txt: string): boolean {
+  let applies = false, inUA = false, blocked = false;
+  for (const raw of String(txt || "").split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, "").trim(); if (!line) continue;
+    const m = /^([A-Za-z-]+)\s*:\s*(.*)$/.exec(line); if (!m) continue;
+    const k = m[1].toLowerCase(), v = m[2].trim();
+    if (k === "user-agent") { if (!inUA) applies = false; inUA = true; if (v === "*" || /^googlebot$/i.test(v)) applies = true; continue; }
+    inUA = false;
+    if (k === "disallow" && applies && v === "/") blocked = true;
+  }
+  return blocked;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  const who = await gateCaller(req);
+  if (who instanceof Response) return who;
   const body = await req.json().catch(() => ({}));
 
   // Classic synchronous mode — the caller waits for the full result.
-  if (body?.background !== true) return await runAuditPipeline(body);
+  if (body?.background !== true) {
+    inFlight++;
+    try { return await runAuditPipeline(body); } finally { inFlight--; }
+  }
+  // Scheduler traffic past this worker's cap: ask it to retry (it honours
+  // Retry-After) so the audit lands on a worker with CPU budget left.
+  if (who.role === "service" && inFlight >= MAX_IN_FLIGHT) {
+    return new Response(JSON.stringify({ error: "worker busy — retry", in_flight: inFlight }),
+      { status: 429, headers: { ...CORS, "Content-Type": "application/json", "Retry-After": "20" } });
+  }
 
   // Background mode: answer immediately, keep working after the response.
   // Progress + the final result payload land in audit_jobs (audit_jobs.sql);
@@ -1660,6 +1747,7 @@ Deno.serve(async (req) => {
     jobId = data?.id ?? null;
   } catch (_) { /* table not migrated yet — run anyway */ }
 
+  inFlight++;
   const work = (async () => {
     let status = "error"; let errText: string | null = null;
     let auditId: string | null = null; let result: any = null;
@@ -1680,7 +1768,7 @@ Deno.serve(async (req) => {
         }).eq("id", jobId);
       } catch (e) { console.error("audit_jobs update failed", e); }
     }
-  })();
+  })().finally(() => { inFlight--; });
   const er = (globalThis as any).EdgeRuntime;
   if (er?.waitUntil) er.waitUntil(work); else await work;
 

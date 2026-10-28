@@ -24,6 +24,25 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
+// ── Caller gate (QA 2026-10-28). verify_jwt alone is not access control here:
+// the public anon key shipped in the console is itself a valid JWT, and email
+// sign-up is open. Every request must come from the service role (scheduler,
+// function-to-function) or a staff member (a row in profiles), optionally
+// holding one of `roles`.
+async function gateCaller(req: Request, roles?: string[]): Promise<{ userId: string | null; role: string } | Response> {
+  const tok = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  const svc = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!tok) return json({ error: "sign in required" }, 401);
+  if (svc && tok === svc) return { userId: null, role: "service" };
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, svc, { auth: { persistSession: false } });
+  const { data } = await admin.auth.getUser(tok);
+  if (!data?.user) return json({ error: "sign in required" }, 401);
+  const { data: prof } = await admin.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
+  if (!prof) return json({ error: "staff only — this account has no staff profile" }, 403);
+  if (roles && !roles.includes(String(prof.role))) return json({ error: "your role can't do this" }, 403);
+  return { userId: data.user.id, role: String(prof.role) };
+}
+
 // ── The same keyword gates run-audit uses (kept in sync by hand) ─────────────
 const US_STATES = new Set(("al ak az ar ca co ct de fl ga hi id il in ia ks ky la me md ma mi mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt va wa wv wi wy dc " +
   "alabama alaska arizona arkansas california colorado connecticut delaware florida georgia hawaii idaho illinois indiana iowa kansas kentucky louisiana maine maryland massachusetts michigan minnesota mississippi missouri montana nebraska nevada newhampshire newjersey newmexico newyork northcarolina northdakota ohio oklahoma oregon pennsylvania rhodeisland southcarolina southdakota tennessee texas utah vermont virginia washington westvirginia wisconsin wyoming").split(" "));
@@ -48,6 +67,8 @@ const KINDS = new Set(["blog", "service", "landing", "pillar", "faq", "gbp_post"
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  const who = await gateCaller(req);
+  if (who instanceof Response) return who;
   try {
     const { client_id } = await req.json().catch(() => ({}));
     if (!client_id) return json({ error: "client_id is required" }, 400);
@@ -101,6 +122,7 @@ Deno.serve(async (req) => {
           "Rules: every keyword must be a real search someone in the trade area would type; NO 'near me' phrases; NO bare city/state names; NO single words; nothing that duplicates the ALREADY COVERED list's intent; landings must pair a service with a town; blogs are informational questions/guides; invent no business facts in rationales.",
         messages: [{ role: "user", content: `${context}\n\nSuggest 12 topics.` }],
       }),
+      signal: AbortSignal.timeout(90_000),
     });
     if (!r.ok) return json({ error: `anthropic ${r.status}`, detail: (await r.text()).slice(0, 300) }, 502);
     const d = await r.json();

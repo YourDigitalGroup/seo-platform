@@ -26,10 +26,10 @@ grant select on public.client_health, public.group_rollup to authenticated;
 -- 2 ── the scheduler trigger is for pg_cron and the SQL Editor only
 revoke execute on function public.seop_invoke_scheduler(text) from public, anon, authenticated;
 
--- 3 ── staff may edit their own display name; role/email go through the
---      manage-users function (service role), which checks for an admin.
+-- 3 ── profiles are written only by the manage-users function (service role,
+--      admin-checked). No direct UPDATE: a self-set name renders across the console.
 revoke update on public.profiles from anon, authenticated;
-grant update (name) on public.profiles to authenticated;
+-- (no column grants)
 
 -- 4 ── "any signed-in user" → staff (a row in profiles)
 do $$
