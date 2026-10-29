@@ -186,11 +186,43 @@ Deno.serve(async (req) => {
         al("GET", `/legacyorderproducts?where=${where}&limit=50`),
         al("GET", `/legacyfulfillmentdatas?where=${where}&limit=200&sort=dateUpdated%20DESC`),
       ]);
-      return json({ ok: true, al_client_id: client.al_client_id, al_order_id: client.al_order_id || null,
-        products: (Array.isArray(products) ? products : []).map((p: any) => ({
-          order: p.order, product: p.product, price: p.price, interval: p.intervalMaintenance, disabled: p.isDisabled === true || p.isDisabled === "true" })),
-        directories: (Array.isArray(fulfillment) ? fulfillment : []).map((f: any) => ({
-          directory: f.directory, status: f.status, initial: f.statusInitial, type: f.type, url: f.url || null, updated: f.dateUpdated || f.dateCreated })) });
+      const dirs = (Array.isArray(fulfillment) ? fulfillment : []).map((f: any) => ({
+        directory: String(f.directory || "").trim(), status: String(f.status || ""), initial: String(f.statusInitial || ""),
+        type: f.type, url: f.url || null, updated: f.dateUpdated || f.dateCreated || null,
+      })).filter((f: any) => f.directory);
+      const classify = (v: string) => {
+        const t=v.toLowerCase().replace(/_/g," ");
+        if (/temporar|retry/.test(t)) return {key:"retry",rank:3};
+        if (/verif|confirm|postcard|action required|manual/.test(t)) return {key:"verify",rank:4};
+        if (/reject|fail|error|denied|unavailable|not available|duplicate|closed|removed/.test(t)) return {key:"attn",rank:1};
+        if (/added|claimed|updated|live|listed|complete|synced/.test(t)) return {key:"live",rank:5};
+        if (/initial|pending|queue|submitted|processing|progress|scheduled/.test(t)) return {key:"queued",rank:2};
+        return {key:"other",rank:0};
+      };
+      const dedup=new Map<string,any>();
+      for(const f of dirs) {
+        const key=f.directory.toLowerCase(),g=classify(f.status),old=dedup.get(key);
+        if(!old){dedup.set(key,{...f,group:g.key,rank:g.rank});continue;}
+        if(g.rank>old.rank){old.status=f.status;old.initial=f.initial;old.group=g.key;old.rank=g.rank;}
+        if(!old.url&&f.url)old.url=f.url;
+        if(String(f.updated||"")>String(old.updated||""))old.updated=f.updated;
+      }
+      const now=new Date().toISOString();
+      const records=[...dedup.values()].map((f:any)=>({
+        client_id:client.id,directory:f.directory,status:f.status,status_group:f.group,
+        initial_status:f.initial,listing_url:f.url,updated_at_source:f.updated||null,fetched_at:now,
+      }));
+      // Atomic replacement is handled by the SQL function so an insert failure
+      // cannot erase the previous good reporting snapshot.
+      const { error: persistError } = await supa.rpc("replace_advice_local_directories",{
+        p_client_id:client.id,p_records:records,
+      });
+      if(persistError) return json({ error:"Advice Local statuses retrieved but could not save reporting data",detail:persistError.message },500);
+      return json({ok:true,al_client_id:client.al_client_id,al_order_id:client.al_order_id||null,
+        products:(Array.isArray(products)?products:[]).map((p:any)=>({
+          order:p.order,product:p.product,price:p.price,interval:p.intervalMaintenance,
+          disabled:p.isDisabled===true||p.isDisabled==="true"
+        })),directories:dirs,reporting_saved:true,reporting_directories:records.length});
     }
 
     if (action === "order") {
