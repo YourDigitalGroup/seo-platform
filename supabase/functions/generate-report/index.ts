@@ -39,7 +39,7 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const REPORT_VERSION = "2.2.0";
+const REPORT_VERSION = "2.2.1";
 const MIN_WINDOW_DAYS = 28;   // lagging deltas need at least this much time
 const PCT_FLOOR = 30;         // no % change on a base smaller than this
 const NA_COVERAGE_MIN = 0.5;  // pillar shows "not assessed" below this check coverage
@@ -193,12 +193,32 @@ Deno.serve(async (req) => {
     }
 
     // ── 4. Measured layer (GSC) — leading indicators + trend across audits ───
-    const gscNow = raw.gsc || null;                 // { queries, clicks, impressions, striking, ctrBleed }
+    // Manual GSC pulls persist in gsc_queries independently of audits. Read
+    // them directly when newer than the audit's measured data so rebuilding a
+    // report does not require running another full site audit.
+    const { data: pulledGsc, error: gscErr } = await supa.from("gsc_queries")
+      .select("query, clicks, impressions, ctr, position, pulled_at")
+      .eq("client_id", client.id)
+      .order("pulled_at", { ascending: false }).limit(25000);
+    if (gscErr) console.error("report: GSC query lookup failed", gscErr);
+    const newestPull = pulledGsc?.[0]?.pulled_at || null;
+    const currentPull = (pulledGsc || []).filter((q: any) => q.pulled_at === newestPull);
+    const liveGsc = currentPull.length ? {
+      queries: currentPull.length,
+      clicks: currentPull.reduce((n: number,q: any) => n + Number(q.clicks || 0), 0),
+      impressions: currentPull.reduce((n: number,q: any) => n + Number(q.impressions || 0), 0),
+      striking: currentPull.filter((q: any) => Number(q.position) >= 4 && Number(q.position) <= 20).length,
+      ctrBleed: 0,
+    } : null;
+    const auditGsc = raw.gsc || null;
+    const gscNow = liveGsc && (!auditGsc || !auditGsc.queries || (newestPull && new Date(newestPull) > new Date(currentAudit.run_at)))
+      ? liveGsc : auditGsc;
     const gscPrior = lastPrior?.raw?.gsc || null;
     const gscBase = baseline?.raw?.gsc || null;
     const gscTrend = audits.filter((a: any) => a.raw?.gsc && (a.raw.gsc.queries || 0) > 0)
       .map((a: any) => ({ date: a.run_at, queries: a.raw.gsc.queries || 0, clicks: a.raw.gsc.clicks || 0, impressions: a.raw.gsc.impressions || 0 }));
     const gscConnected = !!(gscNow && (gscNow.queries || 0) > 0);
+    const gscIsQuerySample = gscNow === liveGsc && currentPull.length <= 25;
 
     // ── 5. Rank movements (Ahrefs rank tracking — labeled as such) ───────────
     const { data: currentKws } = await supa.from("keywords").select("keyword, position, volume").eq("audit_id", pkg.audit_id);
@@ -364,7 +384,7 @@ Deno.serve(async (req) => {
       baselineLocked, yoyAudit, business: raw.business || {},
       currentAudit, baseline, lastPrior, gradeRows,
       pushedFixes: pushedFixes || [], gatedDrafts, gatedCount,
-      gscConnected, gscNow, gscPrior, gscBase, gscTrend,
+      gscConnected, gscNow, gscPrior, gscBase, gscTrend, gscIsQuerySample,
       improvements, newlyRanking, deepMoves,
       aeoRaw, brandRadar, radarTrend, aeoReadyPass, aeoReadyTotal,
       publishedByKind, cumulativeFixes, schemaTypes, passNow, passBase, clNowCount: clNow.length,
@@ -404,6 +424,7 @@ Deno.serve(async (req) => {
       cycle_content: gatedDrafts.map((c: any) => ({ title: c.title || "(untitled)", kind: c.kind, type: prettyKind(c.kind) })),
       // section 4 — Google Search Console (measured)
       gsc_connected: gscConnected,
+      gsc_query_sample: gscIsQuerySample,
       gsc_queries: gscNow?.queries ?? null, gsc_impressions: gscNow?.impressions ?? null,
       gsc_clicks: gscNow?.clicks ?? null, gsc_striking: gscNow?.striking ?? null,
       gsc_queries_last_cycle: gscPrior?.queries ?? null, gsc_queries_delta: gscPrior ? deltaOf(gscNow?.queries, gscPrior.queries) : null,
@@ -466,7 +487,7 @@ function renderHTML(d: any): string {
   const { brand, clientName, market, reportDate, baselineDate, lastPriorDate,
     programMonth, phase, state, isFirstCycle, programDays, windowOK,
     yoyAudit, business, currentAudit, baseline, lastPrior, gradeRows,
-    pushedFixes, gatedDrafts, gatedCount, gscConnected, gscNow, gscPrior, gscTrend,
+    pushedFixes, gatedDrafts, gatedCount, gscConnected, gscNow, gscPrior, gscTrend, gscIsQuerySample,
     improvements, newlyRanking, deepMoves, brandRadar, radarTrend, aeoReadyPass, aeoReadyTotal,
     publishedByKind, cumulativeFixes, schemaTypes, passNow, passBase, clNowCount,
     nextActions, learnedFixed, gateRejects, roadmap, regressions } = d;
@@ -578,6 +599,7 @@ function renderHTML(d: any): string {
     leading = `
     <section>
       <h2>4 · Leading Indicators <span class="tag tag-measured">measured · Google Search Console</span></h2>
+      ${gscIsQuerySample ? '<p class="muted">These measured figures are from the latest top 25 Search Console queries (90 days), not site-wide totals. Additional searches may not be included.</p>' : ''}
       <p>These move before rankings and traffic do, and they are measured by Google directly — not estimated.</p>
       <div class="grid grid-3" style="margin-top:10pt;">
         <div class="card"><div class="label">Query surface</div><div class="value">${num(gscNow.queries)}</div><div class="sub">unique searches the site appears for${qDelta != null ? ` · ${qDelta >= 0 ? "+" : ""}${qDelta} vs last cycle` : ""}</div></div>
