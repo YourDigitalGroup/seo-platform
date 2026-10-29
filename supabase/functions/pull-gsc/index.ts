@@ -82,15 +82,10 @@ Deno.serve(async (req) => {
     const { data: client, error: cErr } = await supa.from("clients")
       .select("id, url, gsc_account_override, partner_groups(gsc_account)").eq("id", client_id).single();
     if (cErr || !client) return json({ error: "client not found", detail: cErr?.message }, 404);
-    // Super admins alone can change the per-client credential selection.
-    if (action === "set-account") {
-      if (profile.role !== "super_admin") return json({ error: "Only super admins may change the GSC account" }, 403);
-      if (!["inherit", "default", "44i"].includes(account)) return json({ error: "Invalid GSC account" }, 400);
-      const override = account === "inherit" ? null : account;
-      const { error: saveError } = await supa.from("clients").update({ gsc_account_override: override }).eq("id", client.id);
-      if (saveError) return json({ error: "Unable to save the GSC account", detail: saveError.message }, 500);
-      return json({ ok: true, account_override: override });
-    }
+    // The GSC credential is fixed by partner group, not by individual client.
+    // Keep the legacy write action as an explicit rejection so old clients
+    // cannot override this rule.
+    if (action === "set-account") return json({ error: "GSC account is fixed by partner group and cannot be overridden" }, 403);
     if (action !== "pull") return json({ error: "Unknown action" }, 400);
     const domain = String(client.url || "").replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
     if (!domain) return json({ error: "client has no URL" }, 400);
@@ -101,7 +96,7 @@ Deno.serve(async (req) => {
       "default": "GSC_SERVICE_ACCOUNT",       // general account — serves all groups
       "44i":     "GSC_SERVICE_ACCOUNT_44I",   // 44i Digital's own account
     };
-    const acct = (client as any).gsc_account_override || (client as any).partner_groups?.gsc_account || "default";
+    const acct = (client as any).partner_groups?.gsc_account === "44i" ? "44i" : "default";
     const secretName = SA_SECRET[acct] || "GSC_SERVICE_ACCOUNT";
     const saRaw = Deno.env.get(secretName);
     if (!saRaw) return json({ error: `${secretName} is not set (group account tag: "${acct}")` }, 500);
