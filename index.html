@@ -3458,34 +3458,13 @@ async function saveWpKey(){
 // account when no override is set. This control is visible ONLY to super admins.
 // Server-side pull-gsc action and a database trigger enforce the same rule.
 function gscAccountRow(c){
-  const v=c.gsc_account_override||'inherit';
+  const is44i=activeGroup?.name==='44i';
+  const account=is44i?'media@44interactive.com':'yourdigitalgroup@gmail.com';
   return `<div class="apc-key" style="display:block;margin-top:12px">
-    <label for="gsc-account-select" style="display:block;font-size:12px;font-weight:700;margin-bottom:6px">Search Console account · Super Admin only</label>
-    <select id="gsc-account-select" class="fsel" style="width:100%;max-width:100%;margin-bottom:7px">
-      <option value="inherit" ${v==='inherit'?'selected':''}>Use partner-group default (existing behavior)</option>
-      <option value="default" ${v==='default'?'selected':''}>General GSC service account</option>
-      <option value="44i" ${v==='44i'?'selected':''}>44i GSC service account</option>
-    </select>
-    <button class="apc-key-btn save" onclick="saveGscAccount()">Save GSC account</button>
-    <div class="wmeta" style="margin-top:7px">Select the credential that has permission to this client's Search Console property. This does not connect a Google inbox or grant GSC access. Accounts are configured server-side, never in the browser.</div>
+    <div style="font-size:12px;font-weight:700;margin-bottom:6px">Search Console account · Super Admin only</div>
+    <div class="wmeta" style="margin-bottom:8px">Google account owner: <strong>${esc(account)}</strong></div>
+    <div class="wmeta">Account selection is determined by the partner group and cannot be overridden for individual clients. 44i uses media@44interactive.com; every other group uses yourdigitalgroup@gmail.com. The Google service account must have permission to the client's Search Console property.</div>
   </div>`;
-}
-async function saveGscAccount(){
-  if(OFFLINE||!activeClient||me.role!=='admin') return;
-  const select=document.getElementById('gsc-account-select');
-  const account=select&&select.value;
-  if(!['inherit','default','44i'].includes(account)){showToast('Invalid GSC account choice',true);return;}
-  try{
-    const {data,error}=await sb.functions.invoke('pull-gsc',{body:{action:'set-account',client_id:activeClient.id,account}});
-    if(error || !data?.ok){
-      let detail=data;try{if(error?.context)detail=await error.context.json();}catch(_){}
-      throw Error(detail?.error||error?.message||'Could not save GSC account');
-    }
-    activeClient.gsc_account_override=data.account_override||null;
-    const c=groupClients.find(x=>x.id===activeClient.id);if(c)c.gsc_account_override=activeClient.gsc_account_override;
-    renderAccessPanel();
-    showToast('Search Console account saved. Run Pull Search Console data to verify access.',false,true);
-  }catch(e){showToast('GSC account: '+String(e.message||e),true);}
 }
 // Pull live Google Search Console data for the active client (service-account auth)
 async function pullGSC(){
