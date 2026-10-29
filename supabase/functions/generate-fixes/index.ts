@@ -192,7 +192,8 @@ Deno.serve(async (req) => {
         if (usedModel) update.model = MODEL_ENUM[usedModel] ?? null;
         if (instruction) update.last_instruction = instruction;
         if (editor_id) update.edited_by = editor_id;
-        await supa.from("fixes").update(update).eq("id", id);
+        const { error: upErr } = await supa.from("fixes").update(update).eq("id", id);
+        if (upErr) { console.error(`fix ${id} save failed: ${upErr.message}`); results.push({ id, kind, error: upErr.message }); continue; }
         results.push({ id, kind, status: update.status });
       } catch (e) {
         // leave re-runnable — but never knock a live (pushed/verified) fix out of the report

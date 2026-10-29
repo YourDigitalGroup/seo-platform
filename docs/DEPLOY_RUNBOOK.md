@@ -86,6 +86,17 @@ client is active and its connector API key is saved in Platform Access.
 Guard rails: Haiku only, max 1,200 output tokens, 400 calls per site per day
 (`wp_ai_usage`). Applied on the live project 2026-10-28.
 
+## 1a-4d. Fixes pipeline repair  (Supabase → SQL Editor)
+
+Paste `supabase/migrations/fixes_pipeline.sql` and Run (idempotent). The
+`fix_kind` enum only knew 6 of the 22 fix kinds run-audit plans, so every
+audit's fix batch was rejected and the fixes table stayed empty; it also
+adds `fixes.model / last_instruction / edited_by`, which generate-fixes
+writes. Redeploy run-audit (5.9.6: falls back to row-by-row inserts and logs
+any rejected kind) and generate-fixes (checks its save). Applied on the live
+project 2026-10-29. Fixes appear from the next package generation or daily
+audit onward.
+
 ## 1a-5. Plan add-ons  (Supabase → SQL Editor)
 
 Paste `supabase/migrations/addons.sql` and Run (idempotent; AFTER
