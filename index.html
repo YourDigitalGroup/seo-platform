@@ -992,7 +992,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.24.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.25.0</div>
   </div>
   </div>
 </div>
@@ -1077,7 +1077,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.24.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.25.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1125,7 +1125,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.24.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.25.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1164,7 +1164,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <ol>
           <li>Check the URL, target market and plan, then fill in the <b>Business Facts</b>. Amber fields were read off the client's website — verify them; everything saves as you type.</li>
           <li>Add the target keywords and targeted landing pages, then the <b>Local Listing Optimization</b> citation pack and Advice Local sync.</li>
-          <li>Add any <b>Client notes</b> the team should know. Hand the package off to an SEO/AEO specialist if one is taking it, then click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it.</li>
+          <li>Add any <b>Client notes</b> the team should know, then click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it — and hands the package to the SEO/AEO specialist on Trello automatically (Sarah unless the client has its own strategist).</li>
           <li>In Platform Access, connect what you have: the WordPress key (from the client site's connector plugin — see tab ④), Search Console, Business Profile.</li>
         </ol>
       </div>
@@ -1286,7 +1286,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.24.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.25.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1320,7 +1320,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.24.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.25.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1547,6 +1547,15 @@ async function loadStaff(){
   STRATEGISTS=USERS.filter(u=>u.role==='strategist');
 }
 const userById = id => USERS.find(u=>u.id===id);
+// Who gets the hand-off by default: the client's own strategist when they
+// have one, otherwise the agency's default specialist (Sarah — the account
+// whose Trello column is mapped), otherwise the first strategist.
+const DEFAULT_SPECIALIST_EMAIL='sarah@44idigital.com';
+function defaultSpecialist(c){
+  return (c&&STRATEGISTS.find(s=>s.id===c.strategist_id))
+    || STRATEGISTS.find(s=>String(s.email||'').toLowerCase()===DEFAULT_SPECIALIST_EMAIL)
+    || STRATEGISTS[0] || null;
+}
 const canAssign      = () => me.role==='am' || me.role==='admin';
 const canEditContent = () => me.role==='strategist' || me.role==='admin';
 
@@ -4192,17 +4201,18 @@ function renderKickoffSubmit(){
         <button class="tbtn" id="ks-attach" onclick="attachCampaignDocToTrello(false)" title="Attach the latest campaign document to the card"><i class="fa-solid fa-paperclip"></i> Attach campaign doc</button>
         <a class="tbtn" href="https://trello.com/c/${esc(c.trello_card_id)}" target="_blank" rel="noopener">Open Trello card</a></span>`;
   } else {
-    el.innerHTML=`<div><b>Hand off to an SEO/AEO specialist</b><div class="wmeta">Creates a Trello card in their list on the web board with a 2-day deadline, the kickoff facts and client notes from this page, and the campaign doc attached.</div></div>
+    el.innerHTML=`<div><b>Hand off to an SEO/AEO specialist</b><div class="wmeta">Happens automatically when the package finishes generating (to the client's strategist, or Sarah by default). Use the button to hand off now or to someone else: it creates a Trello card in their list with a 2-day deadline, the kickoff facts, client notes and the campaign doc.</div></div>
       <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select class="fsel" id="ks-strat">${STRATEGISTS.map(s=>`<option value="${esc(s.id)}" data-name="${esc(s.name)}">${esc(s.name)}</option>`).join('')||'<option value="">— no strategists —</option>'}</select>
-        <button class="tbtn" id="ks-btn" onclick="submitToSpecialist()">Submit to specialist</button></span>`;
+        <select class="fsel" id="ks-strat">${(()=>{ const d=defaultSpecialist(c); return STRATEGISTS.map(s=>`<option value="${esc(s.id)}" data-name="${esc(s.name)}"${d&&s.id===d.id?' selected':''}>${esc(s.name)}${STRATEGISTS.filter(x=>x.name===s.name).length>1?` (${esc(s.email||'')})`:''}</option>`).join(''); })()||'<option value="">— no strategists —</option>'}</select>
+        <button class="tbtn" id="ks-btn" onclick="submitToSpecialist(false)">Submit to specialist</button></span>`;
   }
 }
-async function submitToSpecialist(){
-  const c=activeClient; if(!c) return;
-  const sel=document.getElementById('ks-strat'), pid=sel&&sel.value;
-  const name=sel&&sel.selectedOptions[0]?sel.selectedOptions[0].dataset.name:'';
-  if(!pid||!name){ showToast('Add a strategist account in Team & access first',true); return; }
+async function submitToSpecialist(auto){
+  const c=activeClient; if(!c) return false;
+  const sel=document.getElementById('ks-strat');
+  let pid=sel&&sel.value, name=sel&&sel.selectedOptions[0]?sel.selectedOptions[0].dataset.name:'';
+  if(auto===true){ const d=defaultSpecialist(c); pid=d&&d.id; name=d&&d.name; }
+  if(!pid||!name){ showToast('Add a strategist account in Team & access first',true); return false; }
   await bfFlush(); await cnFlush();
   const b=document.getElementById('ks-btn'); if(b){ b.disabled=true; b.textContent='Submitting…'; }
   try{
@@ -4219,8 +4229,18 @@ async function submitToSpecialist(){
     const gc=groupClients.find(x=>x.id===c.id); if(gc) gc.trello_card_id=c.trello_card_id;
     renderKickoffSubmit();
     const attached=data.attached?(doc&&doc.blocked?' · internal review attached (QA blocks the campaign doc)':' · campaign doc attached'):(doc?'':' · campaign doc attaches when the package is generated');
-    showToast(`Handed to ${name} — “${data.title||'card'}” created${data.months?` with ${data.months} month checklist${data.months>1?'s':''}`:''}${data.tagged?' · strategist tagged':''}, due in 2 days${attached}`+(data.warning?` · ${data.warning}`:''), false, true);
-  }catch(e){ showToast('Submit failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.textContent='Submit to specialist'; } }
+    // the hand-off makes them the client's strategist if nobody was assigned
+    if(!c.strategist_id){
+      const {error:aErr}=await sb.from('clients').update({strategist_id:pid}).eq('id',c.id);
+      if(!aErr){ c.strategist_id=pid; if(gc) gc.strategist_id=pid; }
+    }
+    showToast(`${auto===true?'Auto hand-off: ':''}Handed to ${name} — “${data.title||'card'}” created${data.months?` with ${data.months} month checklist${data.months>1?'s':''}`:''}${data.tagged?' · strategist tagged':''}, due in 2 days${attached}`+(data.warning?` · ${data.warning}`:''), false, true);
+    return true;
+  }catch(e){
+    showToast((auto===true?'Package is ready, but the automatic hand-off failed — use Submit to specialist on the Setup tab. ':'Submit failed — ')+String(e.message||e),true);
+    if(b){ b.disabled=false; b.textContent='Submit to specialist'; }
+    return false;
+  }
 }
 // ── CLIENT DOC — a clean, partner-branded summary of the approved content,
 // ready to email to the client for sign-off.
@@ -4776,7 +4796,12 @@ async function generatePackage(){
       renderPackage();
       showToast('Package complete — audit, directive, drafts, fixes and report all generated. Review + approve, then click “Deploy file” to export everything.', false, true);
       if(activeClient===c&&c.trello_card_id&&c.trello_card_id!=='pending'){
+        // already handed off: refresh the campaign doc on the existing card
         try{ await attachCampaignDocToTrello(true); }catch(e){ console.warn('trello attach', e); }
+      } else if(activeClient===c&&!c.trello_card_id){
+        // first package for this client: hand it to the specialist automatically
+        // (the card carries the kickoff facts, notes and the campaign doc)
+        try{ await submitToSpecialist(true); }catch(e){ console.warn('auto hand-off', e); }
       }
     }
   }catch(e){ console.error(e); showToast('Audit error — see console', true); c.pkg_status='none'; renderPackage(); }
