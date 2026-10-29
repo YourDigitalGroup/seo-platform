@@ -44,7 +44,7 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const FRESH_HOURS = 20;
-const SCHED_VERSION = "1.2.1";   // echoed in every response so a stale deploy is self-evident
+const SCHED_VERSION = "1.3.0";   // echoed in every response so a stale deploy is self-evident
 const STALE_JOB_MIN = 30;        // a background audit never legitimately runs this long
 const MAX_RATE_RETRIES = 4;
 
@@ -68,8 +68,8 @@ Deno.serve(async (req) => {
   if (!isServiceRole(req)) return json({ error: "service role only — fired by pg_cron (seop_invoke_scheduler)" }, 403);
   try {
     const { mode, limit } = await req.json().catch(() => ({}));
-    if (mode !== "daily-audits" && mode !== "weekly-reports") {
-      return json({ error: "mode must be daily-audits or weekly-reports" }, 400);
+    if (mode !== "daily-audits" && mode !== "weekly-reports" && mode !== "daily-advice-local") {
+      return json({ error: "mode must be daily-audits, weekly-reports or daily-advice-local" }, 400);
     }
     // Default cap covers the WHOLE roster (dispatches are fast 202s — the
     // audits run in their own background invocations), so "daily" really
@@ -79,6 +79,44 @@ Deno.serve(async (req) => {
     const base = Deno.env.get("SUPABASE_URL")!;
     const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supa = createClient(base, key, { auth: { persistSession: false } });
+
+    // Separate Advice Local status-only sweep: never place orders or resync NAP.
+    if (mode === "daily-advice-local") {
+      const { data: linked, error: listErr } = await supa.from("clients")
+        .select("id,url,al_client_id,status").not("al_client_id", "is", null)
+        .eq("status", "active").order("name").limit(500);
+      if (listErr) return json({ error: "could not list Advice Local clients", detail: listErr.message }, 500);
+      const eligible = (linked || []).filter((c:any) => c.al_client_id != null);
+      const { data: prev } = await supa.from("advice_local_directory_status")
+        .select("client_id,fetched_at").in("client_id", eligible.map((c:any)=>c.id).length ? eligible.map((c:any)=>c.id) : ["00000000-0000-0000-0000-000000000000"])
+        .order("fetched_at", {ascending:false}).limit(1000);
+      const fresh = new Set<string>();
+      for(const row of prev||[]) if(Date.now()-new Date(row.fetched_at).getTime()<20*3600000)fresh.add(row.client_id);
+      const targets=eligible.filter((c:any)=>!fresh.has(c.id)).slice(0,Math.min(Math.max(1,Number(limit)||200),500));
+      const stats={success:0,failed:0};
+      const refresh=async()=>{
+        // Keep the Advice Local partner API load gentle and do not mark a
+        // client fresh unless the API call actually saved its snapshot.
+        for(const c of targets){
+          try {
+            const res=await fetch(`${base}/functions/v1/advice-local`,{
+              method:"POST",
+              headers:{"Authorization":`Bearer ${key}`,"Content-Type":"application/json"},
+              body:JSON.stringify({action:"status",client_id:c.id}),
+            });
+            const body=await res.json().catch(()=>({}));
+            if(!res.ok||body.ok!==true||body.reporting_saved!==true) {
+              stats.failed++;console.error("daily-advice-local",c.id,res.status,JSON.stringify(body).slice(0,350));
+            }else stats.success++;
+          }catch(e){stats.failed++;console.error("daily-advice-local",c.id,String(e).slice(0,250));}
+          await new Promise(r=>setTimeout(r,350));
+        }
+        console.log("daily-advice-local complete",JSON.stringify({eligible:eligible.length,targets:targets.length,...stats}));
+      };
+      const runtime=(globalThis as any).EdgeRuntime;
+      if(runtime?.waitUntil)runtime.waitUntil(refresh());else await refresh();
+      return json({ok:true,mode,version:SCHED_VERSION,dispatched:targets.length,skipped_fresh:eligible.length-targets.length});
+    }
 
     // Reap audit jobs whose worker was killed mid-run (no finally ever ran).
     let reaped = 0;
