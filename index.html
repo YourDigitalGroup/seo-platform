@@ -1622,6 +1622,7 @@ function mapClient(r){
   return { id:r.id, grpId:r.partner_group_id, name:r.name, url:r.url, market:r.market,
     audit_score: la && la.score!=null ? la.score : null,
     tier:r.tier, status:r.status, strategist_id:r.strategist_id,
+    gsc_account_override:r.gsc_account_override||null,
     gsc:r.gsc_connected, gbp:r.gbp_connected, wp:r.wp_connected, ga4:r.ga4_connected,
     suspended_at:r.suspended_at||null, suspend_reason:r.suspend_reason||null,
     trello_card_id:r.trello_card_id||null,
@@ -3409,12 +3410,13 @@ function renderAccessPanel(){
   document.getElementById('access-panel').innerHTML=PLATFORMS.map(p=>{
     const on=!!c[p.key];
     const pull = (p.key==='gsc' && !OFFLINE)
-      ? `<button class="apc-pull" onclick="pullGSC()">Pull Search Console data →</button>` : '';
+      ? '<button class="apc-pull" onclick="pullGSC()">Pull Search Console data →</button>' : '';
+    const account = (p.key==='gsc' && !OFFLINE && me.role==='admin') ? gscAccountRow(c) : '';
     const key = p.key==='wp' ? wpKeyRow(c) : '';
     return `<div class="apc ${on?'on':'off'} ${p.key}">
       <div class="apc-head"><div class="apc-status">${on?'✓ Connected':'✗ Not connected'}</div>
         <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button></div>
-      <div class="apc-name">${p.name}</div><div class="apc-desc">${on?p.on_desc:p.off_desc}</div>${key}${pull}</div>`;
+      <div class="apc-name">${p.name}</div><div class="apc-desc">${on?p.on_desc:p.off_desc}</div>${key}${account}${pull}</div>`;
   }).join('');
 }
 // The connector plugin (tab ④) issues a per-site API key; publish-wp can't push
@@ -3452,6 +3454,39 @@ async function saveWpKey(){
   renderAccessPanel(); showToast('WordPress connected — key saved, publishing enabled', false, true);
 }
 
+// GSC service account is chosen per client, falling back to the partner-group
+// account when no override is set. This control is visible ONLY to super admins.
+// Server-side pull-gsc action and a database trigger enforce the same rule.
+function gscAccountRow(c){
+  const v=c.gsc_account_override||'inherit';
+  return `<div class="apc-key" style="display:block;margin-top:12px">
+    <label for="gsc-account-select" style="display:block;font-size:12px;font-weight:700;margin-bottom:6px">Search Console account · Super Admin only</label>
+    <select id="gsc-account-select" class="fsel" style="width:100%;max-width:100%;margin-bottom:7px">
+      <option value="inherit" ${v==='inherit'?'selected':''}>Use partner-group default (existing behavior)</option>
+      <option value="default" ${v==='default'?'selected':''}>General GSC service account</option>
+      <option value="44i" ${v==='44i'?'selected':''}>44i GSC service account</option>
+    </select>
+    <button class="apc-key-btn save" onclick="saveGscAccount()">Save GSC account</button>
+    <div class="wmeta" style="margin-top:7px">Select the credential that has permission to this client's Search Console property. This does not connect a Google inbox or grant GSC access. Accounts are configured server-side, never in the browser.</div>
+  </div>`;
+}
+async function saveGscAccount(){
+  if(OFFLINE||!activeClient||me.role!=='admin') return;
+  const select=document.getElementById('gsc-account-select');
+  const account=select&&select.value;
+  if(!['inherit','default','44i'].includes(account)){showToast('Invalid GSC account choice',true);return;}
+  try{
+    const {data,error}=await sb.functions.invoke('pull-gsc',{body:{action:'set-account',client_id:activeClient.id,account}});
+    if(error || !data?.ok){
+      let detail=data;try{if(error?.context)detail=await error.context.json();}catch(_){}
+      throw Error(detail?.error||error?.message||'Could not save GSC account');
+    }
+    activeClient.gsc_account_override=data.account_override||null;
+    const c=groupClients.find(x=>x.id===activeClient.id);if(c)c.gsc_account_override=activeClient.gsc_account_override;
+    renderAccessPanel();
+    showToast('Search Console account saved. Run Pull Search Console data to verify access.',false,true);
+  }catch(e){showToast('GSC account: '+String(e.message||e),true);}
+}
 // Pull live Google Search Console data for the active client (service-account auth)
 async function pullGSC(){
   if(OFFLINE){ showToast('Live mode only',true); return; }
