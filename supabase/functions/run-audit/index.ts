@@ -208,7 +208,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.9.5";
+const ENGINE_VERSION = "5.9.6";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -1213,8 +1213,18 @@ async function runAuditPipeline(body: any): Promise<Response> {
     planFix("gbp_post", home, "New Business Profile post for this cycle");
     } // end !auditOnly fix planning
     if (plan.length) {
-      const { data: planRows } = await supa.from("fixes").insert(plan).select("id");
-      (planRows || []).forEach((r: any) => fixIds.push(r.id));
+      // One bad row (e.g. a kind the fix_kind enum doesn't know) fails the
+      // whole batch, so fall back to row-by-row and log what was rejected.
+      const { data: planRows, error: planErr } = await supa.from("fixes").insert(plan).select("id");
+      if (!planErr) (planRows || []).forEach((r: any) => fixIds.push(r.id));
+      else {
+        console.error(`fixes batch insert failed (${planErr.message}); retrying row by row`);
+        for (const row of plan) {
+          const { data: one, error: oneErr } = await supa.from("fixes").insert(row).select("id").maybeSingle();
+          if (oneErr) console.error(`fix ${row.kind} rejected: ${oneErr.message}`);
+          else if (one) fixIds.push(one.id);
+        }
+      }
     }
 
     // AUTO-WRITE EVERY FIX SERVER-SIDE. The audit decides what needs fixing;
