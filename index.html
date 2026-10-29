@@ -992,7 +992,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.25.1</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.25.2</div>
   </div>
   </div>
 </div>
@@ -1077,7 +1077,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.25.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.25.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1125,7 +1125,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.25.1</span>
+        <span>44i, Inc. · Internal Ops Console · V5.25.2</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1286,7 +1286,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.25.1 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.25.2 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1320,7 +1320,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.25.1</span>
+      <span>44i, Inc. · Internal Ops Console · V5.25.2</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3411,12 +3411,12 @@ function renderAccessPanel(){
     const on=!!c[p.key];
     const pull = (p.key==='gsc' && !OFFLINE)
       ? '<button class="apc-pull" onclick="pullGSC()">Pull Search Console data →</button>' : '';
-    const account = (p.key==='gsc' && !OFFLINE && me.role==='admin') ? gscAccountRow(c) : '';
+
     const key = p.key==='wp' ? wpKeyRow(c) : '';
     return `<div class="apc ${on?'on':'off'} ${p.key}">
       <div class="apc-head"><div class="apc-status">${on?'✓ Connected':'✗ Not connected'}</div>
         <button class="apc-btn" onclick="togglePlatform('${p.key}')">${on?'Connected':'Grant access'}</button></div>
-      <div class="apc-name">${p.name}</div><div class="apc-desc">${on?p.on_desc:p.off_desc}</div>${key}${account}${pull}</div>`;
+      <div class="apc-name">${p.name}</div><div class="apc-desc">${on?p.on_desc:p.off_desc}</div>${key}${pull}</div>`;
   }).join('');
 }
 // The connector plugin (tab ④) issues a per-site API key; publish-wp can't push
@@ -3454,18 +3454,6 @@ async function saveWpKey(){
   renderAccessPanel(); showToast('WordPress connected — key saved, publishing enabled', false, true);
 }
 
-// GSC service account is chosen per client, falling back to the partner-group
-// account when no override is set. This control is visible ONLY to super admins.
-// Server-side pull-gsc action and a database trigger enforce the same rule.
-function gscAccountRow(c){
-  const is44i=activeGroup?.name==='44i';
-  const account=is44i?'media@44interactive.com':'yourdigitalgroup@gmail.com';
-  return `<div class="apc-key" style="display:block;margin-top:12px">
-    <div style="font-size:12px;font-weight:700;margin-bottom:6px">Search Console account · Super Admin only</div>
-    <div class="wmeta" style="margin-bottom:8px">Google account owner: <strong>${esc(account)}</strong></div>
-    <div class="wmeta">Account selection is determined by the partner group and cannot be overridden for individual clients. 44i uses media@44interactive.com; every other group uses yourdigitalgroup@gmail.com. The Google service account must have permission to the client's Search Console property.</div>
-  </div>`;
-}
 // Pull live Google Search Console data for the active client (service-account auth)
 async function pullGSC(){
   if(OFFLINE){ showToast('Live mode only',true); return; }
@@ -3479,7 +3467,12 @@ async function pullGSC(){
       showToast('GSC: '+((body&&(body.message||body.error))||error.message||'see console'), true);
       return;
     }
-    if(data && data.error){ showToast('GSC: '+(data.message||data.error), true); return; }
+    if(data && data.error){
+      const msg=data.error==='service_account_not_added'
+        ? 'Search Console access needed: '+(data.service_account||'the configured service account')+' must be added in Search Console → Settings → Users and permissions for '+(data.domain||activeClient.url)+'. This is separate from the partner-group email.'
+        : (data.message||data.error);
+      showToast('GSC: '+msg,true); return;
+    }
     activeClient.gsc=true;
     const gc=groupClients.find(x=>x.id===activeClient.id); if(gc) gc.gsc=true;
     renderAccessPanel();
