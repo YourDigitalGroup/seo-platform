@@ -53,9 +53,10 @@ Deno.serve(async (req) => {
 
     // ── Caller must be signed-in staff; ordering is billable → AM/admin only ─
     const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-    const { data: caller } = await supa.auth.getUser(jwt);
+    const isScheduler = action === "status" && jwt.length > 0 && jwt === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const { data: caller } = isScheduler ? { data: { user: { id: "scheduler", email: "scheduler" } } } : await supa.auth.getUser(jwt);
     if (!caller?.user) return json({ error: "sign in required" }, 401);
-    const { data: prof } = await supa.from("profiles").select("role").eq("id", caller.user.id).maybeSingle();
+    const { data: prof } = isScheduler ? { data: { role: "service_role" } } : await supa.from("profiles").select("role").eq("id", caller.user.id).maybeSingle();
     if (!prof) return json({ error: "no staff profile for this account" }, 403);
     if (action === "order" && !["super_admin", "admin", "account_manager"].includes(String(prof.role))) {
       return json({ error: "placing an Advice Local order is billable — ask an Account Manager or Super Admin" }, 403);
