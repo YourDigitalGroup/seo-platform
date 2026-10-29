@@ -37,11 +37,12 @@ function pemToPkcs8(pem: string): ArrayBuffer {
   return buf.buffer;
 }
 // Sign a Google service-account JWT and exchange it for an access token
-async function getAccessToken(sa: { client_email: string; private_key: string }): Promise<string> {
+async function getAccessToken(sa: { client_email: string; private_key: string }, delegatedUser?: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claim = b64url(JSON.stringify({
     iss: sa.client_email, scope: SCOPE, aud: TOKEN_URL, iat: now, exp: now + 3600,
+    ...(delegatedUser ? { sub: delegatedUser } : {}),
   }));
   const unsigned = `${header}.${claim}`;
   const key = await crypto.subtle.importKey(
@@ -55,7 +56,11 @@ async function getAccessToken(sa: { client_email: string; private_key: string })
     body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }),
   });
   const j = await res.json();
-  if (!res.ok) throw new Error("token exchange failed: " + JSON.stringify(j));
+  if (!res.ok) {
+    const reason = String(j?.error || "unknown");
+    const detail = String(j?.error_description || "");
+    throw new Error(`Google token exchange failed (${reason}): ${detail}. ${delegatedUser ? "Verify the exact service account client ID was authorized for domain-wide delegation in Google Workspace, the Search Console read-only scope was granted, and the delegated user exists: " + delegatedUser : "Check service account credentials."}`);
+  }
   return j.access_token;
 }
 
@@ -104,8 +109,13 @@ Deno.serve(async (req) => {
     try { sa = JSON.parse(saRaw); } catch { return json({ error: `${secretName} is not valid JSON` }, 500); }
     if (!sa.client_email || !sa.private_key) return json({ error: "service account JSON missing client_email/private_key" }, 500);
 
-    // Authenticate as the service account
-    const token = await getAccessToken(sa);
+    // Only the 44i partner group uses Workspace domain-wide delegation.
+    // All other groups keep their existing service-account authentication.
+    const delegatedUser = acct === "44i" ? "media@44interactive.com" : undefined;
+    // The Workspace admin must grant DWD to the numeric OAuth Client ID of
+    // the service account stored in GSC_SERVICE_ACCOUNT_44I.
+    // The Google mailbox itself is never used as a credential.
+    const token = await getAccessToken(sa, delegatedUser);
     const authH = { Authorization: `Bearer ${token}` };
 
     // Find the matching Search Console property
@@ -118,7 +128,9 @@ Deno.serve(async (req) => {
     if (!match) {
       return json({
         error: "service_account_not_added",
-        message: `The service account (${sa.client_email}) does not yet have access to a Search Console property for ${domain}. Add it as a user in that property's Settings → Users and permissions, then retry.`,
+        message: delegatedUser
+          ? `The delegated Workspace user (${delegatedUser}) cannot see a matching Search Console property for ${domain}. Confirm the user has access to that property and the URL is correct.`
+          : `The service account (${sa.client_email}) does not yet have access to a Search Console property for ${domain}. Add it as a user in that property's Settings → Users and permissions, then retry.`,
         service_account: sa.client_email,
         domain,
         properties_visible: sites,
@@ -148,7 +160,7 @@ Deno.serve(async (req) => {
     await supa.from("clients").update({ gsc_connected: true }).eq("id", client.id);
 
     const totals = rows.reduce((a, r) => ({ clicks: a.clicks + r.clicks, impressions: a.impressions + r.impressions }), { clicks: 0, impressions: 0 });
-    return json({ ok: true, account: acct, service_account: sa.client_email, property: match, query_count: rows.length, totals, top: rows.slice(0, 5) });
+    return json({ ok: true, account: acct, service_account: sa.client_email, delegated_user: delegatedUser || null, property: match, query_count: rows.length, totals, top: rows.slice(0, 5) });
   } catch (e) {
     console.error("pull-gsc fatal", e);
     return json({ error: "unhandled", detail: String(e) }, 500);

@@ -3468,9 +3468,7 @@ async function pullGSC(){
       return;
     }
     if(data && data.error){
-      const msg=data.error==='service_account_not_added'
-        ? 'Search Console access needed: '+(data.service_account||'the configured service account')+' must be added in Search Console → Settings → Users and permissions for '+(data.domain||activeClient.url)+'. This is separate from the partner-group email.'
-        : (data.message||data.error);
+      const msg=data.message||data.error;
       showToast('GSC: '+msg,true); return;
     }
     activeClient.gsc=true;
