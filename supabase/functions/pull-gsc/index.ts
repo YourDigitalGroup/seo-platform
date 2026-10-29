@@ -119,6 +119,8 @@ Deno.serve(async (req) => {
       return json({
         error: "service_account_not_added",
         message: `The service account (${sa.client_email}) does not yet have access to a Search Console property for ${domain}. Add it as a user in that property's Settings → Users and permissions, then retry.`,
+        service_account: sa.client_email,
+        domain,
         properties_visible: sites,
       }, 403);
     }
