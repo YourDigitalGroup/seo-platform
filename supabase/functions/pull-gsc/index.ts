@@ -97,10 +97,14 @@ Deno.serve(async (req) => {
 
     // Require an authenticated staff account before service-role reads.
     const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-    const { data: caller, error: authError } = await supa.auth.getUser(jwt);
-    if (authError || !caller?.user) return json({ error: "Sign in required" }, 401);
-    const { data: profile } = await supa.from("profiles").select("role").eq("id", caller.user.id).maybeSingle();
-    if (!profile) return json({ error: "Staff access required" }, 403);
+    const svcKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const schedulerAuthorized = Boolean(svcKey && jwt === svcKey);
+    if (!schedulerAuthorized) {
+      const { data: caller, error: authError } = await supa.auth.getUser(jwt);
+      if (authError || !caller?.user) return json({ error: "Sign in required" }, 401);
+      const { data: profile } = await supa.from("profiles").select("role").eq("id", caller.user.id).maybeSingle();
+      if (!profile) return json({ error: "Staff access required" }, 403);
+    }
 
     const { data: client, error: cErr } = await supa.from("clients")
       .select("id, url, gsc_account_override, partner_groups(gsc_account)").eq("id", client_id).single();

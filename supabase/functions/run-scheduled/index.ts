@@ -44,7 +44,7 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const FRESH_HOURS = 20;
-const SCHED_VERSION = "1.3.0";   // echoed in every response so a stale deploy is self-evident
+const SCHED_VERSION = "1.4.0";   // echoed in every response so a stale deploy is self-evident
 const STALE_JOB_MIN = 30;        // a background audit never legitimately runs this long
 const MAX_RATE_RETRIES = 4;
 
@@ -68,8 +68,8 @@ Deno.serve(async (req) => {
   if (!isServiceRole(req)) return json({ error: "service role only — fired by pg_cron (seop_invoke_scheduler)" }, 403);
   try {
     const { mode, limit } = await req.json().catch(() => ({}));
-    if (mode !== "daily-audits" && mode !== "weekly-reports" && mode !== "daily-advice-local") {
-      return json({ error: "mode must be daily-audits, weekly-reports or daily-advice-local" }, 400);
+    if (mode !== "daily-audits" && mode !== "weekly-reports" && mode !== "daily-advice-local" && mode !== "daily-gsc") {
+      return json({ error: "mode must be daily-audits, weekly-reports, daily-advice-local or daily-gsc" }, 400);
     }
     // Default cap covers the WHOLE roster (dispatches are fast 202s — the
     // audits run in their own background invocations), so "daily" really
@@ -116,6 +116,49 @@ Deno.serve(async (req) => {
       const runtime=(globalThis as any).EdgeRuntime;
       if(runtime?.waitUntil)runtime.waitUntil(refresh());else await refresh();
       return json({ok:true,mode,version:SCHED_VERSION,dispatched:targets.length,skipped_fresh:eligible.length-targets.length});
+    }
+
+    // Daily GSC: only active, connected clients; retry failures next day.
+    // Freshness from persisted page pulls avoids duplicate dispatches.
+    if (mode === "daily-gsc") {
+      const { data: connected, error: listError } = await supa.from("clients")
+        .select("id,url,gsc_connected").eq("status","active").eq("gsc_connected",true)
+        .not("url","is",null).order("name").limit(500);
+      if (listError) return json({error:"could not list GSC clients",detail:listError.message},500);
+      const eligible=(connected||[]).filter((c:any)=>String(c.url||"").trim());
+      const ids=eligible.map((c:any)=>c.id);
+      const fresh=new Set<string>();
+      if (ids.length) {
+        const since=new Date(Date.now()-20*3600000).toISOString();
+        const {data: recent,error:recentError}=await supa.from("gsc_pages_90d")
+          .select("client_id,pulled_at").in("client_id",ids).gte("pulled_at",since)
+          .order("pulled_at",{ascending:false}).limit(10000);
+        if(recentError)return json({error:"could not check GSC freshness",detail:recentError.message},500);
+        for(const row of recent||[])fresh.add(row.client_id);
+      }
+      const targets=eligible.filter((c:any)=>!fresh.has(c.id)).slice(0,cap);
+      const stats={success:0,failed:0};
+      const sweep=async()=>{
+        for(const c of targets) {
+          try {
+            const r=await fetch(`${base}/functions/v1/pull-gsc`,{
+              method:"POST",headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json"},
+              body:JSON.stringify({client_id:c.id})
+            });
+            const body=await r.json().catch(()=>({}));
+            if(!r.ok||body.ok!==true) {
+              stats.failed++;
+              console.error("daily-gsc failed",c.id,r.status,JSON.stringify(body).slice(0,350));
+            } else stats.success++;
+          }catch(e){stats.failed++;console.error("daily-gsc error",c.id,String(e).slice(0,250));}
+          await new Promise(resolve=>setTimeout(resolve,450));
+        }
+        console.log("daily-gsc complete",JSON.stringify({eligible:eligible.length,dispatched:targets.length,...stats}));
+      };
+      const er=(globalThis as any).EdgeRuntime;
+      if(er?.waitUntil)er.waitUntil(sweep());else await sweep();
+      return json({ok:true,mode,version:SCHED_VERSION,dispatched:targets.length,
+        skipped_fresh:eligible.length-targets.length});
     }
 
     // Reap audit jobs whose worker was killed mid-run (no finally ever ran).
