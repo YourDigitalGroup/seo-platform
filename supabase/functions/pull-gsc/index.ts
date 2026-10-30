@@ -151,16 +151,41 @@ Deno.serve(async (req) => {
       ctr: r.ctr ?? 0, position: r.position ?? 0,
     }));
 
+    // Pull page-level results for the current calendar month. Search Console
+    // may finalize its most recent days with a delay; never invent missing data.
+    const monthStart = end.slice(0, 7) + "-01";
+    const pagesRes = await fetch(`${WMT}/sites/${encodeURIComponent(match)}/searchAnalytics/query`, {
+      method: "POST", headers: { ...authH, "Content-Type": "application/json" },
+      body: JSON.stringify({ startDate: monthStart, endDate: end,
+        dimensions: ["page"], rowLimit: 1000 }),
+    });
+    const pagesJson = await pagesRes.json();
+    if (!pagesRes.ok) return json({ error: "search analytics page query failed", detail: pagesJson }, 502);
+    const pageRows = (pagesJson.rows ?? []).map((r: any) => ({
+      client_id: client.id, page_url: r.keys?.[0] ?? "",
+      clicks: r.clicks ?? 0, impressions: r.impressions ?? 0,
+      ctr: r.ctr ?? 0, position: r.position ?? 0,
+      period_start: monthStart, period_end: end,
+    })).filter((r: any) => r.page_url);
+
     // Store a fresh snapshot
     await supa.from("gsc_queries").delete().eq("client_id", client.id);
     if (rows.length) {
       await supa.from("gsc_queries").insert(rows.map((r) => ({ client_id: client.id, ...r })));
     }
+    // Keep prior months intact; refresh only the current month's page snapshot.
+    const { error: pageDeleteErr } = await supa.from("gsc_pages").delete()
+      .eq("client_id", client.id).gte("pulled_at", monthStart + "T00:00:00Z");
+    if (pageDeleteErr) throw pageDeleteErr;
+    if (pageRows.length) {
+      const { error: pageInsertErr } = await supa.from("gsc_pages").insert(pageRows);
+      if (pageInsertErr) throw pageInsertErr;
+    }
     // Mark GSC connected
     await supa.from("clients").update({ gsc_connected: true }).eq("id", client.id);
 
     const totals = rows.reduce((a, r) => ({ clicks: a.clicks + r.clicks, impressions: a.impressions + r.impressions }), { clicks: 0, impressions: 0 });
-    return json({ ok: true, account: acct, service_account: sa.client_email, delegated_user: delegatedUser || null, property: match, query_count: rows.length, totals, top: rows.slice(0, 5) });
+    return json({ ok: true, account: acct, service_account: sa.client_email, delegated_user: delegatedUser || null, property: match, query_count: rows.length, totals, top: rows.slice(0, 5), pages_count: pageRows.length, page_impressions: pageRows.reduce((n: number,r: any) => n + r.impressions,0) });
   } catch (e) {
     console.error("pull-gsc fatal", e);
     return json({ error: "unhandled", detail: String(e) }, 500);
