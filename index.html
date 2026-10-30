@@ -366,6 +366,37 @@ body[data-theme=dark] .bf-field input.bf-sug,body[data-theme=dark] .bf-kwrow inp
 .team-form{display:grid;grid-template-columns:1.2fr 1.4fr 1fr 1fr auto;gap:14px;align-items:end}
 @media (max-width:980px){.team-form{grid-template-columns:1fr 1fr}}
 .team-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.key-group{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:14px 0 4px;border-bottom:1px solid var(--line)}
+.key-row{display:flex;gap:14px;justify-content:space-between;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}
+.key-main{flex:1;min-width:0}
+.key-main .wmeta{font-size:12.5px;line-height:1.5;margin-top:2px}
+#rep-list a,#rep-client a{color:var(--blue);text-decoration:none;font-weight:600}
+#rep-list a:hover,#rep-client a:hover{text-decoration:underline}
+.key-name{font-size:13.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px}
+.key-name code{font-size:11px;color:var(--muted);background:var(--mist);padding:1px 6px;border-radius:6px}
+.key-acts{display:flex;gap:6px;flex-shrink:0}
+.key-edit{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-top:8px}
+.key-edit input,.key-edit textarea{flex:1;min-width:220px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-size:13px;font-family:inherit;color:var(--ink);background:var(--s-card)}
+.key-chip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.key-chip.ok{background:rgba(46,157,91,.12);color:#2e9d5b}
+.key-chip.bad{background:rgba(192,57,43,.12);color:#c0392b}
+.key-chip.off{background:var(--mist);color:var(--muted)}
+.rep-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.rep-f{font-family:inherit;font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--s-card);color:var(--ink);cursor:pointer}
+.rep-f.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.rep-star{color:#e0a100;font-weight:700;white-space:nowrap}
+.rep-panel{padding:12px 14px;border:1px dashed var(--line);border-radius:var(--r);background:var(--mist)}
+#rep-client .wmeta{font-size:12.5px;color:var(--muted)}
+.rep-stats{display:grid;align-items:start;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px}
+.rep-stat{background:var(--s-card);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px}
+.rep-stat .k{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.rep-stat .v{font-size:20px;font-weight:800;margin-top:2px}
+.rep-reviews{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.rep-rev{background:var(--s-card);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;font-size:13px}
+.rep-rev.low{border-color:rgba(192,57,43,.55);background:rgba(192,57,43,.05)}
+.rep-txt{margin-top:4px;line-height:1.5}
+.rep-pickbox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);display:flex;flex-direction:column;gap:8px}
+.rep-cand{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
 .team-tbl th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line)}
 .team-tbl td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
 .team-tbl tr:last-child td{border-bottom:none}
@@ -992,7 +1023,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.26.7</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.27.0</div>
   </div>
   </div>
 </div>
@@ -1024,6 +1055,9 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <button class="sb-item" onclick="sideGo('reports')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
       Reports</button>
+    <button class="sb-item" id="nav-rep" onclick="navigate('reputation')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>
+      Reputation</button>
     <div class="sb-label" id="nav-team-label" style="display:none">Admin</div>
     <button class="sb-item" id="nav-team" style="display:none" onclick="navigate('team')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
@@ -1077,7 +1111,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.26.7</span>
+        <span>44i, Inc. · Internal Ops Console · V5.27.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1125,7 +1159,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.26.7</span>
+        <span>44i, Inc. · Internal Ops Console · V5.27.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1193,6 +1227,8 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div class="section-h"><h2>Platform Access</h2><div class="ln"></div><span class="tag" id="access-tag">—</span></div>
       <div class="acp" id="access-panel"></div>
       <div class="datasrc" id="datasrc"></div>
+      <div class="section-h"><h2>Reputation</h2><div class="ln"></div><span class="tag">Google reviews</span></div>
+      <div class="datasrc" id="rep-client"></div>
       <div class="ctrlzone" id="campaign-controls" style="display:none"></div>
     </div>
 
@@ -1286,7 +1322,25 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.26.7 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.27.0 · draft outputs require specialist review</span>
+      <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
+    </footer>
+  </div>
+
+  <!-- ── REPUTATION (all staff) ── -->
+  <div id="v-rep" class="wrap" style="display:none">
+    <div class="widget">
+      <div class="widget-h"><div><h2>Reputation monitoring.</h2>
+        <div class="wmeta" id="rep-sub">Google Business Profile rating and reviews for every active client, checked daily.</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="add-btn" id="rep-all-btn" style="display:none;padding:9px 18px;font-size:13px" onclick="repCollectAll()"><i class="fa-solid fa-rotate"></i> Check all now</button>
+          <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="loadReputation()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+        </div></div>
+      <div class="rep-filters" id="rep-filters"></div>
+      <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
+    </div>
+    <footer>
+      <span>44i, Inc. · Internal Ops Console · V5.27.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1314,6 +1368,12 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="team-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <div class="widget" style="margin-top:18px">
+      <div class="widget-h"><div><h2>API keys.</h2>
+        <div class="wmeta">Every outside service the platform calls. Values are never shown — paste a new one here when a key is rotated and it takes effect within a minute. A key entered here overrides the Supabase function secret of the same name.</div></div>
+        <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="loadKeys()"><i class="fa-solid fa-rotate"></i> Refresh</button></div>
+      <div id="keys-list"><div class="wmeta">Loading…</div></div>
+    </div>
+    <div class="widget" style="margin-top:18px">
       <div class="widget-h"><div><h2>Trello integration.</h2>
         <div class="wmeta">Where “Submit to SEO/AEO specialist” creates its cards — board, per-strategist column, card title.</div></div>
         <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="trelloLoadLists()">Load board columns</button></div>
@@ -1326,7 +1386,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.26.7</span>
+      <span>44i, Inc. · Internal Ops Console · V5.27.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1705,6 +1765,7 @@ async function loadTeam(){
     const d=await teamInvoke({action:'list'});
     TEAM_USERS=d.users||[];
     renderTeam();
+    loadKeys();
     loadTrelloSettings();
     loadAiTracking();
   }catch(e){
@@ -2538,7 +2599,7 @@ function showErr(m){ const e=document.getElementById('l-err'); e.textContent=m; 
 let currentView='login';
 function navigate(view){
   currentView=view;
-  ['v-login','v-app','v-groups','v-group','v-package','v-team'].forEach(id=>document.getElementById(id).style.display='none');
+  ['v-login','v-app','v-groups','v-group','v-package','v-team','v-rep'].forEach(id=>document.getElementById(id).style.display='none');
   document.querySelectorAll('.sidebar .sb-item').forEach(b=>b.classList.remove('active'));
   if(view==='login'){ document.getElementById('v-login').style.display=''; return; }
   document.getElementById('v-app').style.display='';
@@ -2571,6 +2632,13 @@ function navigate(view){
     sw.style.display='none';
     document.getElementById('crumb').style.display='none';
     loadTeam();
+  } else if(view==='reputation'){
+    document.getElementById('v-rep').style.display='';
+    document.getElementById('nav-rep').classList.add('active');
+    setTB('Reputation','Google reviews · every active client');
+    sw.style.display=''; si.placeholder='Search clients…';
+    document.getElementById('crumb').style.display='none';
+    loadReputation();
   }
   const cv=document.getElementById('canvas');
   cv.classList.remove('view-enter'); void cv.offsetWidth; cv.classList.add('view-enter');
@@ -2599,6 +2667,7 @@ function sideGo(dest){
 function tbSearch(v){
   if(currentView==='groups'){ const e=document.getElementById('g-search'); if(e) e.value=v; onGroupSearch(v); }
   else if(currentView==='group'){ const e=document.getElementById('search'); if(e) e.value=v; onSearch(v); }
+  else if(currentView==='reputation'){ REP_FILTER.q=v; renderReputation(); }
 }
 // theme — one attribute flip on <body>, persisted
 function applyTheme(t){
@@ -3099,7 +3168,7 @@ function renderPackage(){
   document.getElementById('tiertag').textContent=planLabel(c.tier)+' plan';
 
   renderCampaignControls(); renderClientNotes(); renderKickoffSubmit(); renderAddonRow();
-  renderAccessPanel(); renderDataSources(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderAuditHistory(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
+  renderAccessPanel(); renderDataSources(); renderClientReputation(); renderBizFacts(); renderTradeArea(); renderScorecard(); renderInsights(); renderAuditHistory(); renderDirective(); renderChecklist(); renderOpportunities(); renderRoadmap(); renderReportBar(); renderMetrics(); renderBars();
   renderCompetitors(); renderCompPages(); renderGaps(); renderQueue();
   renderFixes(); renderDeliverables(); renderEngines(); renderReportWL();
   updatePTabBadges();
@@ -4077,6 +4146,215 @@ async function aiCollectAll(){
   try{ const r=await brInvoke({action:'collect_all', force:true}); showToast(`Checking answers for ${r.clients} client${r.clients===1?'':'s'} in the background`,false,true); }
   catch(e){ showToast('Could not start — '+String(e.message||e),true); }
 }
+// ── API KEYS (platform-keys Edge Function; Super Admins) ──────────────────
+// Lists every key the platform uses — never the values. Replacing a key
+// stores it encrypted in Supabase Vault and tests it straight away.
+async function fnInvoke(fn,payload){
+  const {data,error}=await sb.functions.invoke(fn,{body:payload});
+  if(error){
+    let msg=error.message||'request failed';
+    try{ if(error.context){ const b=await error.context.json(); msg=b.error||msg; } }catch(_){}
+    if(/Failed to send|404/i.test(msg)) msg=fn+' function not deployed';
+    throw new Error(msg);
+  }
+  if(data?.error) throw new Error(data.error);
+  return data;
+}
+let KEYS=[];
+async function loadKeys(){
+  const el=document.getElementById('keys-list'); if(!el) return;
+  el.innerHTML='<div class="wmeta">Loading…</div>';
+  try{ KEYS=(await fnInvoke('platform-keys',{action:'list'})).keys||[]; renderKeys(); }
+  catch(e){ el.innerHTML=`<div class="wmeta" style="color:#c0392b">Could not load keys — ${esc(String(e.message||e))}</div>`; }
+}
+function renderKeys(){
+  const el=document.getElementById('keys-list'); if(!el) return;
+  const fmt=d=>d?new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'';
+  const chip=k=>k.source==='console'?'<span class="key-chip ok"><i class="fa-solid fa-lock"></i> Set in console</span>'
+    : k.source==='secret'?'<span class="key-chip ok"><i class="fa-solid fa-server"></i> Supabase secret</span>'
+    : k.optional?'<span class="key-chip off">Not set (optional)</span>':'<span class="key-chip bad"><i class="fa-solid fa-triangle-exclamation"></i> Missing</span>';
+  const groups=[...new Set(KEYS.map(k=>k.group))];
+  el.innerHTML=groups.map(g=>`<div class="key-group">${esc(g)}</div>`+KEYS.map((k,i)=>k.group!==g?'':`<div class="key-row">
+      <div class="key-main">
+        <div class="key-name"><b>${esc(k.label)}</b> <code>${esc(k.name)}</code> ${chip(k)}</div>
+        <div class="wmeta">${esc(k.purpose)}</div>
+        <div class="wmeta">Used by ${k.used_by.map(esc).join(', ')}${k.updated_at?` · changed ${fmt(k.updated_at)}${k.updated_by?' by '+esc(k.updated_by):''}`:''}${k.last_test?` · last test ${fmt(k.last_test.at)}: <span style="color:${k.last_test.ok?'#2e9d5b':'#c0392b'};font-weight:700">${k.last_test.ok?'working':'failed'}</span> — ${esc(k.last_test.detail||'')}`:''}</div>
+        <div class="key-edit" id="key-edit-${i}" style="display:none">
+          ${k.kind==='json'?`<textarea id="key-val-${i}" rows="4" placeholder="Paste the whole service-account JSON file" autocomplete="off" spellcheck="false"></textarea>`
+            :`<input id="key-val-${i}" type="password" placeholder="Paste the new key" autocomplete="new-password" spellcheck="false">`}
+          <button class="ds-save" onclick="keySave(${i})">Save &amp; test</button>
+          <button class="tbtn" onclick="keyEdit(${i},false)">Cancel</button>
+        </div>
+      </div>
+      <div class="key-acts">
+        <button class="tbtn" onclick="keyEdit(${i},true)">${k.source==='missing'?'Add key':'Replace'}</button>
+        ${k.source!=='missing'?`<button class="tbtn" onclick="keyTest(${i})">Test</button>`:''}
+        ${k.source==='console'?`<button class="tbtn danger" onclick="keyClear(${i})">Remove</button>`:''}
+      </div></div>`).join('')).join('');
+}
+function keyEdit(i,on){
+  const box=document.getElementById('key-edit-'+i); if(!box) return;
+  box.style.display=on?'':'none';
+  const inp=document.getElementById('key-val-'+i); if(inp){ inp.value=''; if(on) inp.focus(); }
+}
+async function keySave(i){
+  const k=KEYS[i], inp=document.getElementById('key-val-'+i);
+  const value=(inp?.value||'').trim();
+  if(!value){ showToast('Paste the new key first',true); return; }
+  if(inp) inp.value='';
+  showToast(`Saving ${k.label}…`);
+  try{ const r=await fnInvoke('platform-keys',{action:'set', name:k.name, value});
+    const t=r.test||{}; showToast(t.ok?`${k.label} saved and working — ${t.detail||''}`:`${k.label} saved, but the test failed — ${t.detail||''}`,!t.ok,t.ok); }
+  catch(e){ showToast('Could not save — '+String(e.message||e),true); }
+  loadKeys();
+}
+async function keyTest(i){
+  const k=KEYS[i]; showToast(`Testing ${k.label}…`);
+  try{ const t=(await fnInvoke('platform-keys',{action:'test', name:k.name})).test||{};
+    showToast(t.ok?`${k.label} is working — ${t.detail||''}`:`${k.label} failed — ${t.detail||''}`,!t.ok,t.ok); }
+  catch(e){ showToast('Could not test — '+String(e.message||e),true); }
+  loadKeys();
+}
+async function keyClear(i){
+  const k=KEYS[i];
+  if(!confirm(`Remove the ${k.label} key entered in the console? The platform falls back to the Supabase function secret, if there is one.`)) return;
+  try{ const r=await fnInvoke('platform-keys',{action:'clear', name:k.name});
+    showToast(r.falls_back_to_secret?`Removed — now using the Supabase secret for ${k.label}`:`Removed — ${k.label} is no longer set`,!r.falls_back_to_secret&&!k.optional); }
+  catch(e){ showToast('Could not remove — '+String(e.message||e),true); }
+  loadKeys();
+}
+
+// ── REPUTATION (reputation Edge Function) ─────────────────────────────────
+// Google Business Profile rating, review count and newest reviews per client,
+// checked daily. The listing is pinned by website match or picked by hand.
+let REP=null, REP_FILTER={q:'', only:'all'};
+const repStars=r=>r==null?'—':`<span class="rep-star"><i class="fa-solid fa-star"></i> ${Number(r).toFixed(1)}</span>`;
+const repDelta=(v,dp=0)=>v==null||v===0?'<span class="wmeta">—</span>':`<span style="color:${v>0?'#2e9d5b':'#c0392b'};font-weight:700">${v>0?'+':''}${dp?Number(v).toFixed(dp):v}</span>`;
+const repWhen=d=>{ if(!d) return 'never'; const h=(Date.now()-new Date(d))/3600000; return h<1?'just now':h<24?Math.round(h)+'h ago':Math.round(h/24)+'d ago'; };
+async function loadReputation(){
+  const el=document.getElementById('rep-list'); if(!el) return;
+  document.getElementById('rep-all-btn').style.display=me.role==='admin'?'':'none';
+  el.innerHTML='<div class="wmeta" style="padding:18px 0">Loading…</div>';
+  try{ REP=await fnInvoke('reputation',{action:'overview'}); renderReputation(); }
+  catch(e){ el.innerHTML=`<div class="wmeta" style="padding:18px 0;color:#c0392b">Could not load — ${esc(String(e.message||e))}</div>`; }
+}
+function renderReputation(){
+  const el=document.getElementById('rep-list'); if(!el||!REP) return;
+  const all=REP.clients||[];
+  const checked=all.filter(c=>c.latest);
+  const avg=checked.length?checked.reduce((a,c)=>a+(Number(c.latest.rating)||0),0)/checked.length:null;
+  const alerts=all.filter(c=>c.low_reviews_7d>0).length, problems=all.filter(c=>!c.latest||c.last_error).length;
+  document.getElementById('rep-sub').innerHTML=!REP.google_key_set
+    ?'<span style="color:#c0392b;font-weight:700"><i class="fa-solid fa-triangle-exclamation"></i> No Google Places key yet</span> — a Super Admin adds it in Team &amp; access → API keys, then checks start the next morning (or click Check all now).'
+    :`${checked.length} of ${all.length} active clients tracked${avg!=null?` · average rating ${avg.toFixed(2)}`:''} · ${all.reduce((a,c)=>a+(c.new_reviews_7d||0),0)} new reviews this week · checked daily`;
+  const F=[['all',`All (${all.length})`],['low',`Low reviews this week (${alerts})`],['new',`New reviews this week (${all.filter(c=>c.new_reviews_7d>0).length})`],['problem',`Needs attention (${problems})`]];
+  document.getElementById('rep-filters').innerHTML=F.map(([k,l])=>`<button class="rep-f${REP_FILTER.only===k?' on':''}" onclick="REP_FILTER.only='${k}';renderReputation()">${l}</button>`).join('');
+  const q=REP_FILTER.q.trim().toLowerCase();
+  const rows=all.filter(c=>(!q||(c.name||'').toLowerCase().includes(q)||(c.url||'').toLowerCase().includes(q))
+    &&(REP_FILTER.only==='all'||(REP_FILTER.only==='low'&&c.low_reviews_7d>0)||(REP_FILTER.only==='new'&&c.new_reviews_7d>0)||(REP_FILTER.only==='problem'&&(!c.latest||c.last_error))));
+  if(!rows.length){ el.innerHTML='<div class="wmeta" style="padding:18px 0">No clients match.</div>'; return; }
+  el.innerHTML=`<table class="team-tbl"><thead><tr><th>Client</th><th>Google rating</th><th>Reviews</th><th>30-day change</th><th>This week</th><th>Listing</th><th>Checked</th></tr></thead><tbody>${rows.map(c=>{
+    const L=c.latest;
+    const listing=c.last_error?`<span style="color:#c0392b" title="${esc(c.last_error)}"><i class="fa-solid fa-circle-exclamation"></i> ${esc(c.last_error.length>60?c.last_error.slice(0,60)+'…':c.last_error)}</span>`
+      :L?`${L.listing_url?`<a href="${esc(L.listing_url)}" target="_blank" rel="noopener">${esc(L.listing_name||'Google listing')}</a>`:esc(L.listing_name||'')}${c.pinned?' <i class="fa-solid fa-thumbtack wmeta" title="Pinned"></i>':''}`
+      :'<span class="wmeta">not checked yet</span>';
+    return `<tr>
+      <td><a href="#" onclick="repOpen('${c.id}','${c.group_id||''}');return false"><b>${esc(c.name||c.url)}</b></a><div class="wmeta">${esc(c.url||'')}</div></td>
+      <td>${repStars(L?.rating)}</td>
+      <td>${L?.review_count??'—'}</td>
+      <td>${c.rating_change_30d||c.reviews_change_30d?`${repDelta(c.rating_change_30d,1)} rating · ${repDelta(c.reviews_change_30d)} reviews`:'<span class="wmeta">—</span>'}</td>
+      <td>${c.new_reviews_7d?`${c.new_reviews_7d} new`:'<span class="wmeta">—</span>'}${c.low_reviews_7d?` · <span style="color:#c0392b;font-weight:700"><i class="fa-solid fa-flag"></i> ${c.low_reviews_7d} low</span>`:''}</td>
+      <td>${listing}</td>
+      <td class="wmeta">${repWhen(c.last_checked)}</td></tr>`;}).join('')}</tbody></table>`;
+}
+async function repOpen(cid,gid){
+  const g=GROUPS.find(x=>x.id===gid);
+  if(!g){ showToast('Could not find that client’s partner group',true); return; }
+  activeGroup=g; await loadGroupClients(); await openClient(cid);
+  showPTab(1); setTimeout(()=>document.getElementById('rep-client')?.scrollIntoView({behavior:'smooth',block:'start'}),300);
+}
+async function repCollectAll(){
+  try{ const r=await fnInvoke('reputation',{action:'collect_all'});
+    showToast(r.skipped?'Not started — '+r.skipped:`Checking ${r.clients} clients in the background — refresh in a minute`,!!r.skipped,!r.skipped); }
+  catch(e){ showToast('Could not start — '+String(e.message||e),true); }
+}
+
+// Client panel (tab ①): numbers, newest reviews, check now, pin the listing.
+async function renderClientReputation(){
+  const el=document.getElementById('rep-client'); if(!el) return;
+  if(OFFLINE||!activeClient){ el.innerHTML=''; return; }
+  const cid=activeClient.id;
+  el.innerHTML='<div class="wmeta">Loading reviews…</div>';
+  let d;
+  try{ d=await fnInvoke('reputation',{action:'get', client_id:cid}); }
+  catch(e){ if(activeClient?.id===cid) el.innerHTML=`<div class="wmeta">Reputation unavailable — ${esc(String(e.message||e))}</div>`; return; }
+  if(activeClient?.id!==cid) return;
+  const canPin=me.role==='admin'||me.role==='am';
+  const S=d.summary||{}, L=S.latest;
+  REP_PINNED=!!d.client.place_id;
+  const stat=(k,v,sub='')=>`<div class="rep-stat"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="wmeta">${sub}</div>`:''}</div>`;
+  const reviews=(d.recent_reviews||[]).slice(0,5);
+  el.innerHTML=`<div class="rep-panel">
+    ${!d.google_key_set?`<div class="wmeta" style="color:#c0392b;margin-bottom:8px"><i class="fa-solid fa-triangle-exclamation"></i> No Google Places key yet — a Super Admin adds it in Team &amp; access → API keys.</div>`:''}
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+      <div style="font-size:13px;font-weight:600">${L?`${L.listing_url?`<a href="${esc(L.listing_url)}" target="_blank" rel="noopener">${esc(L.listing_name||'Google listing')}</a>`:esc(L.listing_name||'Google listing')}${d.client.place_id?' <span class="wmeta"><i class="fa-solid fa-thumbtack"></i> pinned</span>':' <span class="wmeta">(matched by name — pin it if this is wrong)</span>'}`:'No Google listing checked yet'}
+        ${S.last_error?`<div class="wmeta" style="color:#c0392b;margin-top:3px"><i class="fa-solid fa-circle-exclamation"></i> ${esc(S.last_error)}</div>`:''}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${canPin?`<button class="ds-save" style="background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="repFind()"><i class="fa-solid fa-magnifying-glass"></i> ${d.client.place_id?'Change listing':'Find &amp; pin listing'}</button>`:''}
+        <button class="ds-save" onclick="repCheck()"><i class="fa-solid fa-rotate"></i> Check now</button>
+      </div>
+    </div>
+    ${L?`<div class="rep-stats">
+      ${stat('Google rating',repStars(L.rating),S.rating_change_30d!=null?`${repDelta(S.rating_change_30d,1)} in 30 days`:'')}
+      ${stat('Reviews',L.review_count??'—',S.reviews_change_30d!=null?`${repDelta(S.reviews_change_30d)} in 30 days`:'')}
+      ${stat('New this week',S.new_reviews_7d||0,S.low_reviews_7d?`<span style="color:#c0392b;font-weight:700">${S.low_reviews_7d} at 1–2 stars</span>`:'')}
+      ${stat('Last checked',repWhen(S.last_checked))}
+    </div>`:''}
+    <div id="rep-pick"></div>
+    ${reviews.length?`<div class="rep-reviews">${reviews.map(r=>`<div class="rep-rev${(r.rating??5)<=2?' low':''}">
+        <div><span class="rep-star">${'<i class="fa-solid fa-star"></i>'.repeat(Math.max(0,Math.min(5,r.rating||0)))}</span> <b>${esc(r.author||'Google user')}</b> <span class="wmeta">${r.published_at?new Date(r.published_at).toLocaleDateString():''}</span>
+          ${r.review_url?` <a class="wmeta" href="${esc(r.review_url)}" target="_blank" rel="noopener">reply on Google</a>`:''}</div>
+        ${r.text?`<div class="rep-txt">${esc(r.text.length>400?r.text.slice(0,400)+'…':r.text)}</div>`:''}</div>`).join('')}</div>
+      <div class="wmeta" style="margin-top:6px">Google shares the five most relevant reviews per check; every review seen is kept, so new ones show up here and on the Reputation page.</div>`:''}
+  </div>`;
+}
+async function repCheck(){
+  if(!activeClient) return;
+  showToast('Checking the Google listing…');
+  try{ const s=(await fnInvoke('reputation',{action:'collect', client_id:activeClient.id})).snapshot||{};
+    showToast(s.error?s.error:`${s.listing_name||'Listing'}: ${s.rating??'—'} stars from ${s.review_count??0} reviews`,!!s.error,!s.error); }
+  catch(e){ showToast('Could not check — '+String(e.message||e),true); }
+  renderClientReputation();
+}
+let REP_PINNED=false;
+async function repFind(q){
+  if(!activeClient) return;
+  const pinned=REP_PINNED;
+  const box=document.getElementById('rep-pick'); if(!box) return;
+  box.innerHTML='<div class="wmeta" style="margin-top:10px">Searching Google…</div>';
+  let r;
+  try{ r=await fnInvoke('reputation',{action:'search', client_id:activeClient.id, query:q||''}); }
+  catch(e){ box.innerHTML=`<div class="wmeta" style="color:#c0392b;margin-top:10px">${esc(String(e.message||e))}</div>`; return; }
+  box.innerHTML=`<div class="rep-pickbox">
+    <div class="ds-field"><label>Search Google Maps <span>business name and city</span></label>
+      <div style="display:flex;gap:8px"><input id="rep-q" type="text" value="${esc(r.query)}" onkeydown="if(event.key==='Enter')repFind(this.value)" style="flex:1"><button class="ds-save" onclick="repFind(document.getElementById('rep-q').value)">Search</button></div></div>
+    ${(r.candidates||[]).length?(r.candidates||[]).map(p=>`<div class="rep-cand">
+        <div><b>${esc(p.name)}</b>${p.website_matches?' <span class="key-chip ok">website matches</span>':''}<div class="wmeta">${esc(p.address)} · ${p.rating!=null?p.rating+' stars, ':''}${p.review_count??0} reviews${p.website?' · '+esc(p.website):''}</div></div>
+        <div style="display:flex;gap:6px">${p.maps_url?`<a class="tbtn" href="${esc(p.maps_url)}" target="_blank" rel="noopener">View</a>`:''}<button class="tbtn" onclick="repPin('${esc(p.place_id)}')">Pin this</button></div></div>`).join('')
+      :'<div class="wmeta">No listings found — try the exact name on the Google profile.</div>'}
+    <div style="margin-top:8px;display:flex;gap:8px"><button class="tbtn" onclick="document.getElementById('rep-pick').innerHTML=''">Close</button>
+      ${pinned?'<button class="tbtn danger" onclick="repPin(null)">Unpin (match automatically)</button>':''}</div>
+  </div>`;
+}
+async function repPin(pid){
+  if(!activeClient) return;
+  showToast(pid?'Pinning the listing and checking it…':'Unpinning…');
+  try{ const r=await fnInvoke('reputation',{action:'set_place', client_id:activeClient.id, place_id:pid});
+    const s=r.snapshot; showToast(s?.error?s.error:pid?`Pinned — ${s?.rating??'—'} stars from ${s?.review_count??0} reviews`:'Unpinned',!!s?.error,!s?.error); }
+  catch(e){ showToast('Could not pin — '+String(e.message||e),true); }
+  renderClientReputation();
+}
+
 function renderMetrics(){
   const M = OFFLINE ? AUDIT.metrics : PK.metrics;
   if(!M || !M.length){

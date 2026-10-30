@@ -30,6 +30,24 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// ── Platform keys (Team & access → API keys). A key entered in the console is
+// kept in Supabase Vault and wins; otherwise the function secret is used.
+// Cached for a minute so a rotation reaches running workers quickly.
+const _keys = new Map<string, { v: string; at: number }>();
+async function platformKey(name: string): Promise<string> {
+  const hit = _keys.get(name);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  let v = "";
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const { data } = await admin.rpc("platform_key", { p_name: name });
+    if (typeof data === "string") v = data;
+  } catch { /* Vault lookup unavailable: fall back to the function secret */ }
+  v = v || Deno.env.get(name) || "";
+  _keys.set(name, { v, at: Date.now() });
+  return v;
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -44,7 +62,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   try {
-    const KEY = Deno.env.get("TRELLO_KEY"), TOKEN = Deno.env.get("TRELLO_TOKEN");
+    const KEY = (await platformKey("TRELLO_KEY")), TOKEN = (await platformKey("TRELLO_TOKEN"));
     if (!KEY || !TOKEN) return json({ error: "Trello not configured — set TRELLO_KEY and TRELLO_TOKEN under Edge Functions → trello → Secrets" }, 500);
     const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
