@@ -156,9 +156,12 @@ each check in `reputation_snapshots`. Cost: one Place Details call (with
 reviews) per client per day, about 1,500 a month for 48 clients, plus a text
 search the first time an unpinned client is matched.
 
-**Local Insight** has a key slot (`LOCAL_INSIGHT_API_KEY`, group Reputation)
-but isn't wired yet; it plugs into the reputation function as a second
-source once its API is documented.
+**Local Incite** (a white label of Shout About Us, API docs at
+docs.shoutaboutus.com, base `https://production-api.shoutaboutus.com/api/v1`)
+has two slots: `LOCAL_INCITE_API_KEY` (a Personal access token from Local
+Incite → API Keys, sent as a Bearer token) and `LOCAL_INCITE_API_ID` (only
+for app credentials). Test checks `GET /verify-token`. Review sync plugs into
+the reputation function as a second source.
 
 ## 1a-5. Plan add-ons  (Supabase → SQL Editor)
 
