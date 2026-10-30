@@ -1,5 +1,5 @@
 -- Store GSC page-level analytics and expose monthly page tables plus summaries.
--- Page metrics cover the trailing 90 days at pull time, not a calendar-month-only window.
+-- Page metrics cover current calendar month to pull date; the GSC API may lag.
 create table if not exists public.gsc_pages (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients(id) on delete cascade,
@@ -71,7 +71,7 @@ from public.looker_reports r
 left join public.report_snapshots rs ON rs.id=r.report_id
 left join lateral (
   select count(*)::integer as pages_count,
-         coalesce(sum(pg.impressions),0)::bigint as impressions,
+         sum(pg.impressions)::bigint as impressions,
          (array_agg(pg.page_url order by pg.impressions desc, pg.page_url))[1] as top_page,
          max(pg.impressions)::integer as top_page_impressions
   from public.gsc_pages pg
