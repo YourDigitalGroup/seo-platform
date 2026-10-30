@@ -14,7 +14,7 @@ with targets as (
   from public.looker_reports_monthly r
   join public.clients c on c.id = r.client_id
   cross join lateral regexp_split_to_table(
-    coalesce(c.intake->>'landing_targets', ''), E'\\n'
+    replace(coalesce(c.intake->>'landing_targets', ''),chr(13),''), chr(10)
   ) with ordinality as x(label, ordinality)
   where btrim(x.label) <> ''
 )
