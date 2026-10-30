@@ -168,6 +168,20 @@ Deno.serve(async (req) => {
       period_start: monthStart, period_end: end,
     })).filter((r: any) => r.page_url);
 
+    // Page-level 90-day impressions for targeted landing page reporting.
+    const pages90Res = await fetch(`${WMT}/sites/${encodeURIComponent(match)}/searchAnalytics/query`, {
+      method: "POST", headers: { ...authH, "Content-Type": "application/json" },
+      body: JSON.stringify({ startDate: start, endDate: end,
+        dimensions: ["page"], rowLimit: 25000 }),
+    });
+    const pages90Json = await pages90Res.json();
+    if (!pages90Res.ok) return json({ error: "search analytics 90-day page query failed", detail: pages90Json }, 502);
+    const page90Rows = (pages90Json.rows ?? []).map((r: any) => ({
+      client_id: client.id, page_url: r.keys?.[0] ?? "",
+      clicks: r.clicks ?? 0, impressions: r.impressions ?? 0,
+      period_start: start, period_end: end,
+    })).filter((r: any) => r.page_url);
+
     // Store a fresh snapshot
     await supa.from("gsc_queries").delete().eq("client_id", client.id);
     if (rows.length) {
@@ -181,11 +195,20 @@ Deno.serve(async (req) => {
       const { error: pageInsertErr } = await supa.from("gsc_pages").insert(pageRows);
       if (pageInsertErr) throw pageInsertErr;
     }
+    // Retain older monthly snapshots; replace this month's 90-day snapshot.
+    const { error: delete90Err } = await supa.from("gsc_pages_90d").delete()
+      .eq("client_id", client.id).gte("pulled_at", monthStart + "T00:00:00Z");
+    if (delete90Err) throw delete90Err;
+    for (let i = 0; i < page90Rows.length; i += 500) {
+      const { error: insert90Err } = await supa.from("gsc_pages_90d")
+        .insert(page90Rows.slice(i, i + 500));
+      if (insert90Err) throw insert90Err;
+    }
     // Mark GSC connected
     await supa.from("clients").update({ gsc_connected: true }).eq("id", client.id);
 
     const totals = rows.reduce((a, r) => ({ clicks: a.clicks + r.clicks, impressions: a.impressions + r.impressions }), { clicks: 0, impressions: 0 });
-    return json({ ok: true, account: acct, service_account: sa.client_email, delegated_user: delegatedUser || null, property: match, query_count: rows.length, totals, top: rows.slice(0, 5), pages_count: pageRows.length, page_impressions: pageRows.reduce((n: number,r: any) => n + r.impressions,0) });
+    return json({ ok: true, account: acct, service_account: sa.client_email, delegated_user: delegatedUser || null, property: match, query_count: rows.length, totals, top: rows.slice(0, 5), pages_count: pageRows.length, page_impressions: pageRows.reduce((n: number,r: any) => n + r.impressions,0), pages_90d_count: page90Rows.length });
   } catch (e) {
     console.error("pull-gsc fatal", e);
     return json({ error: "unhandled", detail: String(e) }, 500);
