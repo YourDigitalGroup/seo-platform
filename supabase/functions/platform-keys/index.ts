@@ -34,7 +34,8 @@ const REGISTRY: KeyDef[] = [
   { name: "PAGESPEED_API_KEY", group: "Google", label: "Google PageSpeed Insights", purpose: "Mobile performance scores and Core Web Vitals in audits.", used_by: ["run-audit"] },
   { name: "GSC_SERVICE_ACCOUNT", group: "Google", label: "Search Console service account (general)", purpose: "Pulls Search Console data for partner groups that use the general account. Paste the full service-account JSON file.", used_by: ["pull-gsc"], kind: "json" },
   { name: "GSC_SERVICE_ACCOUNT_44I", group: "Google", label: "Search Console service account (44i)", purpose: "Pulls Search Console data for 44i's own clients through Workspace delegation. Paste the full service-account JSON file.", used_by: ["pull-gsc"], kind: "json" },
-  { name: "LOCAL_INSIGHT_API_KEY", group: "Reputation", label: "Local Insight", purpose: "Reputation monitoring across review sites beyond Google.", used_by: ["reputation"], optional: true },
+  { name: "LOCAL_INCITE_API_KEY", group: "Reputation", label: "Local Incite token", purpose: "Reviews from Google, Facebook, Yelp and 80+ other sites (Local Incite runs on Shout About Us). Best: a Personal access token from Local Incite → API Keys. If you have app credentials instead, put the secret here and the ID below.", used_by: ["reputation"], optional: true },
+  { name: "LOCAL_INCITE_API_ID", group: "Reputation", label: "Local Incite API ID", purpose: "Only for app credentials: the client / API ID that goes with the secret above. Not needed with a Personal access token.", used_by: ["reputation"], optional: true },
   { name: "ADVICE_LOCAL_API_KEY", group: "Listings", label: "Advice Local", purpose: "LLO listing sync, orders and fulfillment status.", used_by: ["advice-local"] },
   { name: "TRELLO_KEY", group: "Workflow", label: "Trello API key", purpose: "Specialist hand-off cards and approval comments (with the Trello token).", used_by: ["trello"] },
   { name: "TRELLO_TOKEN", group: "Workflow", label: "Trello token", purpose: "Authorizes the Trello API key on the 44i board.", used_by: ["trello"] },
@@ -56,6 +57,37 @@ async function callerIsSuperAdmin(req: Request, admin: any): Promise<{ id: strin
 async function effectiveKey(admin: any, name: string): Promise<string> {
   const { data } = await admin.rpc("platform_key", { p_name: name });
   return (typeof data === "string" && data) || Deno.env.get(name) || "";
+}
+
+// Local Incite is a white label of Shout About Us. A Personal access token is
+// sent as a Bearer token; app credentials (ID + secret) are tried as an OAuth
+// client-credentials grant. Returns a working bearer token, or why not.
+const SAU = "https://production-api.shoutaboutus.com";
+async function localInciteToken(admin: any, key?: string, id?: string): Promise<{ token?: string; how?: string; who?: string; detail: string }> {
+  key = key ?? await effectiveKey(admin, "LOCAL_INCITE_API_KEY");
+  id = id ?? await effectiveKey(admin, "LOCAL_INCITE_API_ID");
+  if (!key) return { detail: "No Local Incite token or secret is set." };
+  const verify = async (tok: string) => {
+    const r = await fetch(`${SAU}/api/v1/verify-token`, { headers: { Authorization: `Bearer ${tok}`, Accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
+    const b = await r.text(); let who = "";
+    try { const j = JSON.parse(b); const u = j?.data?.user || j?.user || j?.data || {}; who = String(u.email || u.name || ""); } catch { /* shape varies */ }
+    return { ok: r.ok, status: r.status, who };
+  };
+  const v = await verify(key);
+  if (v.ok) return { token: key, how: "personal access token", who: v.who, detail: "" };
+  if (!id) return { detail: `Shout About Us ${v.status}: this isn't a Personal access token. In Local Incite open API Keys → Personal access token → Generate token and paste that here — or, if you were given an API ID with it, add the ID in the slot below.` };
+  for (const [cid, sec] of [[id, key], [key, id]]) {
+    const r = await fetch(`${SAU}/oauth/token`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({ grant_type: "client_credentials", client_id: cid, client_secret: sec }), signal: AbortSignal.timeout(20_000) });
+    const j: any = await r.json().catch(() => ({}));
+    if (r.ok && j.access_token) {
+      const w = await verify(j.access_token);
+      if (w.ok) return { token: j.access_token, how: "app credentials", who: w.who, detail: "" };
+      return { detail: `Shout About Us issued a token from the app credentials but rejected it (${w.status}). App credentials sign in on behalf of a user; ask Local Incite for a Personal access token instead.` };
+    }
+    if (cid === key) return { detail: `Shout About Us didn't accept the ID + secret (${r.status}: ${String(j?.error_description || j?.message || j?.error || "").slice(0, 160)}). App credentials need a user sign-in; generate a Personal access token in Local Incite → API Keys instead.` };
+  }
+  return { detail: "Local Incite rejected the credentials." };
 }
 
 // A cheap, read-only call per provider. Returns ok + a plain-English detail.
@@ -111,6 +143,10 @@ async function testKey(def: KeyDef, value: string, admin: any): Promise<{ ok: bo
     case "PEXELS_API_KEY": {
       const r = await http("https://api.pexels.com/v1/search?query=office&per_page=1", { headers: { Authorization: value } });
       return r.ok ? { ok: true, detail: "Pexels accepted the key." } : { ok: false, detail: `Pexels ${r.status}: ${why(r.body)}` };
+    }
+    case "LOCAL_INCITE_API_KEY": case "LOCAL_INCITE_API_ID": {
+      const r = await localInciteToken(admin, def.name === "LOCAL_INCITE_API_KEY" ? value : undefined, def.name === "LOCAL_INCITE_API_ID" ? value : undefined);
+      return r.token ? { ok: true, detail: `Local Incite accepted it (${r.how})${r.who ? ` — signed in as ${r.who}` : ""}.` } : { ok: false, detail: r.detail };
     }
     case "REPORT_FEED_TOKEN":
       return value.trim().length >= 16 ? { ok: true, detail: "Token is set and long enough." } : { ok: false, detail: "Use at least 16 characters." };
