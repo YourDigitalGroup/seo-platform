@@ -97,6 +97,30 @@ any rejected kind) and generate-fixes (checks its save). Applied on the live
 project 2026-10-29. Fixes appear from the next package generation or daily
 audit onward.
 
+## 1a-4e. AI citation tracking  (Supabase → SQL Editor + Edge Functions)
+
+Paste `supabase/migrations/ai_citations.sql`, then
+`supabase/migrations/ai_citations_looker.sql`, and Run (idempotent). Deploy
+`brand-radar` (new), `run-audit` (5.10.0) and `generate-report` (2.3.0).
+Uses the existing `AHREFS_API_KEY`.
+
+Every client gets an Ahrefs Brand Radar report plus a few customer questions
+("best tree service in Trimont, MN") built from its services and city; new
+clients are set up automatically on their first package. Ahrefs asks the
+questions on the chosen AI engines; every Monday 12:40 UTC the
+`seop-weekly-ai-citations` job snapshots the answers into `ai_visibility`
+(questions per engine, mentions, cited pages, competitors cited) before the
+13:00 report rebuild. Report section 6 and the Looker views
+`looker_ai_visibility` / `looker_ai_visibility_items` read the snapshots.
+
+Tracking is OFF by default (`app_settings.ai_tracking`). Creating reports and
+questions is free; Ahrefs bills prompt checks (questions x engines x runs)
+once a Super Admin turns it on in **Team & access → AI citation tracking**,
+which also shows the monthly check estimate. Per client, questions are edited
+on the Setup tab under Platform Access. Applied on the live project
+2026-10-30; all 48 active clients have a report (the internal "Test" client
+has no questions until it gets a real audit).
+
 ## 1a-5. Plan add-ons  (Supabase → SQL Editor)
 
 Paste `supabase/migrations/addons.sql` and Run (idempotent; AFTER

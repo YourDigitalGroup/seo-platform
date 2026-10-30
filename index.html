@@ -992,7 +992,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.25.5</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.26.0</div>
   </div>
   </div>
 </div>
@@ -1077,7 +1077,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.25.5</span>
+        <span>44i, Inc. · Internal Ops Console · V5.26.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1125,7 +1125,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.25.5</span>
+        <span>44i, Inc. · Internal Ops Console · V5.26.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1286,7 +1286,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.25.5 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.26.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1319,8 +1319,14 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="trelloLoadLists()">Load board columns</button></div>
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
+    <div class="widget" style="margin-top:18px">
+      <div class="widget-h"><div><h2>AI citation tracking.</h2>
+        <div class="wmeta">Ahrefs Brand Radar asks each client's customer questions on the AI engines and records who gets mentioned and which pages are cited. Feeds report section 6 and Looker.</div></div>
+        <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="loadAiTracking()"><i class="fa-solid fa-rotate"></i> Refresh</button></div>
+      <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
+    </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.25.5</span>
+      <span>44i, Inc. · Internal Ops Console · V5.26.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1700,6 +1706,7 @@ async function loadTeam(){
     TEAM_USERS=d.users||[];
     renderTeam();
     loadTrelloSettings();
+    loadAiTracking();
   }catch(e){
     list.innerHTML=`<div class="wmeta" style="padding:18px 0;color:#c0392b">Could not load users — ${esc(String(e.message||e))}</div>`;
   }
@@ -3912,13 +3919,17 @@ async function rebuildReport(){
 async function renderDataSources(){
   const el=document.getElementById('datasrc'); if(!el)return;
   if(OFFLINE||!activeClient){ el.innerHTML=''; return; }
+  const cid=activeClient.id;
   let saId='', brId='';
-  try{ const {data}=await sb.from('clients').select('ahrefs_site_audit_project_id,brand_radar_report_id').eq('id',activeClient.id).maybeSingle();
+  try{ const {data}=await sb.from('clients').select('ahrefs_site_audit_project_id,brand_radar_report_id').eq('id',cid).maybeSingle();
     if(data){ saId=data.ahrefs_site_audit_project_id||''; brId=data.brand_radar_report_id||''; } }catch(e){}
+  if(!activeClient||activeClient.id!==cid) return;
   el.innerHTML=`<div class="ds-row">
       <div class="ds-field"><label>Crawl project ID <span>full-site crawl</span></label><input id="ds-sa" type="text" value="${esc(saId)}" placeholder="auto-detected by domain if blank"></div>
-      <div class="ds-field"><label>Brand report ID <span>AI-citation</span></label><input id="ds-br" type="text" value="${esc(brId)}" placeholder="optional — uses brand name if blank"></div>
-      <button class="ds-save" onclick="saveDataSources()">Save</button></div>`;
+      <div class="ds-field"><label>Brand Radar report ID <span>AI citation tracking</span></label><input id="ds-br" type="text" value="${esc(brId)}" placeholder="created automatically on the first package"></div>
+      <button class="ds-save" onclick="saveDataSources()">Save</button></div>
+    <div id="ai-client" style="margin-top:12px"></div>`;
+  renderClientAiTracking();
 }
 async function saveDataSources(){
   if(!activeClient)return;
@@ -3927,6 +3938,144 @@ async function saveDataSources(){
   const { error } = await sb.from('clients').update({ ahrefs_site_audit_project_id:sa, brand_radar_report_id:br }).eq('id',activeClient.id);
   if(error){ showToast('Save failed: '+error.message); return; }
   showToast('Data sources saved — applied on the next audit run');
+  renderClientAiTracking();
+}
+
+// ── AI CITATION TRACKING (brand-radar Edge Function) ───────────────────────
+// Each client has an Ahrefs Brand Radar report with a few customer questions
+// ("best tree service in Trimont, MN"). Ahrefs asks them on the AI engines;
+// the function snapshots who was mentioned and which pages were cited.
+async function brInvoke(payload){
+  const {data,error}=await sb.functions.invoke('brand-radar',{body:payload});
+  if(error){
+    let msg=error.message||'request failed';
+    try{ if(error.context){ const b=await error.context.json(); msg=b.error||msg; } }catch(_){}
+    if(/Failed to send|404/i.test(msg)) msg='brand-radar function not deployed';
+    throw new Error(msg);
+  }
+  if(data?.error) throw new Error(data.error);
+  return data;
+}
+async function renderClientAiTracking(){
+  const el=document.getElementById('ai-client'); if(!el||!activeClient) return;
+  const cid=activeClient.id;
+  el.innerHTML='<div class="wmeta">AI citation tracking — loading…</div>';
+  let d;
+  try{ d=await brInvoke({action:'get', client_id:cid}); }
+  catch(e){ if(activeClient?.id===cid) el.innerHTML=`<div class="wmeta">AI citation tracking unavailable — ${esc(String(e.message||e))}</div>`; return; }
+  if(activeClient?.id!==cid) return;
+  const canEdit=me.role==='admin'||me.role==='am';
+  const s=d.settings||{}, L=d.latest;
+  const live=L&&L.responses_checked>0;
+  const status=!d.report_id?'Not set up'
+    : live?`Live — ${L.responses_mentioning} of ${L.responses_checked} AI answers mention the business, ${L.responses_citing} cite the site (checked ${new Date(L.captured_at).toLocaleDateString()})`
+    : s.enabled?'Set up — waiting for the first AI answers':'Set up — tracking is switched off program-wide (Team & access)';
+  const prompts=d.report_id?(d.prompts||[]):(d.suggested||[]);
+  el.innerHTML=`<div class="ds-row" style="flex-direction:column;align-items:stretch">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+      <div><div style="font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)"><i class="fa-solid fa-robot"></i> AI citation tracking</div>
+        <div style="font-size:13px;font-weight:600;margin-top:3px">${esc(status)}</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${!d.report_id&&canEdit?`<button class="ds-save" onclick="aiClientSetup()"><i class="fa-solid fa-plus"></i> Set up tracking</button>`:''}
+        ${d.report_id?`<button class="ds-save" style="background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="aiClientCollect()"><i class="fa-solid fa-rotate"></i> Check answers now</button>`:''}
+      </div>
+    </div>
+    <div class="ds-field" style="margin-top:10px"><label>${d.report_id?'Questions tracked':'Questions that will be tracked'} <span>one per line — what a customer would ask ChatGPT, Google AI or Perplexity</span></label>
+      <textarea id="ai-prompts" rows="${Math.max(3,prompts.length)}" ${canEdit&&d.report_id?'':'readonly'} style="border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-size:13px;font-family:inherit;color:var(--ink);background:var(--s-card)">${esc(prompts.join('\n'))}</textarea></div>
+    ${canEdit&&d.report_id?`<div style="margin-top:8px"><button class="ds-save" onclick="aiClientSavePrompts()">Save questions</button></div>`:''}
+    ${d.prompts_error?`<div class="wmeta" style="color:#c0392b;margin-top:6px">${esc(d.prompts_error)}</div>`:''}
+    ${live&&(L.cited_urls||[]).length?`<div class="wmeta" style="margin-top:8px">Pages cited: ${(L.cited_urls||[]).slice(0,5).map(u=>esc(u.url)).join(' · ')}</div>`:''}
+  </div>`;
+}
+async function aiClientSetup(){
+  if(!activeClient) return;
+  showToast('Setting up AI citation tracking…');
+  try{ const r=await brInvoke({action:'setup', client_id:activeClient.id}); showToast(`AI citation tracking set up — ${r.prompts.length} questions tracked`,false,true); }
+  catch(e){ showToast('Could not set up tracking — '+String(e.message||e),true); }
+  renderDataSources();
+}
+async function aiClientSavePrompts(){
+  if(!activeClient) return;
+  const list=(document.getElementById('ai-prompts')?.value||'').split('\n').map(x=>x.trim()).filter(Boolean);
+  if(!list.length){ showToast('Add at least one question',true); return; }
+  try{ const r=await brInvoke({action:'set_prompts', client_id:activeClient.id, prompts:list}); showToast(`Saved — ${r.prompts.length} questions tracked`,false,true); }
+  catch(e){ showToast('Could not save questions — '+String(e.message||e),true); }
+  renderClientAiTracking();
+}
+async function aiClientCollect(){
+  if(!activeClient) return;
+  showToast('Checking the latest AI answers…');
+  try{ const r=await brInvoke({action:'collect', client_id:activeClient.id}); const x=r.snapshot||{};
+    showToast(x.error?('Ahrefs: '+x.error):x.responses_checked?`${x.responses_mentioning} of ${x.responses_checked} answers mention the business`:'No AI answers yet — Ahrefs runs the questions on the schedule set in Team & access',!!x.error,!x.error); }
+  catch(e){ showToast('Could not check answers — '+String(e.message||e),true); }
+  renderClientAiTracking();
+}
+
+// Team & access: program-wide switch, engines, frequency, backfill.
+const AI_ENGINE_OPTS=[['chatgpt','ChatGPT'],['google_ai_overviews','Google AI Overviews'],['google_ai_mode','Google AI Mode'],['gemini','Gemini'],['perplexity','Perplexity'],['copilot','Copilot']];
+let AI_STATUS=null;
+async function loadAiTracking(){
+  const el=document.getElementById('ai-tracking-settings'); if(!el) return;
+  el.innerHTML='<div class="wmeta">Loading…</div>';
+  try{ AI_STATUS=await brInvoke({action:'status'}); renderAiTracking(); }
+  catch(e){ el.innerHTML=`<div class="wmeta" style="color:#c0392b">Could not load — ${esc(String(e.message||e))}</div>`; }
+}
+function aiEstimate(){
+  const st=AI_STATUS||{}; const n=st.clients_with_report||0;
+  const eng=AI_ENGINE_OPTS.filter(([k])=>document.getElementById('ai-eng-'+k)?.checked).length;
+  const per=Number(document.getElementById('ai-ppc')?.value)||5;
+  const f=document.getElementById('ai-freq')?.value||'weekly';
+  const runs=f==='daily'?30:f==='weekly'?4.33:1;
+  const out=document.getElementById('ai-est');
+  if(out) out.textContent=`About ${Math.round(n*per*eng*runs).toLocaleString()} Ahrefs prompt checks a month (${n} clients × ${per} questions × ${eng} engines × ${f}).`;
+}
+function renderAiTracking(){
+  const el=document.getElementById('ai-tracking-settings'); if(!el||!AI_STATUS) return;
+  const st=AI_STATUS, s=st.settings||{};
+  const missing=(st.active_clients||0)-(st.clients_with_report||0);
+  el.innerHTML=`
+    <div class="wmeta" style="margin-bottom:10px">${st.ahrefs_ok?'<i class="fa-solid fa-circle-check" style="color:#2e9d5b"></i> Ahrefs connected':'<i class="fa-solid fa-circle-xmark" style="color:#c0392b"></i> Ahrefs not reachable — '+esc(st.ahrefs_error||'')}
+      · ${st.clients_with_report||0} of ${st.active_clients||0} active clients set up
+      · last answers checked ${st.last_snapshot?new Date(st.last_snapshot).toLocaleString():'never'}</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;margin-bottom:12px;cursor:pointer">
+      <input type="checkbox" id="ai-enabled" ${s.enabled?'checked':''}> Tracking on — Ahrefs asks every client's questions on the engines below (billed as prompt checks on the Ahrefs plan)</label>
+    <div class="bf-grid" style="margin-bottom:12px">
+      <div class="bf-field bf-wide"><label>AI engines</label>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;padding-top:4px">${AI_ENGINE_OPTS.map(([k,l])=>`<label style="display:flex;gap:6px;align-items:center;font-size:13px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--ink);cursor:pointer"><input type="checkbox" id="ai-eng-${k}" onchange="aiEstimate()" ${(s.engines||[]).includes(k)?'checked':''}> ${l}</label>`).join('')}</div></div>
+      <div class="bf-field"><label>How often</label><select id="ai-freq" onchange="aiEstimate()">${['weekly','monthly','daily'].map(f=>`<option value="${f}" ${s.frequency===f?'selected':''}>${f[0].toUpperCase()+f.slice(1)}</option>`).join('')}</select></div>
+      <div class="bf-field"><label>Questions per new client</label><input id="ai-ppc" type="number" min="1" max="20" value="${Number(s.prompts_per_client)||5}" oninput="aiEstimate()"></div>
+    </div>
+    <div class="wmeta" id="ai-est" style="margin-bottom:12px"></div>
+    <div class="bf-actions" style="justify-content:flex-start;flex-wrap:wrap">
+      <button class="ds-save" onclick="saveAiTracking()">Save &amp; apply to all reports</button>
+      ${missing>0?`<button class="ds-save" style="background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="aiSetupAll()"><i class="fa-solid fa-plus"></i> Set up the ${missing} remaining client${missing===1?'':'s'}</button>`:''}
+      ${st.clients_with_report?`<button class="ds-save" style="background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="aiCollectAll()"><i class="fa-solid fa-rotate"></i> Check all answers now</button>`:''}
+    </div>
+    <div class="wmeta" style="margin-top:10px">Reports and questions are free to create; Ahrefs only bills the checks once tracking is on. Answers are pulled into reports every Monday before the weekly report rebuild. New clients are set up automatically on their first package.</div>`;
+  aiEstimate();
+}
+async function saveAiTracking(){
+  const settings={
+    enabled:!!document.getElementById('ai-enabled')?.checked,
+    engines:AI_ENGINE_OPTS.map(([k])=>k).filter(k=>document.getElementById('ai-eng-'+k)?.checked),
+    frequency:document.getElementById('ai-freq')?.value||'weekly',
+    prompts_per_client:Number(document.getElementById('ai-ppc')?.value)||5,
+  };
+  if(!settings.engines.length){ showToast('Pick at least one AI engine',true); return; }
+  if(settings.enabled&&!(AI_STATUS?.settings?.enabled)&&!confirm('Turn AI citation tracking on? Ahrefs will start running (and billing) prompt checks for every client that is set up.')) return;
+  showToast('Saving and updating every Brand Radar report…');
+  try{ const r=await brInvoke({action:'apply_settings', settings});
+    showToast(r.failed?`Saved — ${r.reports_updated} reports updated, ${r.failed} failed: ${(r.errors||[])[0]||''}`:`Saved — ${r.reports_updated} reports updated`, !!r.failed, !r.failed); }
+  catch(e){ showToast('Could not save — '+String(e.message||e),true); }
+  loadAiTracking();
+}
+async function aiSetupAll(){
+  try{ const r=await brInvoke({action:'setup_all'}); showToast(`Setting up ${r.clients} client${r.clients===1?'':'s'} in the background — refresh in a minute`,false,true); }
+  catch(e){ showToast('Could not start — '+String(e.message||e),true); }
+}
+async function aiCollectAll(){
+  try{ const r=await brInvoke({action:'collect_all', force:true}); showToast(`Checking answers for ${r.clients} client${r.clients===1?'':'s'} in the background`,false,true); }
+  catch(e){ showToast('Could not start — '+String(e.message||e),true); }
 }
 function renderMetrics(){
   const M = OFFLINE ? AUDIT.metrics : PK.metrics;

@@ -39,7 +39,11 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const REPORT_VERSION = "2.2.1";
+const REPORT_VERSION = "2.3.0";
+const ENGINE_NAMES: Record<string, string> = {
+  chatgpt: "ChatGPT", google_ai_overviews: "Google AI Overviews", google_ai_mode: "Google AI Mode",
+  gemini: "Gemini", perplexity: "Perplexity", copilot: "Copilot", claude: "Claude", grok: "Grok",
+};
 const MIN_WINDOW_DAYS = 28;   // lagging deltas need at least this much time
 const PCT_FLOOR = 30;         // no % change on a base smaller than this
 const NA_COVERAGE_MIN = 0.5;  // pillar shows "not assessed" below this check coverage
@@ -301,9 +305,24 @@ Deno.serve(async (req) => {
 
     // ── 7. AEO measurement (the product we sell) ──────────────────────────────
     const aeoRaw = raw.aeo || {};
-    const brandRadar = raw.brandRadar || null;
-    const radarTrend = audits.filter((a: any) => a.raw?.brandRadar?.mentions != null)
-      .map((a: any) => ({ date: a.run_at, mentions: a.raw.brandRadar.mentions, sov: a.raw.brandRadar.ourSov }));
+    // AI citation tracking (brand-radar function → ai_visibility snapshots).
+    // "live" once Ahrefs has answered the client's tracked questions;
+    // "collecting" between setup and the first answers.
+    const { data: aiRows } = await supa.from("ai_visibility")
+      .select("captured_at, engines, prompts_tracked, responses_checked, responses_mentioning, responses_citing, share_of_voice, top_competitor, top_competitor_sov, per_engine, per_prompt, cited_urls, competitor_citations")
+      .eq("client_id", client.id).order("captured_at", { ascending: false }).limit(60);
+    const aiHistory = (aiRows || []).filter((r: any) => (r.responses_checked || 0) > 0);
+    const aiLatest = aiHistory[0] || null;
+    const aiState = aiLatest ? "live" : client.brand_radar_report_id ? "collecting" : "not_configured";
+    const aiTrend = aiHistory.slice(0, 12).reverse();
+    const brandRadar = aiLatest
+      ? { mentions: aiLatest.responses_mentioning, ourSov: aiLatest.share_of_voice,
+          topCompetitor: aiLatest.top_competitor ? { brand: aiLatest.top_competitor, sov: aiLatest.top_competitor_sov } : null }
+      : (raw.brandRadar || null);
+    const radarTrend = aiLatest
+      ? aiTrend.map((r: any) => ({ date: r.captured_at, mentions: r.responses_mentioning, sov: r.share_of_voice, checked: r.responses_checked, cited: r.responses_citing }))
+      : audits.filter((a: any) => a.raw?.brandRadar?.mentions != null)
+        .map((a: any) => ({ date: a.run_at, mentions: a.raw.brandRadar.mentions, sov: a.raw.brandRadar.ourSov }));
     const aeoChecklist: any[] = (raw.checklist || []).filter((c: any) => c.pillar === "aeo" || c.pillar === "schema");
     const aeoReadyTotal = aeoChecklist.filter((c: any) => c.status !== "na").length;
     const aeoReadyPass = aeoChecklist.filter((c: any) => c.status === "pass").length;
@@ -386,7 +405,7 @@ Deno.serve(async (req) => {
       pushedFixes: pushedFixes || [], gatedDrafts, gatedCount,
       gscConnected, gscNow, gscPrior, gscBase, gscTrend, gscIsQuerySample,
       improvements, newlyRanking, deepMoves,
-      aeoRaw, brandRadar, radarTrend, aeoReadyPass, aeoReadyTotal,
+      aeoRaw, brandRadar, radarTrend, aeoReadyPass, aeoReadyTotal, aiLatest, aiState,
       publishedByKind, cumulativeFixes, schemaTypes, passNow, passBase, clNowCount: clNow.length,
       nextActions, learnedFixed, gateRejects, roadmap, regressions,
     });
@@ -397,7 +416,7 @@ Deno.serve(async (req) => {
       baseline_locked: baselineLocked, program_month: programMonth, window_days: programDays,
       state, phase, grade_source: gradeSource, gated_content: gatedCount,
       review_recommended: reviewFlags.length > 0, review_flags: reviewFlags, violations: [],
-      sources: { ahrefs: true, gsc: gscConnected, ga4: false, ai_citations: !!brandRadar },
+      sources: { ahrefs: true, gsc: gscConnected, ga4: false, ai_citations: aiState === "live" || !!brandRadar },
     };
     // ── 13. BI snapshot — everything the PDF shows, as structured data ───────
     const pctOf = (a: number, b: number) => b ? Math.round((a / b) * 100) : null;
@@ -446,12 +465,28 @@ Deno.serve(async (req) => {
       yoy_keywords_then: yoyAudit?.org_keywords ?? null, yoy_visits_then: yoyAudit?.org_traffic ?? null,
       // section 6 — AI visibility
       aeo_readiness_pct: pctOf(aeoReadyPass, aeoReadyTotal), aeo_ready_pass: aeoReadyPass, aeo_ready_total: aeoReadyTotal,
-      ai_citations_live: !!brandRadar,
+      ai_citations_live: aiState === "live" || (!!brandRadar && !aiLatest),
+      ai_tracking_state: aiState,
+      ai_engines: (aiLatest?.engines || []).map((e: string) => ENGINE_NAMES[e] || e),
+      ai_prompts_tracked: aiLatest?.prompts_tracked ?? null,
+      ai_queries_checked: aiLatest?.responses_checked ?? null,
+      ai_responses_mentioning: aiLatest?.responses_mentioning ?? null,
+      ai_responses_citing: aiLatest?.responses_citing ?? null,
+      ai_mention_rate_pct: aiLatest ? pctOf(aiLatest.responses_mentioning, aiLatest.responses_checked) : null,
+      ai_citation_rate_pct: aiLatest ? pctOf(aiLatest.responses_citing, aiLatest.responses_checked) : null,
+      ai_captured_at: aiLatest?.captured_at ?? null,
+      ai_engine_breakdown: (aiLatest?.per_engine || []).map((e: any) => ({ engine: e.label || e.engine, checked: e.checked, mentioned: e.mentioned, cited: e.cited })),
+      ai_prompts: (aiLatest?.per_prompt || []).map((q: any) => ({ question: q.question,
+        mentioned_on: Object.entries(q.engines || {}).filter(([, v]: any) => v?.mentioned).map(([k]) => ENGINE_NAMES[k] || k),
+        cited_on: Object.entries(q.engines || {}).filter(([, v]: any) => v?.cited).map(([k]) => ENGINE_NAMES[k] || k),
+        cited_url: (Object.values(q.engines || {}).find((v: any) => v?.url) as any)?.url || null })),
+      ai_cited_urls: (aiLatest?.cited_urls || []).slice(0, 20).map((u: any) => ({ url: u.url, title: u.title, responses: u.responses, engines: (u.engines || []).map((e: string) => ENGINE_NAMES[e] || e) })),
+      ai_competitor_citations: (aiLatest?.competitor_citations || []).slice(0, 10),
       ai_mentions: brandRadar?.mentions ?? null,
       ai_share_of_voice_pct: brandRadar?.ourSov != null ? Math.round(brandRadar.ourSov * 100) : null,
       ai_top_competitor: brandRadar?.topCompetitor?.brand ?? null,
       ai_top_competitor_sov_pct: brandRadar?.topCompetitor?.sov != null ? Math.round(brandRadar.topCompetitor.sov * 100) : null,
-      citation_trend: radarTrend.map((t: any) => ({ date: t.date, mentions: t.mentions, sov_pct: t.sov != null ? Math.round(t.sov * 100) : null })),
+      citation_trend: radarTrend.map((t: any) => ({ date: t.date, mentions: t.mentions, sov_pct: t.sov != null ? Math.round(t.sov * 100) : null, checked: t.checked ?? null, cited: t.cited ?? null })),
       // section 7 — pillar grades
       grades: gradeRows.map((g: any, i: number) => ({
         pillar: g.label, key: g.pillar, sort: i + 1,
@@ -488,7 +523,7 @@ function renderHTML(d: any): string {
     programMonth, phase, state, isFirstCycle, programDays, windowOK,
     yoyAudit, business, currentAudit, baseline, lastPrior, gradeRows,
     pushedFixes, gatedDrafts, gatedCount, gscConnected, gscNow, gscPrior, gscTrend, gscIsQuerySample,
-    improvements, newlyRanking, deepMoves, brandRadar, radarTrend, aeoReadyPass, aeoReadyTotal,
+    improvements, newlyRanking, deepMoves, brandRadar, radarTrend, aeoReadyPass, aeoReadyTotal, aiLatest, aiState,
     publishedByKind, cumulativeFixes, schemaTypes, passNow, passBase, clNowCount,
     nextActions, learnedFixed, gateRejects, roadmap, regressions } = d;
   const BC = brand.color || "#4B9BD7";
@@ -644,20 +679,50 @@ function renderHTML(d: any): string {
   </section>`;
 
   let aeoBody = "";
-  if (brandRadar) {
+  const readyPct = aeoReadyTotal ? Math.round((aeoReadyPass / aeoReadyTotal) * 100) + "%" : "—";
+  if (aiLatest) {
+    const engines: any[] = aiLatest.per_engine || [];
+    const engineKeys: string[] = aiLatest.engines || engines.map((e: any) => e.engine);
+    const prompts: any[] = aiLatest.per_prompt || [];
+    const citedUrls: any[] = aiLatest.cited_urls || [];
+    const comps: any[] = aiLatest.competitor_citations || [];
+    const cell = (v: any) => !v ? `<span class="muted">—</span>` : v.cited ? `<strong>Cited</strong>` : v.mentioned ? "Mentioned" : `<span class="muted">Not yet</span>`;
+    aeoBody = `
+      <div class="grid grid-3" style="margin-top:10pt;">
+        <div class="card"><div class="label">AI answers mentioning the business <span class="tag tag-measured">measured</span></div><div class="value">${num(aiLatest.responses_mentioning)} <span style="font-size:11pt;">of ${num(aiLatest.responses_checked)}</span></div><div class="sub">${num(aiLatest.prompts_tracked)} customer questions asked on ${engineKeys.length} AI engine${engineKeys.length === 1 ? "" : "s"}</div></div>
+        <div class="card"><div class="label">Citations earned</div><div class="value">${num(aiLatest.responses_citing)}</div><div class="sub">answers that link to the website${citedUrls.length ? ` · ${citedUrls.length} page${citedUrls.length === 1 ? "" : "s"} cited` : ""}</div></div>
+        <div class="card"><div class="label">AEO readiness</div><div class="value">${readyPct}</div><div class="sub">structured-data &amp; answer-content checks passing</div></div>
+      </div>
+      ${brandRadar?.ourSov != null ? `<p style="margin-top:6pt;">AI share of voice: <strong>${Math.round(brandRadar.ourSov * 100)}%</strong>${brandRadar.topCompetitor ? ` · top competitor ${esc(brandRadar.topCompetitor.brand)} at ${Math.round((brandRadar.topCompetitor.sov || 0) * 100)}%` : ""}.</p>` : ""}
+      <h4>By AI engine</h4>
+      <table><thead><tr><th>Engine</th><th class="num">Questions checked</th><th class="num">Mentioned</th><th class="num">Cited the site</th></tr></thead><tbody>
+        ${engines.map((e: any) => `<tr><td>${esc(e.label || e.engine)}</td><td class="num">${num(e.checked)}</td><td class="num">${num(e.mentioned)}</td><td class="num">${num(e.cited)}</td></tr>`).join("")}</tbody></table>
+      ${prompts.length ? `<h4>Questions we track</h4>
+      <table><thead><tr><th>Question</th>${engineKeys.map((k) => `<th>${esc(ENGINE_NAMES[k] || k)}</th>`).join("")}</tr></thead><tbody>
+        ${prompts.slice(0, 15).map((q: any) => `<tr><td>${esc(q.question)}</td>${engineKeys.map((k) => `<td>${cell(q.engines?.[k])}</td>`).join("")}</tr>`).join("")}</tbody></table>` : ""}
+      ${citedUrls.length ? `<h4>Pages AI assistants cited</h4>
+      <table><thead><tr><th>Page</th><th>Engines</th><th class="num">Answers</th></tr></thead><tbody>
+        ${citedUrls.slice(0, 10).map((u: any) => `<tr><td>${esc(u.title || u.url)}<br><span class="muted">${esc(u.url)}</span></td><td>${esc((u.engines || []).map((e: string) => ENGINE_NAMES[e] || e).join(", "))}</td><td class="num">${num(u.responses)}</td></tr>`).join("")}</tbody></table>`
+        : `<p class="muted">No answers link to the website yet. Citations follow readiness (above) plus authority; the questions above are re-checked every cycle.</p>`}
+      ${comps.length ? `<h4>Competitors cited in the same answers</h4><p>${comps.slice(0, 6).map((c: any) => `${esc(c.domain)} (${num(c.responses)})`).join(" · ")}</p>` : ""}
+      ${radarTrend.length > 1 ? `<h4>Trend across cycles</h4><table><thead><tr><th>Date</th><th class="num">Answers checked</th><th class="num">Mentioned</th><th class="num">Cited</th><th class="num">Share of voice</th></tr></thead><tbody>
+        ${radarTrend.slice(-6).map((t: any) => `<tr><td>${esc(fmtDate(t.date))}</td><td class="num">${num(t.checked)}</td><td class="num">${num(t.mentions)}</td><td class="num">${num(t.cited)}</td><td class="num">${t.sov != null ? Math.round(t.sov * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table>` : ""}
+      <p class="muted" style="margin-top:6pt;">Answers checked ${esc(fmtDate(aiLatest.captured_at))}. AI answers vary between runs; read the trend, not a single week.</p>`;
+  } else if (brandRadar) {
     aeoBody = `
       <div class="grid grid-3" style="margin-top:10pt;">
         <div class="card"><div class="label">AI mentions</div><div class="value">${num(brandRadar.mentions)}</div><div class="sub">brand cited in AI answers</div></div>
         <div class="card"><div class="label">AI share of voice</div><div class="value">${brandRadar.ourSov != null ? Math.round(brandRadar.ourSov * 100) + "%" : "—"}</div><div class="sub">${brandRadar.topCompetitor ? `top competitor: ${esc(brandRadar.topCompetitor.brand)} at ${Math.round((brandRadar.topCompetitor.sov || 0) * 100)}%` : "vs tracked competitors"}</div></div>
-        <div class="card"><div class="label">AEO readiness</div><div class="value">${aeoReadyTotal ? Math.round((aeoReadyPass / aeoReadyTotal) * 100) + "%" : "—"}</div><div class="sub">structured-data &amp; answer-content checks passing</div></div>
+        <div class="card"><div class="label">AEO readiness</div><div class="value">${readyPct}</div><div class="sub">structured-data &amp; answer-content checks passing</div></div>
       </div>
       ${radarTrend.length > 1 ? `<h4>Citation trend</h4><table><thead><tr><th>Date</th><th class="num">Mentions</th><th class="num">Share of voice</th></tr></thead><tbody>
         ${radarTrend.slice(-6).map((t: any) => `<tr><td>${esc(fmtDate(t.date))}</td><td class="num">${num(t.mentions)}</td><td class="num">${t.sov != null ? Math.round(t.sov * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table>` : ""}`;
   } else {
+    const collecting = aiState === "collecting";
     aeoBody = `
       <div class="grid grid-2" style="margin-top:10pt;">
-        <div class="card"><div class="label">AEO readiness <span class="tag tag-measured">measured</span></div><div class="value">${aeoReadyTotal ? Math.round((aeoReadyPass / aeoReadyTotal) * 100) + "%" : "—"}</div><div class="sub">structured-data &amp; answer-content checks passing (${num(aeoReadyPass)}/${num(aeoReadyTotal)})</div></div>
-        <div class="card"><div class="label">AI citation tracking</div><div class="value" style="font-size:11pt;">Being configured</div><div class="sub">Once live, this section reports the queries checked per AI engine, citations earned with the cited URL, and the trend across cycles.</div></div>
+        <div class="card"><div class="label">AEO readiness <span class="tag tag-measured">measured</span></div><div class="value">${readyPct}</div><div class="sub">structured-data &amp; answer-content checks passing (${num(aeoReadyPass)}/${num(aeoReadyTotal)})</div></div>
+        <div class="card"><div class="label">AI citation tracking</div><div class="value" style="font-size:11pt;">${collecting ? "Tracking started" : "Being configured"}</div><div class="sub">${collecting ? "The customer questions we track are being asked on the AI engines now; the first results appear in the next report." : "Once live, this section reports the queries checked per AI engine, citations earned with the cited URL, and the trend across cycles."}</div></div>
       </div>
       <p class="muted" style="margin-top:6pt;">What we track ahead of citations: answer-formatted content, FAQ/schema coverage, llms.txt for AI crawlers, and entity signals — the readiness score above. Citations follow readiness plus authority.</p>`;
   }
