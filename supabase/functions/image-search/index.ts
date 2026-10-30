@@ -11,6 +11,24 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// ── Platform keys (Team & access → API keys). A key entered in the console is
+// kept in Supabase Vault and wins; otherwise the function secret is used.
+// Cached for a minute so a rotation reaches running workers quickly.
+const _keys = new Map<string, { v: string; at: number }>();
+async function platformKey(name: string): Promise<string> {
+  const hit = _keys.get(name);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  let v = "";
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const { data } = await admin.rpc("platform_key", { p_name: name });
+    if (typeof data === "string") v = data;
+  } catch { /* Vault lookup unavailable: fall back to the function secret */ }
+  v = v || Deno.env.get(name) || "";
+  _keys.set(name, { v, at: Date.now() });
+  return v;
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -45,7 +63,7 @@ Deno.serve(async (req) => {
     // staff only (a signed-in stranger must not spend the Pexels quota)
     const who = await gateCaller(req);
     if (who instanceof Response) return who;
-    const KEY = Deno.env.get("PEXELS_API_KEY");
+    const KEY = (await platformKey("PEXELS_API_KEY"));
     if (!KEY) return json({ error: "PEXELS_API_KEY is not set — add it under Edge Functions → image-search → Secrets (free key from pexels.com/api)" }, 500);
 
     const body = await req.json().catch(() => ({}));

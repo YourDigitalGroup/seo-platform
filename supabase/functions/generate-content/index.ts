@@ -10,6 +10,24 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// ── Platform keys (Team & access → API keys). A key entered in the console is
+// kept in Supabase Vault and wins; otherwise the function secret is used.
+// Cached for a minute so a rotation reaches running workers quickly.
+const _keys = new Map<string, { v: string; at: number }>();
+async function platformKey(name: string): Promise<string> {
+  const hit = _keys.get(name);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  let v = "";
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const { data } = await admin.rpc("platform_key", { p_name: name });
+    if (typeof data === "string") v = data;
+  } catch { /* Vault lookup unavailable: fall back to the function secret */ }
+  v = v || Deno.env.get(name) || "";
+  _keys.set(name, { v, at: Date.now() });
+  return v;
+}
+
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 
@@ -103,7 +121,7 @@ Deno.serve(async (req) => {
     const editor_id = who.userId ?? bodyEditor ?? null;
     if (!topic_id) return json({ error: "topic_id is required" }, 400);
 
-    const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    const ANTHROPIC_KEY = (await platformKey("ANTHROPIC_API_KEY"));
     if (!ANTHROPIC_KEY) return json({ error: "ANTHROPIC_API_KEY is not set" }, 500);
 
     const supa = createClient(
@@ -147,7 +165,7 @@ Deno.serve(async (req) => {
         "anthropic-version": ANTHROPIC_VERSION,
         "content-type": "application/json",
         // needed by keys not scoped to one workspace (optional secret)
-        ...(Deno.env.get("ANTHROPIC_WORKSPACE_ID") ? { "anthropic-workspace-id": Deno.env.get("ANTHROPIC_WORKSPACE_ID")! } : {}),
+        ...((await platformKey("ANTHROPIC_WORKSPACE_ID")) ? { "anthropic-workspace-id": (await platformKey("ANTHROPIC_WORKSPACE_ID")) } : {}),
       },
       body: JSON.stringify({
         model: apiModel,

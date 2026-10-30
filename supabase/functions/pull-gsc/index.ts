@@ -12,6 +12,24 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// ── Platform keys (Team & access → API keys). A key entered in the console is
+// kept in Supabase Vault and wins; otherwise the function secret is used.
+// Cached for a minute so a rotation reaches running workers quickly.
+const _keys = new Map<string, { v: string; at: number }>();
+async function platformKey(name: string): Promise<string> {
+  const hit = _keys.get(name);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  let v = "";
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const { data } = await admin.rpc("platform_key", { p_name: name });
+    if (typeof data === "string") v = data;
+  } catch { /* Vault lookup unavailable: fall back to the function secret */ }
+  v = v || Deno.env.get(name) || "";
+  _keys.set(name, { v, at: Date.now() });
+  return v;
+}
+
 const SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const WMT = "https://www.googleapis.com/webmasters/v3";
@@ -103,7 +121,7 @@ Deno.serve(async (req) => {
     };
     const acct = (client as any).partner_groups?.gsc_account === "44i" ? "44i" : "default";
     const secretName = SA_SECRET[acct] || "GSC_SERVICE_ACCOUNT";
-    const saRaw = Deno.env.get(secretName);
+    const saRaw = await platformKey(secretName);
     if (!saRaw) return json({ error: `${secretName} is not set (group account tag: "${acct}")` }, 500);
     let sa: any;
     try { sa = JSON.parse(saRaw); } catch { return json({ error: `${secretName} is not valid JSON` }, 500); }

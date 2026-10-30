@@ -31,6 +31,24 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// ── Platform keys (Team & access → API keys). A key entered in the console is
+// kept in Supabase Vault and wins; otherwise the function secret is used.
+// Cached for a minute so a rotation reaches running workers quickly.
+const _keys = new Map<string, { v: string; at: number }>();
+async function platformKey(name: string): Promise<string> {
+  const hit = _keys.get(name);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  let v = "";
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const { data } = await admin.rpc("platform_key", { p_name: name });
+    if (typeof data === "string") v = data;
+  } catch { /* Vault lookup unavailable: fall back to the function secret */ }
+  v = v || Deno.env.get(name) || "";
+  _keys.set(name, { v, at: Date.now() });
+  return v;
+}
+
 const AL_BASE = "https://api.advicelocal.com";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -46,7 +64,7 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
-    const KEY = Deno.env.get("ADVICE_LOCAL_API_KEY");
+    const KEY = (await platformKey("ADVICE_LOCAL_API_KEY"));
     if (!KEY) return json({ error: "ADVICE_LOCAL_API_KEY is not set — add it under Edge Functions → advice-local → Secrets" }, 500);
     const PRODUCT_ID = Number(Deno.env.get("ADVICE_LOCAL_PRODUCT_ID") || 4114);
     const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });

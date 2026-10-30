@@ -121,6 +121,45 @@ on the Setup tab under Platform Access. Applied on the live project
 2026-10-30; all 48 active clients have a report (the internal "Test" client
 has no questions until it gets a real audit).
 
+## 1a-4f. API keys + reputation monitoring  (Supabase → SQL Editor + Edge Functions)
+
+Paste `supabase/migrations/platform_keys_reputation.sql` and Run (idempotent).
+Deploy `platform-keys` and `reputation` (new), `run-audit` (5.11.0), and
+redeploy every function that reads a key (advice-local, brand-radar,
+generate-content, generate-fixes, image-search, pull-gsc, report-feed,
+suggest-topics, trello, wp-ai).
+
+**API keys.** Team & access → API keys lists every outside key the platform
+uses, what it's for, which functions use it, where it comes from (set in the
+console / Supabase function secret / missing), who last changed it and the
+last test result. Values are never shown or returned. Replace stores the new
+value encrypted in Supabase Vault (`seop_key_<NAME>`) and tests it straight
+away; functions read Vault first, then the function secret, and cache for a
+minute, so a rotation takes effect within a minute. Remove drops the console
+copy and falls back to the secret. Only the service role can read Vault
+values (`platform_key()`); every change is logged in `platform_key_events`.
+
+**Google Places.** One Google Cloud API key with **Places API (New)**
+enabled (legacy Places can't be turned on for new projects), entered as
+`GOOGLE_PLACES_API_KEY`. Used by run-audit (Business Profile facts) and
+reputation. Restrict the key to the Places API (New).
+
+**Reputation.** The sidebar's Reputation page shows every active client's
+Google rating, review count, 30-day change, reviews published this week and
+1-2 star alerts. Each client's Setup tab has a Reputation panel with the
+newest reviews, Check now, and (SA/AM) Find & pin listing. The listing is
+pinned automatically when its website is the client's domain
+(`clients.gbp_place_id`); otherwise it's matched by name until someone pins
+it. `seop-daily-reputation` runs every day at 12:50 UTC. Google returns up to
+five reviews per check; every review seen is kept in `reputation_reviews`,
+each check in `reputation_snapshots`. Cost: one Place Details call (with
+reviews) per client per day, about 1,500 a month for 48 clients, plus a text
+search the first time an unpinned client is matched.
+
+**Local Insight** has a key slot (`LOCAL_INSIGHT_API_KEY`, group Reputation)
+but isn't wired yet; it plugs into the reputation function as a second
+source once its API is documented.
+
 ## 1a-5. Plan add-ons  (Supabase → SQL Editor)
 
 Paste `supabase/migrations/addons.sql` and Run (idempotent; AFTER

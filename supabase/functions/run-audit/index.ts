@@ -53,6 +53,24 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// ── Platform keys (Team & access → API keys). A key entered in the console is
+// kept in Supabase Vault and wins; otherwise the function secret is used.
+// Cached for a minute so a rotation reaches running workers quickly.
+const _keys = new Map<string, { v: string; at: number }>();
+async function platformKey(name: string): Promise<string> {
+  const hit = _keys.get(name);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  let v = "";
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const { data } = await admin.rpc("platform_key", { p_name: name });
+    if (typeof data === "string") v = data;
+  } catch { /* Vault lookup unavailable: fall back to the function secret */ }
+  v = v || Deno.env.get(name) || "";
+  _keys.set(name, { v, at: Date.now() });
+  return v;
+}
+
 // ── Tuning knobs ─────────────────────────────────────────────────────────────
 const KW_LIMIT         = 30;   // client organic keywords pulled
 const GAP_SOURCE_LIMIT = 25;   // competitor keywords scanned for the gap diff
@@ -208,7 +226,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.10.0";
+const ENGINE_VERSION = "5.11.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -246,7 +264,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
     const auditOnly = audit_only === true;
     note.push(`Audit engine v${ENGINE_VERSION}.`);
     if (auditOnly) note.push("Audit-only re-run: scores refreshed, existing package/fixes/content untouched.");
-    const AHREFS_KEY = Deno.env.get("AHREFS_API_KEY");
+    const AHREFS_KEY = (await platformKey("AHREFS_API_KEY"));
     if (!AHREFS_KEY) return json({ error: "AHREFS_API_KEY is not set" }, 500);
     const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
@@ -317,13 +335,13 @@ async function runAuditPipeline(body: any): Promise<Response> {
     // grabs unrelated local sites. Order: (a) classify the business from its own
     // homepage, (b) research the keywords it should win, (c) find competitors
     // that actually rank for those keywords.
-    const AI_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    const AI_KEY = (await platformKey("ANTHROPIC_API_KEY"));
     const writeAI = async (system: string, user: string, max = 500): Promise<string> => {
       if (!AI_KEY) return "";
       try {
         // ANTHROPIC_WORKSPACE_ID (optional secret): required by keys that are
         // not scoped to a single workspace; harmless to omit otherwise.
-        const wsid = Deno.env.get("ANTHROPIC_WORKSPACE_ID") || "";
+        const wsid = (await platformKey("ANTHROPIC_WORKSPACE_ID")) || "";
         const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
           headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json",
             ...(wsid ? { "anthropic-workspace-id": wsid } : {}) },
@@ -721,24 +739,42 @@ async function runAuditPipeline(body: any): Promise<Response> {
     // in intake SUGGESTIONS (approve-to-save) — GBP wins over the site scrape
     // for overlapping fields.
     {
-      const GKEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || Deno.env.get("PAGESPEED_API_KEY") || "";
+      const GKEY = (await platformKey("GOOGLE_PLACES_API_KEY")) || (await platformKey("PAGESPEED_API_KEY")) || "";
       if (GKEY) {
         try {
-          const bizName = homePage?.orgName || (homePage?.title ? String(homePage.title).split(/[|\-–—:]/)[0].trim() : "") || root;
-          const q = encodeURIComponent(`${bizName} ${client.market || ""}`.trim());
-          const fp = await (await fetch(`https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${q}&inputtype=textquery&fields=place_id&key=${GKEY}`)).json();
-          const pid = fp?.candidates?.[0]?.place_id;
-          if (pid) {
-            const det = await (await fetch(`https://maps.googleapis.com/maps/api/place/details/json?place_id=${pid}&fields=name,formatted_address,formatted_phone_number,opening_hours,rating,user_ratings_total,website,types,url&key=${GKEY}`)).json();
-            const r = det?.result || {};
+          // Places API (New): new Google Cloud keys can't enable the legacy
+          // Places API. A pinned place id (clients.gbp_place_id) wins; else a
+          // text search, preferring the listing whose website is this domain.
+          const FIELDS = "id,displayName,formattedAddress,nationalPhoneNumber,regularOpeningHours,rating,userRatingCount,googleMapsUri,types,websiteUri";
+          const gh = (mask: string) => ({ "X-Goog-Api-Key": GKEY, "X-Goog-FieldMask": mask, "Content-Type": "application/json" });
+          let r: any = null, matchedBySite = false;
+          if (client.gbp_place_id) {
+            const dr = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(String(client.gbp_place_id))}`, { headers: gh(FIELDS) });
+            if (dr.ok) r = await dr.json(); else errors.push(`places ${dr.status}: ${(await dr.text()).slice(0, 160)}`);
+          } else {
+            const bizName = homePage?.orgName || (homePage?.title ? String(homePage.title).split(/[|\-–—:]/)[0].trim() : "") || root;
+            const sr = await fetch("https://places.googleapis.com/v1/places:searchText", {
+              method: "POST", headers: gh(FIELDS.split(",").map((f) => "places." + f).join(",")),
+              body: JSON.stringify({ textQuery: `${bizName} ${client.market || ""}`.trim() }),
+            });
+            if (sr.ok) {
+              const cands: any[] = (await sr.json())?.places || [];
+              r = cands.find((p) => rootOf(p.websiteUri || "") === root) || null;
+              matchedBySite = !!r;
+              r = r || cands[0] || null;
+            } else errors.push(`places ${sr.status}: ${(await sr.text()).slice(0, 160)}`);
+          }
+          if (r) {
+            // A listing whose website is this domain is certainly the client's: pin it.
+            if (matchedBySite && r.id) await supa.from("clients").update({ gbp_place_id: r.id }).eq("id", client.id);
             const gbpFacts: Record<string, string> = {};
-            if (r.formatted_phone_number) gbpFacts.phone = r.formatted_phone_number;
-            const am = String(r.formatted_address || "").match(/^(.*?),\s*([^,]+),\s*([A-Z]{2})\s+(\d{5})/);
+            if (r.nationalPhoneNumber) gbpFacts.phone = r.nationalPhoneNumber;
+            const am = String(r.formattedAddress || "").match(/^(.*?),\s*([^,]+),\s*([A-Z]{2})\s+(\d{5})/);
             if (am) { gbpFacts.street = am[1].trim(); gbpFacts.city = am[2].trim(); gbpFacts.state = am[3]; gbpFacts.zip = am[4]; }
             if (r.rating != null) gbpFacts.gbp_rating = String(r.rating);
-            if (r.user_ratings_total != null) gbpFacts.gbp_reviews = String(r.user_ratings_total);
-            if (r.url) gbpFacts.gbp = String(r.url);
-            if (Array.isArray(r.opening_hours?.weekday_text)) gbpFacts.hours = compressHours(r.opening_hours.weekday_text);
+            if (r.userRatingCount != null) gbpFacts.gbp_reviews = String(r.userRatingCount);
+            if (r.googleMapsUri) gbpFacts.gbp = String(r.googleMapsUri);
+            if (Array.isArray(r.regularOpeningHours?.weekdayDescriptions)) gbpFacts.hours = compressHours(r.regularOpeningHours.weekdayDescriptions);
             if (Array.isArray(r.types) && r.types.length) {
               const cats = r.types.filter((t: string) => !/point_of_interest|establishment/.test(t)).slice(0, 4).map((t: string) => t.replace(/_/g, " "));
               if (cats.length) gbpFacts.categories = cats.join(", ");
@@ -747,10 +783,10 @@ async function runAuditPipeline(body: any): Promise<Response> {
               Object.assign(intakeSuggested, gbpFacts);
               note.push(`GBP enrichment: ${Object.keys(gbpFacts).length} facts pulled from the Business Profile (rating ${gbpFacts.gbp_rating ?? "—"} · ${gbpFacts.gbp_reviews ?? "—"} reviews) — amber in the console, approve to save.`);
             }
-          } else note.push("GBP enrichment: no Places match for the business name + market — check the client's market field.");
+          } else note.push("GBP enrichment: no Places match for the business name + market — pin the listing on the client's Reputation panel.");
         } catch (e) { errors.push(`places: ${String(e).slice(0, 120)}`); }
       } else {
-        note.push("GBP enrichment available: set GOOGLE_PLACES_API_KEY (or enable the Places API on the PageSpeed key's project) to auto-pull NAP, hours, rating and review count from the Business Profile.");
+        note.push("GBP enrichment available: add the Google Places key in Team & access → API keys to auto-pull NAP, hours, rating and review count from the Business Profile.");
       }
     }
 
@@ -758,7 +794,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
     //        via PAGESPEED_API_KEY). Prefers real-user CrUX field data, falls
     //        back to lab data, then to our own TTFB/payload heuristics.
     let psi: any = null;
-    const PSI_KEY = Deno.env.get("PAGESPEED_API_KEY") || Deno.env.get("GOOGLE_PLACES_API_KEY") || ""; // keyless PSI shares a tiny per-IP quota across all of Supabase — always use a key
+    const PSI_KEY = (await platformKey("PAGESPEED_API_KEY")) || (await platformKey("GOOGLE_PLACES_API_KEY")) || ""; // keyless PSI shares a tiny per-IP quota across all of Supabase — always use a key
     const runPsi = async (): Promise<any> => {
       try {
         const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 45000);

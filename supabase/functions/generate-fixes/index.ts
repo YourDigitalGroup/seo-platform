@@ -33,6 +33,24 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// ── Platform keys (Team & access → API keys). A key entered in the console is
+// kept in Supabase Vault and wins; otherwise the function secret is used.
+// Cached for a minute so a rotation reaches running workers quickly.
+const _keys = new Map<string, { v: string; at: number }>();
+async function platformKey(name: string): Promise<string> {
+  const hit = _keys.get(name);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  let v = "";
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const { data } = await admin.rpc("platform_key", { p_name: name });
+    if (typeof data === "string") v = data;
+  } catch { /* Vault lookup unavailable: fall back to the function secret */ }
+  v = v || Deno.env.get(name) || "";
+  _keys.set(name, { v, at: Date.now() });
+  return v;
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -86,7 +104,7 @@ Deno.serve(async (req) => {
   if (who instanceof Response) return who;
 
   // The AI writer key (secret name unchanged so the deployed config keeps working).
-  const AI_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+  const AI_KEY = (await platformKey("ANTHROPIC_API_KEY"));
   try {
     const body = await req.json().catch(() => ({}));
     const ids: string[] = (Array.isArray(body.fix_ids) ? body.fix_ids : (body.fix_id ? [body.fix_id] : [])).map(String);
@@ -113,7 +131,7 @@ Deno.serve(async (req) => {
     // Call the AI writer once; return plain text.
     const writeAI = async (model: string, system: string, user: string, maxTokens = 700): Promise<string> => {
       if (!AI_KEY) throw new Error("AI writer key is not set");
-      const wsid = Deno.env.get("ANTHROPIC_WORKSPACE_ID") || "";  // needed by keys not scoped to one workspace
+      const wsid = (await platformKey("ANTHROPIC_WORKSPACE_ID")) || "";  // needed by keys not scoped to one workspace
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json",

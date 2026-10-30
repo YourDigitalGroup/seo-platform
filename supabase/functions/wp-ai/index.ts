@@ -21,6 +21,24 @@
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// ── Platform keys (Team & access → API keys). A key entered in the console is
+// kept in Supabase Vault and wins; otherwise the function secret is used.
+// Cached for a minute so a rotation reaches running workers quickly.
+const _keys = new Map<string, { v: string; at: number }>();
+async function platformKey(name: string): Promise<string> {
+  const hit = _keys.get(name);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  let v = "";
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+    const { data } = await admin.rpc("platform_key", { p_name: name });
+    if (typeof data === "string") v = data;
+  } catch { /* Vault lookup unavailable: fall back to the function secret */ }
+  v = v || Deno.env.get(name) || "";
+  _keys.set(name, { v, at: Date.now() });
+  return v;
+}
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -40,7 +58,7 @@ Deno.serve(async (req) => {
     const siteKey = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
     if (!/^[A-Za-z0-9]{24,128}$/.test(siteKey)) return json({ error: "missing or malformed site key" }, 401);
 
-    const AI_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    const AI_KEY = (await platformKey("ANTHROPIC_API_KEY"));
     if (!AI_KEY) return json({ error: "the platform's AI key is not configured" }, 500);
     const supa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
@@ -60,7 +78,7 @@ Deno.serve(async (req) => {
       .eq("client_id", client.id).eq("day", new Date().toISOString().slice(0, 10)).maybeSingle();
     if ((today?.calls || 0) >= DAILY_CAP) return json({ error: `daily AI limit reached for this site (${DAILY_CAP} calls) — it resets tomorrow` }, 429);
 
-    const wsid = Deno.env.get("ANTHROPIC_WORKSPACE_ID") || "";
+    const wsid = (await platformKey("ANTHROPIC_WORKSPACE_ID")) || "";
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": AI_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json",
