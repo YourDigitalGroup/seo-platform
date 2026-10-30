@@ -208,7 +208,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.9.6";
+const ENGINE_VERSION = "5.10.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -804,25 +804,22 @@ async function runAuditPipeline(body: any): Promise<Response> {
     const competitorNames = competitors.map((c: any) => c.domain).slice(0, 5).join(",");
     let brandRadar: any = null;
     {
-      const common: Record<string, string> = { data_source: AI_SOURCES, country: COUNTRY };
-      // Without a report_id the endpoint 400s ("Custom prompts require a
-      // report_id") on this plan — skip the guaranteed failure instead of
-      // logging two errors per audit; the AEO checks go na as before.
-      if (client.brand_radar_report_id) common.report_id = String(client.brand_radar_report_id);
-      const sov = !client.brand_radar_report_id ? null : await ah("brand-radar/sov-overview", { ...common });
-      const men = !client.brand_radar_report_id ? null : await ah("brand-radar/mentions-overview", { ...common, select: "brand,total,only_target_brand,only_competitors_brands,target_and_competitors_brands" });
-      if (sov?.metrics || men?.metrics) {
-        const sovRows = sov?.metrics ?? []; const menRows = men?.metrics ?? [];
-        const norm = (s: string) => String(s || "").toLowerCase();
-        const isUs = (b: string) => norm(b) === norm(businessName) || norm(b).includes(root) || norm(businessName).includes(norm(b));
-        const ourSov = sovRows.find((r: any) => isUs(r.brand))?.share_of_voice ?? 0;
-        const ourMen = menRows.find((r: any) => isUs(r.brand));
-        const compSov = sovRows.filter((r: any) => !isUs(r.brand)).reduce((a: number, r: any) => a + (r.share_of_voice || 0), 0);
-        const topCompSov = sovRows.filter((r: any) => !isUs(r.brand)).sort((a: any, b: any) => (b.share_of_voice||0)-(a.share_of_voice||0))[0] || null;
-        brandRadar = { ourSov, compSov, topCompetitor: topCompSov ? { brand: topCompSov.brand, sov: topCompSov.share_of_voice } : null,
-          mentions: ourMen?.total ?? 0, onlyCompetitors: ourMen?.only_competitors_brands ?? 0, sovRows, configured: !!client.brand_radar_report_id };
-        note.push(`AI-citation measured across ${AI_SOURCES.split(",").length} assistants (SoV ${(ourSov*100||0).toFixed(0)}%).`);
-      } else { note.push("AI-citation data unavailable on current plan — AEO graded from SERP features + on-page readiness."); }
+      // AI citation tracking lives in the brand-radar function: custom
+      // customer questions per client, answered by the AI engines on a
+      // schedule and snapshotted into ai_visibility. Read the latest
+      // snapshot here instead of calling Ahrefs from every audit.
+      const { data: av } = await supa.from("ai_visibility")
+        .select("captured_at, responses_checked, responses_mentioning, responses_citing, share_of_voice, top_competitor, top_competitor_sov")
+        .eq("client_id", client.id).gt("responses_checked", 0).order("captured_at", { ascending: false }).limit(1).maybeSingle();
+      if (av) {
+        brandRadar = { ourSov: av.share_of_voice ?? 0, compSov: null,
+          topCompetitor: av.top_competitor ? { brand: av.top_competitor, sov: av.top_competitor_sov ?? 0 } : null,
+          mentions: av.responses_mentioning ?? 0, onlyCompetitors: 0, sovRows: [], configured: true,
+          checked: av.responses_checked, cited: av.responses_citing, captured_at: av.captured_at };
+        note.push(`AI citation tracking: ${av.responses_mentioning}/${av.responses_checked} AI answers mention the brand, ${av.responses_citing} cite the site (checked ${String(av.captured_at).slice(0, 10)}).`);
+      } else note.push(client.brand_radar_report_id
+        ? "AI citation tracking is set up — waiting for the first AI answers; AEO graded from SERP features + on-page readiness."
+        : "AI citation tracking not set up for this client yet — AEO graded from SERP features + on-page readiness.");
     }
 
     // ── 10. GSC (real Google data, if present) ────────────────────────────────
@@ -1241,6 +1238,21 @@ async function runAuditPipeline(body: any): Promise<Response> {
       const er = (globalThis as any).EdgeRuntime;
       if (er?.waitUntil) { er.waitUntil(dispatch); fixesDispatched = true; note.push(`${fixIds.length} fixes handed to the AI writer (background).`); }
       else { fixesDispatched = true; note.push(`${fixIds.length} fixes dispatched to the AI writer.`); }
+    }
+
+    // New client: set up AI citation tracking (Brand Radar report + the
+    // customer questions) now that this audit knows its services and city.
+    // Creating it is free; Ahrefs only bills once tracking is switched on.
+    if (!auditOnly && !client.brand_radar_report_id) {
+      const brd = fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/brand-radar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setup", client_id: client.id }),
+      }).then(async (r) => { if (!r.ok) console.error("brand-radar setup", r.status, (await r.text()).slice(0, 200)); })
+        .catch((e) => console.error("brand-radar setup", e));
+      const er = (globalThis as any).EdgeRuntime;
+      if (er?.waitUntil) er.waitUntil(brd);
+      note.push("AI citation tracking: creating this client's Brand Radar report and tracked questions.");
     }
 
     // Package row. The upsert needs unique(client_id, cycle_month) — see
