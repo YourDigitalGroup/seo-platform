@@ -171,13 +171,51 @@ Deno.serve(async (req) => {
       }
       return j;
     };
+
+    // Advice Local stores local-service areas in extra.gmbData.servicesArea.
+    // Read-and-merge the existing extra object: replacing it wholesale would
+    // erase other GBP settings managed by Advice Local or the business.
+    const list=(v:unknown)=>String(v||"").split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
+    const serviceAreas=list(iv.service_areas).slice(0,20);
+    const parseCategory=(v:unknown)=>{
+      const text=String(v||"").trim();
+      if(!text)return null;
+      const code=text.startsWith("gcid:")?text.slice(5):text;
+      return /^[a-z][a-z0-9_]*$/.test(code)?code:null;
+    };
+    const categoryPrimary=parseCategory(iv.category_primary);
+    const secondaryLabels=list(iv.category_secondary);
+    const secondaryIds=secondaryLabels.map(parseCategory);
+    const categoryWarnings:string[]=[];
+    if(iv.category_primary&&!categoryPrimary)categoryWarnings.push("Primary category needs an exact Google GCID to sync, not a display label");
+    if(secondaryLabels.some((_,n)=>!secondaryIds[n]))categoryWarnings.push("Secondary categories need exact Google GCIDs to sync");
+    const plannedExtra={gmbData:{
+      ...(serviceAreas.length?{servicesArea:serviceAreas}:{}),
+      ...(secondaryIds.length&&secondaryIds.every(Boolean)?{secondaryCategories:secondaryIds.map((id,n)=>({categoryId:"gcid:"+id,displayName:secondaryLabels[n]}))}:{})
+    }};
+    const existingId=client.al_client_id?Number(client.al_client_id):null;
+    if(existingId&&(serviceAreas.length||(secondaryIds.length&&secondaryIds.every(Boolean)))){
+      try{
+        const current=await al("GET",`/legacyclients/${existingId}`);
+        const oldExtra=current?.extra&&typeof current.extra==="object"?current.extra:{};
+        const oldGmb=oldExtra.gmbData&&typeof oldExtra.gmbData==="object"?oldExtra.gmbData:{};
+        payload.extra={...oldExtra,gmbData:{...oldGmb,...plannedExtra.gmbData}};
+      }catch(e){
+        categoryWarnings.push("Could not read existing Advice Local extended profile; skipped extra fields to protect existing settings");
+      }
+    } else if(!existingId&&(serviceAreas.length||(secondaryIds.length&&secondaryIds.every(Boolean)))){
+      payload.extra=plannedExtra;
+    }
+    if(categoryPrimary)payload.categoryGoogle=categoryPrimary;
+    const unmapped=["Year established","Facebook and X profiles","Logo and cover images","Gallery images","Tracked keywords"];
+    const unmappedWarning="Not automatically synced by this location update: "+unmapped.join(", ");
     // Create (POST) or update (PUT) the AL location. AL answers a bad field
     // with a bare "Invalid Request" and no field name, so when the full
     // listing is refused: send the core NAP listing alone, then add each
     // optional field back one at a time — the listing still syncs, and the
     // refused fields are named for the specialist to fix.
     const CORE = ["name", "street", "city", "state", "zipcode", "country", "phone", "website"];
-    const OPTIONAL = ["email", "description", "services", "hoursObject"];
+    const OPTIONAL = ["email", "description", "services", "hoursObject", "categoryGoogle", "extra"];
     const pick = (keys: string[]) => Object.fromEntries(keys.filter((k) => payload[k]).map((k) => [k, payload[k]]));
     const refused = (e: unknown) => /HTTP 4(00|22)|Invalid Request/i.test(String((e as any)?.message || e));
     const msg = (e: unknown) => String((e as any)?.message || e).replace(/^Advice Local \w+ \S+ → /, "");
@@ -210,7 +248,7 @@ Deno.serve(async (req) => {
         return { id, rejected, created: r };
       }
     };
-    const FIELD_LABEL: Record<string, string> = { email: "email", description: "business description", services: "categories", hoursObject: "business hours" };
+    const FIELD_LABEL: Record<string, string> = { email: "email", description: "business description", services: "categories", hoursObject: "business hours", categoryGoogle:"Google primary category", extra:"service areas / GBP secondary categories" };
     const rejectedNote = (rej: string[]) => rej.length
       ? `Advice Local refused the ${rej.map((k) => FIELD_LABEL[k] || k).join(", ")} — the listing synced without ${rej.length > 1 ? "them" : "it"}; adjust ${rej.length > 1 ? "those" : "that"} in Business Facts and Sync again`
       : null;
@@ -225,7 +263,7 @@ Deno.serve(async (req) => {
     if (action === "preview") {
       return json({ ok: true, payload, missing, product_id: PRODUCT_ID,
         al_client_id: client.al_client_id || null, al_order_id: client.al_order_id || null,
-        al_synced_at: client.al_synced_at || null, hours_warning: hoursWarning });
+        al_synced_at: client.al_synced_at || null, hours_warning: hoursWarning, sync_warnings:[...categoryWarnings,unmappedWarning] });
     }
 
     if (action === "sync") {
@@ -235,7 +273,7 @@ Deno.serve(async (req) => {
       if (!up.id) return json({ error: "Advice Local did not return a location id", response: up.created }, 502);
       const warn = await remember({ al_client_id: up.id, al_synced_at: new Date().toISOString() });
       return json({ ok: true, mode: existing ? "updated" : "created", al_client_id: up.id, payload, rejected: up.rejected,
-        warning: [hoursWarning,rejectedNote(up.rejected), warn].filter(Boolean).join(" · ") || null });
+        warning: [hoursWarning,...categoryWarnings,unmappedWarning,rejectedNote(up.rejected), warn].filter(Boolean).join(" · ") || null });
     }
 
     if (action === "status") {
