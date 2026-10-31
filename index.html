@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <!--
-  44i SEO/AEO Delivery System — Internal Ops Console v11
+  44i SEO/AEO Delivery System — Internal Ops Console v12
   Stack: static front-end · secure cloud backend · search & authority data
 
   THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
@@ -5307,6 +5307,79 @@ function catSearch(k){
 }
 document.addEventListener('click',e=>{for(const k of ['category_primary','category_secondary']){const input=document.getElementById('cat-find-'+k),menu=document.getElementById('cat-menu-'+k);if(input&&menu&&!input.parentElement.contains(e.target))menu.style.display='none';}});
 
+
+const LLO_IMAGE_FIELDS=['logo_url','cover_image_url','gallery_image_urls'];
+const LLO_IMAGE_TYPES=['image/jpeg','image/png','image/webp','image/gif'];
+function lloImageUrls(k){const field=document.getElementById('bf-'+k);return String(field?.value||'').split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);}
+function lloImagePreview(k){
+ const out=document.getElementById('llo-preview-'+k);if(!out)return;
+ const urls=lloImageUrls(k);
+ out.innerHTML=urls.map((url,i)=>`<div style="position:relative;width:105px"><img src="${esc(url)}" alt="${esc(k)} image ${i+1}" loading="lazy" referrerpolicy="no-referrer" style="width:105px;height:85px;object-fit:contain;background:var(--s-sunk);border:1px solid var(--s-border);border-radius:7px"><button type="button" title="Remove image" onclick="lloImageRemove('${k}',${i})" style="position:absolute;top:2px;right:2px;background:var(--s-card);color:var(--s-ink);border:1px solid var(--s-border);border-radius:6px;padding:1px 5px">×</button></div>`).join('')||'<span class="wmeta">No images added yet.</span>';
+}
+function lloImageRemove(k,i){
+ const input=document.getElementById('bf-'+k);if(!input)return;
+ const urls=lloImageUrls(k);urls.splice(i,1);input.value=k==='gallery_image_urls'?urls.join('\n'):(urls[0]||'');
+ input.dataset.touched='1';lloImagePreview(k);bfAutoSave();
+}
+function lloImageChanged(k){lloImagePreview(k);bfAutoSave();}
+async function lloImageUpload(k,files){
+ const c=activeClient;if(!c||!files?.length)return;
+ const status=document.getElementById('llo-upload-status-'+k);
+ if(status)status.textContent='Uploading images…';
+ try{
+  const selected=[...files];if(k!=='gallery_image_urls'&&selected.length>1)throw Error('Choose one image for this field');
+  if(selected.length>20)throw Error('Upload a maximum of 20 images at a time');
+  const current=lloImageUrls(k);
+  const urls=k==='gallery_image_urls'?[...current]:[];
+  for(const file of selected){
+   if(!LLO_IMAGE_TYPES.includes(file.type))throw Error('Use JPG, PNG, WEBP, or GIF images');
+   if(file.size>10*1024*1024)throw Error('Each image must be smaller than 10 MB');
+   const ext=({ 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif' })[file.type];
+   const path=`${c.id}/${Date.now()}-${Math.random().toString(36).slice(2,11)}.${ext}`;
+   const {error}=await sb.storage.from('llo-images').upload(path,file,{contentType:file.type,upsert:false});
+   if(error)throw error;
+   const {data}=sb.storage.from('llo-images').getPublicUrl(path);
+   urls.push(data.publicUrl);
+  }
+  if(activeClient!==c)throw Error('Client changed during upload; images were uploaded but not assigned');
+  const el=document.getElementById('bf-'+k);
+  if(!el)throw Error('Image field no longer available');
+  el.value=k==='gallery_image_urls'?urls.join('\n'):urls[0];
+  el.dataset.touched='1';lloImagePreview(k);await saveBizFacts(true,true);
+  if(status)status.textContent='Images uploaded and saved';
+  showToast('LLO images uploaded and saved',false,true);
+ }catch(e){if(status)status.textContent='Upload failed: '+String(e.message||e);showToast('Image upload failed: '+String(e.message||e),true);}
+ finally{const picker=document.getElementById('llo-upload-'+k);if(picker)picker.value='';}
+}
+async function lloDetectLogo(silent=false){
+ const c=activeClient,input=document.getElementById('bf-logo_url'),btn=document.getElementById('llo-detect-logo');
+ if(!c||!input||!c.url)return;
+ if(input.value.trim()&&silent)return;
+ if(btn)btn.disabled=true;
+ try{
+  const {data,error}=await sb.functions.invoke('detect-website-logo',{body:{client_id:c.id}});
+  if(error)throw error;if(!data?.ok)throw Error(data?.error||'Logo could not be detected');
+  if(activeClient!==c)return;
+  if(!data.logo_url){if(!silent)showToast('No website logo found. Upload one instead.',true);return;}
+  if(input.value.trim())return;
+  input.value=data.logo_url;input.dataset.touched='1';lloImagePreview('logo_url');
+  await saveBizFacts(true,true);
+  if(!silent)showToast('Website logo found and saved. Please verify the preview.',false,true);
+ }catch(e){if(!silent)showToast('Website logo detection failed: '+String(e.message||e),true);}
+ finally{if(btn)btn.disabled=false;}
+}
+function lloImageField(k,m,value){
+ const gallery=k==='gallery_image_urls';
+ return `<div class="bf-field bf-wide"><label>${m.l}</label>
+ ${gallery?`<textarea id="bf-${k}" rows="2" placeholder="One image URL per line" oninput="lloImageChanged('${k}')">${esc(value||'')}</textarea>`:`<input id="bf-${k}" value="${esc(value||'')}" placeholder="Image URL" oninput="lloImageChanged('${k}')">`}
+ <div id="llo-preview-${k}" style="display:flex;gap:7px;flex-wrap:wrap;margin:8px 0"></div>
+ <div class="bf-actions" style="justify-content:flex-start;gap:8px">
+ <input type="file" id="llo-upload-${k}" accept="image/png,image/jpeg,image/webp,image/gif" ${gallery?'multiple':''} style="display:none" onchange="lloImageUpload('${k}',this.files)">
+ <button type="button" class="ds-save" onclick="document.getElementById('llo-upload-${k}').click()"><i class="fa-solid fa-image"></i> ${gallery?'Add gallery images':'Upload image'}</button>
+ ${k==='logo_url'?'<button type="button" class="ds-save" id="llo-detect-logo" onclick="lloDetectLogo(false)"><i class="fa-solid fa-wand-magic-sparkles"></i> Find website logo</button>':''}
+ </div><div class="wmeta" id="llo-upload-status-${k}">JPG, PNG, WEBP, or GIF, up to 10 MB each.</div></div>`;
+}
+
 const INTAKE_SECTIONS=[
   ['Contact & location',['phone','email','street','city','state','zip','hours']],
   ['Business profile',['description','category_primary','category_secondary','categories','services','service_areas','products','specialties','languages','year_established','payment_types','license']],
@@ -5357,6 +5430,7 @@ async function renderBizFacts(){
     const m=FMETA[k]||{l:k,ph:''};
     const isSug=!iv[k]&&sug[k];
     const hint=isSug?' <span style="color:var(--s-warn-text);text-transform:none;letter-spacing:0">· from site — verify</span>':'';
+    if(LLO_IMAGE_FIELDS.includes(k)) return lloImageField(k,m,iv[k]||sug[k]||'');
     if(k==='category_primary'||k==='category_secondary') return categoryPicker(k,m,iv[k]||sug[k]||'');
     if(k==='description'||k==='landing_targets'||k==='gallery_image_urls') return `<div class="bf-field bf-wide">${noLabel?'':`<label>${m.l}${hint}</label>`}
       <textarea id="bf-${k}" rows="3" placeholder="${esc(m.ph)}" oninput="bfAutoSave()${k==='description'?';bfDescCount()':''}">${esc(iv[k]||sug[k]||'')}</textarea>${k==='description'?'<div class="bf-actions" style="justify-content:flex-start;margin-top:8px"><button type="button" class="ds-save" id="bf-gbp-generate" onclick="generateGBPDescription()"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate</button><span class="wmeta">Scan website and draft a Google Business Profile description</span></div>':''}${
@@ -5393,6 +5467,8 @@ async function renderBizFacts(){
       <button class="tbtn" style="margin-top:4px" onclick="bfAddKw()"><i class="fa-solid fa-plus"></i> Add keyword</button>
     </div>
     <div class="bf-sec"><h4>Targeted landing pages</h4><div class="bf-grid">${field('landing_targets','',true)}</div></div>`;
+  LLO_IMAGE_FIELDS.forEach(lloImagePreview);
+  if(!iv.logo_url&&!sug.logo_url)lloDetectLogo(true);
   renderALPanel();
 }
 async function generateGBPDescription(){
