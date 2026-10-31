@@ -73,7 +73,7 @@ Deno.serve(async(req)=>{
     return terms.some(w=>w.length>=4&&body.includes(w));
   });
   const missing=[!contains(description,name)&&"business name",!contains(description,city)&&"city",!stateMatch&&"state",...serviceAreas.filter(area=>!contains(description,area)).map(area=>"service area: "+area),!serviceMatch&&"service keyword"].filter(Boolean);
-  const formatError=description.length>750?"over 750 characters":description.length<100?"under 100 characters":/https?:\\/\\/|www\\./i.test(description)?"contains a URL":"";
+  const formatError=description.length>750?"over 750 characters":description.length<100?"under 100 characters":hasUrl(description)?"contains a URL":"";
   if(missing.length||formatError){
     // One corrective AI pass preserves the user's required fields without
     // discarding a useful draft simply because the model used synonyms.
@@ -81,7 +81,7 @@ Deno.serve(async(req)=>{
     const retry=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:"claude-haiku-4-5",max_tokens:550,temperature:0.2,messages:[{role:"user",content:correction}]})});
     if(retry.ok){
       const retryBody=await retry.json();
-      const repaired=String((retryBody.content||[]).filter((c:any)=>c.type==="text").map((c:any)=>c.text).join(" ")).replace(/^[\\"'\\s]+|[\\"'\\s]+$/g,"").replace(/\\s+/g," ").trim();
+      const repaired=String((retryBody.content||[]).filter((c:any)=>c.type==="text").map((c:any)=>c.text).join(" ")).replace(/^[\\"'\\s]+|[\\"'\\s]+$/g,"").replace(/\s+/g," ").trim();
       if(repaired)description=repaired;
     }
   }
@@ -92,4 +92,6 @@ Deno.serve(async(req)=>{
   }
   return respond({ok:true,description,characters:description.length,website_scanned:true});
  }catch(e){console.error("generate-gbp-description",String(e));return respond({error:"Generation encountered an error"},500);}
-});
+})   const hasUrl=(v:string)=>v.includes("https://")||v.includes("http://")||v.includes("www.");
+   const formatError=description.length>750?"over 750 characters":description.length<100?"under 100 characters":hasUrl(description)?"contains a URL":"";
+;
