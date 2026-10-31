@@ -61,9 +61,35 @@ Deno.serve(async(req)=>{
   const body=await response.json();
   if(!response.ok)return respond({error:"Description generation failed",detail:String(body?.error?.message||"").slice(0,200)},502);
   let description=String((body.content||[]).filter((c:any)=>c.type==="text").map((c:any)=>c.text).join(" ")).replace(/^[\"'\s]+|[\"'\s]+$/g,"").replace(/\s+/g," ").trim();
-  const norm=(s:string)=>s.toLowerCase();
-  const missing=[!norm(description).includes(norm(name))&&"business name",!norm(description).includes(norm(city))&&"city",!norm(description).includes(norm(state))&&"state",!serviceAreas.every(a=>norm(description).includes(norm(a)))&&"service areas",!([...services,...keywords,category].some(x=>x&&norm(description).includes(norm(x))))&&"service keyword"].filter(Boolean);
-  if(missing.length||description.length>750||description.length<100||/https?:\/\/|www\./i.test(description))return respond({error:"The draft did not pass content checks. Try Generate again.",failed_checks:missing},422);
+  // Validate meaning rather than brittle exact phrasing.
+  const norm=(v:string)=>String(v||"").toLowerCase().normalize("NFKD").replace(/[^a-z0-9 ]/g," ").replace(/\\s+/g," ").trim();
+  const stateNames:Record<string,string>={WI:"wisconsin",SD:"south dakota",ND:"north dakota",MN:"minnesota",IA:"iowa",IL:"illinois",NE:"nebraska",TX:"texas",CA:"california",NY:"new york",MS:"mississippi",AR:"arkansas",LA:"louisiana",TN:"tennessee",CO:"colorado",MO:"missouri",IN:"indiana",KY:"kentucky",ID:"idaho",NV:"nevada",AZ:"arizona",FL:"florida"};
+  const contains=(text:string,phrase:string)=>norm(text).includes(norm(phrase));
+  const stateMatch=contains(description,state)||(stateNames[state.toUpperCase()]&&contains(description,stateNames[state.toUpperCase()]));
+  const serviceTerms=[...services,...keywords,category].filter(Boolean);
+  const serviceMatch=serviceTerms.some(term=>{
+    const terms=norm(term).split(" ").filter(w=>w.length>3).map(w=>w.replace(/(ing|ment|s)$/,""));
+    const body=norm(description);
+    return terms.some(w=>w.length>=4&&body.includes(w));
+  });
+  const missing=[!contains(description,name)&&"business name",!contains(description,city)&&"city",!stateMatch&&"state",...serviceAreas.filter(area=>!contains(description,area)).map(area=>"service area: "+area),!serviceMatch&&"service keyword"].filter(Boolean);
+  const formatError=description.length>750?"over 750 characters":description.length<100?"under 100 characters":/https?:\\/\\/|www\\./i.test(description)?"contains a URL":"";
+  if(missing.length||formatError){
+    // One corrective AI pass preserves the user's required fields without
+    // discarding a useful draft simply because the model used synonyms.
+    const correction="Rewrite this Google Business Profile description into one natural third-person paragraph, 350-700 characters, maximum 750. Preserve verified details, use exact business name "+JSON.stringify(name)+", city "+JSON.stringify(city)+", state "+JSON.stringify(state)+" (or its full state name), and mention each of these service areas exactly: "+JSON.stringify(serviceAreas)+". Include a relevant service such as "+JSON.stringify(services[0]||keywords[0]||category)+". Do not add new factual claims, links, phone numbers, markdown or promotional offers. Fix these missing details: "+JSON.stringify(missing)+". Draft: "+description;
+    const retry=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:"claude-haiku-4-5",max_tokens:550,temperature:0.2,messages:[{role:"user",content:correction}]})});
+    if(retry.ok){
+      const retryBody=await retry.json();
+      const repaired=String((retryBody.content||[]).filter((c:any)=>c.type==="text").map((c:any)=>c.text).join(" ")).replace(/^[\\"'\\s]+|[\\"'\\s]+$/g,"").replace(/\\s+/g," ").trim();
+      if(repaired)description=repaired;
+    }
+  }
+  const finalMissing=[!contains(description,name)&&"business name",!contains(description,city)&&"city",!(contains(description,state)||(stateNames[state.toUpperCase()]&&contains(description,stateNames[state.toUpperCase()])))&&"state",...serviceAreas.filter(area=>!contains(description,area)).map(area=>"service area: "+area),!serviceTerms.some(term=>norm(term).split(" ").filter(w=>w.length>3).some(w=>norm(description).includes(w.replace(/(ing|ment|s)$/,""))))&&"service keyword"].filter(Boolean);
+  if(finalMissing.length||description.length>750||description.length<100||/https?:\\/\\/|www\\./i.test(description)){
+    console.warn("GBP validation rejected draft",{client_id:client.id,failed_checks:finalMissing,length:description.length});
+    return respond({error:"The draft did not pass content checks: "+(finalMissing.join(", ")||"length/format")+". Try Generate again.",failed_checks:finalMissing},422);
+  }
   return respond({ok:true,description,characters:description.length,website_scanned:true});
  }catch(e){console.error("generate-gbp-description",String(e));return respond({error:"Generation encountered an error"},500);}
 });
