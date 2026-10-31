@@ -86,7 +86,7 @@ Deno.serve(async(req)=>{
     }
   }
   const finalMissing=[!contains(description,name)&&"business name",!contains(description,city)&&"city",!(contains(description,state)||(stateNames[state.toUpperCase()]&&contains(description,stateNames[state.toUpperCase()])))&&"state",...serviceAreas.filter(area=>!contains(description,area)).map(area=>"service area: "+area),!serviceTerms.some(term=>norm(term).split(" ").filter(w=>w.length>3).some(w=>norm(description).includes(w.replace(/(ing|ment|s)$/,""))))&&"service keyword"].filter(Boolean);
-  if(finalMissing.length||description.length>750||description.length<100||/https?:\\/\\/|www\\./i.test(description)){
+   if(finalMissing.length||description.length>750||description.length<100||hasUrl(description)){
     console.warn("GBP validation rejected draft",{client_id:client.id,failed_checks:finalMissing,length:description.length});
     return respond({error:"The draft did not pass content checks: "+(finalMissing.join(", ")||"length/format")+". Try Generate again.",failed_checks:finalMissing},422);
   }
