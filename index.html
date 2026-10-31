@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <!--
-  44i SEO/AEO Delivery System — Internal Ops Console v15
+  44i SEO/AEO Delivery System — Internal Ops Console v16
   Stack: static front-end · secure cloud backend · search & authority data
 
   THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
@@ -5632,9 +5632,9 @@ async function alOrder(){
 const AL_GROUPS=[
   {key:'attn',  label:'Needs attention', cls:'bad',   rank:1, order:0, help:'refused or failed — raise it with LLO if it persists'},
   {key:'verify',label:'Verification',    cls:'warn',  rank:4, order:1, help:'the directory wants a phone/email/postcard confirmation from the business'},
-  {key:'live',  label:'Synced',          cls:'ok',    rank:5, order:2, help:'submitted and added or claimed; the listing may also be live'},
-  {key:'retry', label:'Synced',          cls:'ok',    rank:3, order:3, help:'business data syndicated to LLO; an individual directory listing may still be processing. The fulfillment API retains its original status for reporting'},
-  {key:'queued',label:'Processing',      cls:'q',     rank:2, order:4, help:'directory submission is still being processed'},
+  {key:'live',  label:'Live',            cls:'ok',    rank:5, order:2, help:'listed and claimed'},
+  {key:'retry', label:'Retrying',        cls:'retry', rank:3, order:3, help:'a temporary hiccup at the directory; LLO resubmits automatically, usually within days'},
+  {key:'queued',label:'Queued',          cls:'q',     rank:2, order:4, help:'not submitted yet'},
   {key:'other', label:'Other',           cls:'q',     rank:0, order:5, help:'see the raw status on hover'},
 ];
 function alGroup(status){
@@ -5665,35 +5665,15 @@ async function alStatus(){
       if(String(f.updated||'')>String(cur.updated||'')) cur.updated=f.updated;
     });
     const rows=[...byDir.values()].sort((a,b)=>a.g.order-b.g.order||String(a.directory).localeCompare(String(b.directory)));
-    // Keep the API status visible without changing the reporting groups stored by Supabase.
-    const retryCount=[...byDir.values()].filter(f=>f.g.key==='retry').length;
     const counts={}; rows.forEach(r=>{ counts[r.g.key]=(counts[r.g.key]||0)+1; });
-    // Combine visible labels (e.g. both raw live/retry groups display Synced).
-    // Reporting is not changed: raw status groups remain separate in Supabase.
-    const visibleGroups=new Map();
-    AL_GROUPS.filter(g=>counts[g.key]).forEach(g=>{
-      const existing=visibleGroups.get(g.label);
-      if(existing) existing.count+=counts[g.key];
-      else visibleGroups.set(g.label,{...g,count:counts[g.key]});
-    });
-    const summary=[...visibleGroups.values()].map(g=>`<span class="al-pill ${g.cls}">${g.count} ${g.label.toLowerCase()}</span>`).join(' ');
-    const visibleHelp=[...visibleGroups.values()].map(g=>`<b>${g.label}</b>: ${g.label==='Synced'?'business data submitted or added; a directory link may still be processing':g.help}`).join(' · ');
-    // Normalize underscore-separated API values before interpreting the baseline.
-    const baselineLabel=raw=>{
-      const original=String(raw??'').trim(); if(!original)return '—';
-      const normalized=original.toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
-      if(['not present','not found','not listed','missing','absent'].includes(normalized))return 'Not Found';
-      if(['present','found','listed','already present'].includes(normalized))return 'Found';
-      return original.replace(/_/g,' ');
-    };
+    const summary=AL_GROUPS.filter(g=>counts[g.key]).map(g=>`<span class="al-pill ${g.cls}">${counts[g.key]} ${g.label.toLowerCase()}</span>`).join(' ');
+    const was=s=>{ const t=String(s||'').toLowerCase(); return !t?'—':/not\s*present/.test(t)?'Not listed':/present/.test(t)?'Already listed':String(s).replace(/_/g,' '); };
     el.innerHTML=`<div class="al-sum"><b>${rows.length} directories</b> ${summary}</div>
-      ${retryCount?'<div class="wmeta" style="margin:7px 0;padding:9px;border:1px solid var(--s-border);border-radius:8px">Some rows labeled <b>Synced</b> are reported by the fulfillment API as <b>temporary_problem</b>. The label follows the LLO report's submission terminology, not verification of a live directory page. Hover over a status to see the raw API value. Stored reporting statuses are unchanged.</div>':''}
-      <div class="wmeta" style="margin:4px 0 10px">${visibleHelp}</div>
-      <div style="overflow-x:auto"><table class="team-tbl"><thead><tr><th>Local Page or Directory</th><th>Baseline</th><th>Status</th><th>Your Listing</th><th>Updated</th></tr></thead><tbody>${
+      <div class="wmeta" style="margin:4px 0 10px">${AL_GROUPS.filter(g=>counts[g.key]).map(g=>`<b>${g.label}</b>: ${g.help}`).join(' · ')}</div>
+      <div style="overflow-x:auto"><table class="team-tbl"><thead><tr><th>Directory</th><th>Status</th><th>Before</th><th>Listing</th><th>Updated</th></tr></thead><tbody>${
       rows.map(f=>`<tr><td><b>${esc(f.directory||'—')}</b></td>
-        <td>${esc(baselineLabel(f.initial))}</td>
-        <td><span class="al-pill ${f.g.cls}" title="LLO API status: ${esc(String(f.status||'—'))}">${f.g.label}</span></td>
-        <td>${f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener">Link <i class="fa-solid fa-arrow-up-right-from-square"></i></a>`:'—'}</td>
+        <td><span class="al-pill ${f.g.cls}" title="LLO status: ${esc(String(f.status||'—'))}">${f.g.label}</span></td><td>${esc(was(f.initial))}</td>
+        <td>${f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener">open <i class="fa-solid fa-arrow-up-right-from-square"></i></a>`:'—'}</td>
         <td>${f.updated?fmtDate(String(f.updated).slice(0,10)):'—'}</td></tr>`).join('')}</tbody></table></div>`;
   }catch(e){ if(el) el.innerHTML=`<div class="wmeta" style="color:#c0392b">${esc(String(e.message||e))}</div>`; }
 }
