@@ -58,6 +58,42 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
+
+function parseAdviceHours(raw: string): { periods: Array<{openDay:string,openTime:string,closeDay:string,closeTime:string}> } | null {
+  const DAYS=["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"];
+  const a:Record<string,number>={mo:0,mon:0,monday:0,tu:1,tue:1,tues:1,tuesday:1,we:2,wed:2,wednesday:2,th:3,thu:3,thur:3,thurs:3,thursday:3,fr:4,fri:4,friday:4,sa:5,sat:5,saturday:5,su:6,sun:6,sunday:6};
+  const time=(str:string)=>{
+    const m=str.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+    if(!m)return null;
+    let h=Number(m[1]),mins=Number(m[2]||0),period=m[3]?.toUpperCase();
+    if(mins>59 || (period ? (h<1||h>12) : h>23))return null;
+    if(period)h=h%12+(period==="PM"?12:0);
+    return String(h).padStart(2,"0")+":"+String(mins).padStart(2,"0");
+  };
+  const slots=new Map<number,{openDay:string,openTime:string,closeDay:string,closeTime:string}|null>();
+  for(const part of raw.split(/\s*;\s*|\n+/).map(x=>x.trim()).filter(Boolean)){
+    const m=part.match(/^([a-z]{2,9})(?:\s*[-–—]\s*([a-z]{2,9}))?\s+(.+)$/i);
+    if(!m)return null;
+    const first=a[m[1].toLowerCase()],last=m[2]?a[m[2].toLowerCase()]:first;
+    if(first===undefined||last===undefined)return null;
+    const closed=/^closed$/i.test(m[3].trim());
+    const times=m[3].trim().match(/^(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)\s*[-–—]\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)$/i);
+    if(!closed&&!times)return null;
+    const start=closed?null:time(times![1]),end=closed?null:time(times![2]);
+    if(!closed&&(!start||!end||start===end))return null;
+    let day=first,reached=false;
+    for(let n=0;n<7;n++){
+      if(slots.has(day))return null;
+      slots.set(day,closed?null:{openDay:DAYS[day],openTime:start!,closeDay:DAYS[day],closeTime:end!});
+      if(day===last){reached=true;break;}
+      day=(day+1)%7;
+    }
+    if(!reached)return null;
+  }
+  if(slots.size!==7)return null;
+  return {periods:DAYS.map((_,i)=>slots.get(i)).filter((p):p is NonNullable<typeof p>=>p!==null && p!==undefined)};
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -88,7 +124,7 @@ Deno.serve(async (req) => {
     // Advice Local's business-location payload, built from the approved
     // business facts (the intake is the only source of truth for NAP).
     const website = client.url ? "https://" + String(client.url).replace(/^https?:\/\//, "").replace(/\/+$/, "") : "";
-    const payload: Record<string, string> = {
+    const payload: Record<string, any> = {
       name: String(client.name || "").trim(),
       street: String(iv.street || "").trim(),
       city: String(iv.city || "").trim(),
@@ -100,8 +136,12 @@ Deno.serve(async (req) => {
       email: String(iv.email || "").trim(),
       description: String(iv.description || "").trim(),
       services: String(iv.categories || "").trim(),
-      hours: String(iv.hours || "").trim(),
+
     };
+    const hoursInput=String(iv.hours||"").trim();
+    const structuredHours=hoursInput?parseAdviceHours(hoursInput):null;
+    if(structuredHours)payload.hoursObject=structuredHours;
+    const hoursWarning=hoursInput&&!structuredHours ? "Business hours could not be parsed safely. Hours were NOT updated; enter a complete seven-day schedule like Mo-Fr 8:00 AM - 4:30 PM; Sa-Su Closed." : null;
     const REQUIRED = ["name", "street", "city", "state", "zipcode", "phone", "website"];
     const missing = REQUIRED.filter((k) => !payload[k]);
 
@@ -137,12 +177,12 @@ Deno.serve(async (req) => {
     // optional field back one at a time — the listing still syncs, and the
     // refused fields are named for the specialist to fix.
     const CORE = ["name", "street", "city", "state", "zipcode", "country", "phone", "website"];
-    const OPTIONAL = ["email", "description", "services", "hours"];
+    const OPTIONAL = ["email", "description", "services", "hoursObject"];
     const pick = (keys: string[]) => Object.fromEntries(keys.filter((k) => payload[k]).map((k) => [k, payload[k]]));
     const refused = (e: unknown) => /HTTP 4(00|22)|Invalid Request/i.test(String((e as any)?.message || e));
     const msg = (e: unknown) => String((e as any)?.message || e).replace(/^Advice Local \w+ \S+ → /, "");
     const upsertLocation = async (existing: number | null): Promise<{ id: number; rejected: string[]; created: unknown }> => {
-      const send = (id: number | null, data: Record<string, string>) =>
+      const send = (id: number | null, data: Record<string, any>) =>
         id ? al("PUT", `/legacyclients/${id}`, data) : al("POST", "/legacyclients", data);
       try {
         const r = await send(existing, payload);
@@ -158,7 +198,7 @@ Deno.serve(async (req) => {
         }
         const id = existing ?? Number(r?.id);
         if (!id) return { id: 0, rejected: [], created: r };
-        const kept: Record<string, string> = { ...core };
+        const kept: Record<string, any> = { ...core };
         const rejected: string[] = [];
         for (const k of OPTIONAL) {
           if (!payload[k]) continue;
@@ -170,7 +210,7 @@ Deno.serve(async (req) => {
         return { id, rejected, created: r };
       }
     };
-    const FIELD_LABEL: Record<string, string> = { email: "email", description: "business description", services: "categories", hours: "hours" };
+    const FIELD_LABEL: Record<string, string> = { email: "email", description: "business description", services: "categories", hoursObject: "business hours" };
     const rejectedNote = (rej: string[]) => rej.length
       ? `Advice Local refused the ${rej.map((k) => FIELD_LABEL[k] || k).join(", ")} — the listing synced without ${rej.length > 1 ? "them" : "it"}; adjust ${rej.length > 1 ? "those" : "that"} in Business Facts and Sync again`
       : null;
@@ -185,7 +225,7 @@ Deno.serve(async (req) => {
     if (action === "preview") {
       return json({ ok: true, payload, missing, product_id: PRODUCT_ID,
         al_client_id: client.al_client_id || null, al_order_id: client.al_order_id || null,
-        al_synced_at: client.al_synced_at || null });
+        al_synced_at: client.al_synced_at || null, hours_warning: hoursWarning });
     }
 
     if (action === "sync") {
@@ -195,7 +235,7 @@ Deno.serve(async (req) => {
       if (!up.id) return json({ error: "Advice Local did not return a location id", response: up.created }, 502);
       const warn = await remember({ al_client_id: up.id, al_synced_at: new Date().toISOString() });
       return json({ ok: true, mode: existing ? "updated" : "created", al_client_id: up.id, payload, rejected: up.rejected,
-        warning: [rejectedNote(up.rejected), warn].filter(Boolean).join(" · ") || null });
+        warning: [hoursWarning,rejectedNote(up.rejected), warn].filter(Boolean).join(" · ") || null });
     }
 
     if (action === "status") {
@@ -262,7 +302,7 @@ Deno.serve(async (req) => {
       const orderId = res?.order?.id ? Number(res.order.id) : null;
       let warn: string | null = null;
       if (!test && orderId) warn = await remember({ al_order_id: orderId });
-      warn = [rejectedNote(rejected), warn].filter(Boolean).join(" · ") || null;
+      warn = [hoursWarning,rejectedNote(rejected), warn].filter(Boolean).join(" · ") || null;
       console.log(`advice-local order ${test ? "(TEST) " : ""}client=${client.url || client.name} al=${alId} order=${orderId} by ${caller.user.email}`);
       return json({ ok: true, test, al_client_id: alId, order_id: orderId,
         price: res?.order?.price ?? null, products: res?.order?.products || [PRODUCT_ID], warning: warn });
