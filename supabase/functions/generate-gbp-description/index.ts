@@ -73,6 +73,7 @@ Deno.serve(async(req)=>{
     return terms.some(w=>w.length>=4&&body.includes(w));
   });
   const missing=[!contains(description,name)&&"business name",!contains(description,city)&&"city",!stateMatch&&"state",...serviceAreas.filter(area=>!contains(description,area)).map(area=>"service area: "+area),!serviceMatch&&"service keyword"].filter(Boolean);
+  const hasUrl=(v:string)=>v.includes("https://")||v.includes("http://")||v.includes("www.");
   const formatError=description.length>750?"over 750 characters":description.length<100?"under 100 characters":hasUrl(description)?"contains a URL":"";
   if(missing.length||formatError){
     // One corrective AI pass preserves the user's required fields without
@@ -92,6 +93,3 @@ Deno.serve(async(req)=>{
   }
   return respond({ok:true,description,characters:description.length,website_scanned:true});
  }catch(e){console.error("generate-gbp-description",String(e));return respond({error:"Generation encountered an error"},500);}
-})   const hasUrl=(v:string)=>v.includes("https://")||v.includes("http://")||v.includes("www.");
-   const formatError=description.length>750?"over 750 characters":description.length<100?"under 100 characters":hasUrl(description)?"contains a URL":"";
-;
