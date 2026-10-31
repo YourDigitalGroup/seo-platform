@@ -5323,7 +5323,7 @@ async function renderBizFacts(){
     const m=FMETA[k]||{l:k,ph:''};
     const isSug=!iv[k]&&sug[k];
     const hint=isSug?' <span style="color:var(--s-warn-text);text-transform:none;letter-spacing:0">· from site — verify</span>':'';
-    if(k==='description'||k==='landing_targets') return `<div class="bf-field bf-wide">${noLabel?'':`<label>${m.l}${hint}</label>`}
+    if(k==='description'||k==='landing_targets'||k==='gallery_image_urls') return `<div class="bf-field bf-wide">${noLabel?'':`<label>${m.l}${hint}</label>`}
       <textarea id="bf-${k}" rows="3" placeholder="${esc(m.ph)}" oninput="bfAutoSave()${k==='description'?';bfDescCount()':''}">${esc(iv[k]||sug[k]||'')}</textarea>${k==='description'?'<div class="bf-actions" style="justify-content:flex-start;margin-top:8px"><button type="button" class="ds-save" id="bf-gbp-generate" onclick="generateGBPDescription()"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate</button><span class="wmeta">Scan website and draft a Google Business Profile description</span></div>':''}${
       k==='description'?`<div class="bf-count" id="bf-desc-count">${bfDescCountHtml(iv[k]||sug[k]||'')}</div>`:''}</div>`;
     return `<div class="bf-field ${extra||''}"><label>${m.l}${hint}</label>
