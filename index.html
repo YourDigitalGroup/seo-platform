@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <!--
-  44i SEO/AEO Delivery System — Internal Ops Console v10
+  44i SEO/AEO Delivery System — Internal Ops Console v11
   Stack: static front-end · secure cloud backend · search & authority data
 
   THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
@@ -5279,7 +5279,7 @@ const GBP_NAMES=new Map(GBP_CATEGORIES);
 function gcids(v){return String(v||'').split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean)}
 function categoryPicker(k,m,value){
  const ids=gcids(value);
- return `<div class="bf-field ${k==='category_secondary'?'bf-wide':''}" style="position:relative"><label>${m.l}</label><input type="hidden" id="bf-${k}" value="${esc(value||'')}"><div id="cat-chips-${k}"></div><input id="cat-find-${k}" type="search" placeholder="Search Google categories or GCIDs" autocomplete="off" onfocus="catSearch('${k}')" oninput="catSearch('${k}')"><div id="cat-menu-${k}" style="display:none;position:absolute;z-index:40;top:100%;left:0;right:0;max-height:245px;overflow:auto;background:var(--s-card);box-shadow:var(--shadow-md);border:1px solid var(--s-border);border-radius:8px"></div><div class="wmeta">Search ${GBP_CATEGORIES.length.toLocaleString()} categories. Saves exact GCIDs for LLO synchronization.</div></div>`;
+ return `<div class="bf-field ${k==='category_secondary'?'bf-wide':''}" style="position:relative"><label>${m.l}</label><input type="hidden" id="bf-${k}" value="${esc(value||'')}"><div id="cat-chips-${k}"></div><input id="cat-find-${k}" type="search" placeholder="Search Google categories or GCIDs" autocomplete="off" onfocus="catSearch('${k}')" oninput="catSearch('${k}')"><div id="cat-menu-${k}" style="display:none;position:absolute;z-index:40;top:100%;left:0;right:0;max-height:245px;overflow:auto;background:var(--s-card);box-shadow:var(--shadow-md);border:1px solid var(--s-border);border-radius:8px"></div></div>`;
 }
 function catChips(k){
  const box=document.getElementById('cat-chips-'+k),input=document.getElementById('bf-'+k);if(!box||!input)return;
