@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <!--
-  44i SEO/AEO Delivery System — Internal Ops Console v8
+  44i SEO/AEO Delivery System — Internal Ops Console v9
   Stack: static front-end · secure cloud backend · search & authority data
 
   THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
@@ -1197,7 +1197,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div class="howto"><b>Step 1 — Set the client up.</b> (Once per client, then only when something changes.)
         <ol>
           <li>Check the URL, target market and plan, then fill in the <b>Business Facts</b>. Amber fields were read off the client's website — verify them; everything saves as you type.</li>
-          <li>Add the target keywords and targeted landing pages, then the <b>Local Listing Optimization</b> citation pack and Advice Local sync.</li>
+          <li>Add the target keywords and targeted landing pages, then the <b>Local Listing Optimization</b> citation pack and LLO sync.</li>
           <li>Add any <b>Client notes</b> the team should know, then click <b>Generate package →</b>. That one button runs the audit, writes the fixes and drafts the content — everything on the other tabs comes from it — and hands the package to the SEO/AEO specialist on Trello automatically (Sarah unless the client has its own strategist).</li>
           <li>In Platform Access, connect what you have: the WordPress key (from the client site's connector plugin — see tab ④), Search Console, Business Profile.</li>
         </ol>
@@ -5278,7 +5278,7 @@ const INTAKE_SECTIONS=[
   ['Business profile',['description','category_primary','category_secondary','categories','services','service_areas','products','specialties','languages','year_established','payment_types','license']],
   ['Trust & people',['owner','credentials','gbp_rating','gbp_reviews','associations','brands']],
   ['Profiles & links',['gbp','facebook','x','instagram','linkedin','appointment_url','gbp_shortname']],
-  ['Images for Advice Local',['logo_url','cover_image_url','gallery_image_urls']],
+  ['Images for LLO',['logo_url','cover_image_url','gallery_image_urls']],
 ];
 const DIRECTORIES=[
   ['Google Business Profile','https://business.google.com/create','Owner verification required (postcard/phone/video) — schedule with the client'],
@@ -5313,7 +5313,7 @@ async function renderBizFacts(){
   }
   const iv=activeClient._intake||{};
   // Fields auto-save as they're edited — the real "approval" moment is when
-  // the facts get downloaded (citation pack) or sent to Advice Local.
+  // the facts get downloaded (citation pack) or sent to LLO.
   // Scraped-from-site suggestions prefill amber until a save touches them.
   const sug=((PK.raw||{}).intake_suggested)||{};
   const suggested=INTAKE_FIELDS.filter(([k])=>!iv[k]&&sug[k]).length;
@@ -5336,9 +5336,9 @@ async function renderBizFacts(){
   el.dataset.cid=activeClient.id;
   const llo=document.getElementById('llo');
   if(llo) llo.innerHTML=`
-    <div class="section-h" style="margin-top:22px"><h2>Local Listing Optimization</h2><div class="ln"></div><span class="tag">citation pack · Advice Local</span></div>
+    <div class="section-h" style="margin-top:22px"><h2>Local Listing Optimization</h2><div class="ln"></div><span class="tag">citation pack · LLO</span></div>
     <div class="bf-sec">
-      <div class="wmeta" style="margin-bottom:10px">The business facts above power the citation pack and the Advice Local submission — fields auto-save as you type.</div>
+      <div class="wmeta" style="margin-bottom:10px">The business facts above power the citation pack and the LLO submission — fields auto-save as you type.</div>
       <div class="bf-actions" style="justify-content:flex-start;margin-top:0">
         <button class="ds-save" style="background:var(--blue)" onclick="downloadCitationPack()"><i class="fa-solid fa-address-card"></i> Citation pack</button>
         <button class="ds-save" style="background:#6FA53C" onclick="downloadCitationCSV()"><i class="fa-solid fa-download"></i> Citations CSV</button>
@@ -5381,22 +5381,22 @@ async function generateGBPDescription(){
  }catch(e){showToast('Could not generate description: '+String(e.message||e),true);}
  finally{btn.disabled=false;btn.innerHTML=original;}
 }
-// Advice Local refuses a business description outside 100–2048 characters
+// LLO refuses a business description outside 100–2048 characters
 // ("description must be between 100 and 2048 characters"), and directories
 // that show one want a real paragraph — so the field counts as you type.
 const AL_DESC_MIN=100, AL_DESC_MAX=2048;
 function alDescProblem(text){
   const n=String(text||'').trim().length;
   if(!n) return '';
-  if(n<AL_DESC_MIN) return `The business description is ${n} characters — Advice Local needs at least ${AL_DESC_MIN}. Add ${AL_DESC_MIN-n} more (services, areas served, credentials).`;
-  if(n>AL_DESC_MAX) return `The business description is ${n} characters — Advice Local allows at most ${AL_DESC_MAX}. Trim ${n-AL_DESC_MAX}.`;
+  if(n<AL_DESC_MIN) return `The business description is ${n} characters — LLO needs at least ${AL_DESC_MIN}. Add ${AL_DESC_MIN-n} more (services, areas served, credentials).`;
+  if(n>AL_DESC_MAX) return `The business description is ${n} characters — LLO allows at most ${AL_DESC_MAX}. Trim ${n-AL_DESC_MAX}.`;
   return '';
 }
 function bfDescCountHtml(text){
   const n=String(text||'').trim().length;
-  if(!n) return `<span>0 characters · Advice Local needs ${AL_DESC_MIN}–${AL_DESC_MAX}</span>`;
-  if(n<AL_DESC_MIN) return `<span class="warn"><i class="fa-solid fa-triangle-exclamation"></i> ${n} / ${AL_DESC_MIN} minimum · add ${AL_DESC_MIN-n} more for Advice Local</span>`;
-  if(n>AL_DESC_MAX) return `<span class="warn"><i class="fa-solid fa-triangle-exclamation"></i> ${n} / ${AL_DESC_MAX} maximum · trim ${n-AL_DESC_MAX} for Advice Local</span>`;
+  if(!n) return `<span>0 characters · LLO needs ${AL_DESC_MIN}–${AL_DESC_MAX}</span>`;
+  if(n<AL_DESC_MIN) return `<span class="warn"><i class="fa-solid fa-triangle-exclamation"></i> ${n} / ${AL_DESC_MIN} minimum · add ${AL_DESC_MIN-n} more for LLO</span>`;
+  if(n>AL_DESC_MAX) return `<span class="warn"><i class="fa-solid fa-triangle-exclamation"></i> ${n} / ${AL_DESC_MAX} maximum · trim ${n-AL_DESC_MAX} for LLO</span>`;
   return `<span class="ok"><i class="fa-solid fa-check"></i> ${n} characters</span>`;
 }
 function bfDescCount(){
@@ -5429,7 +5429,7 @@ function bfAutoSave(){
   const st=document.getElementById('bf-savestate'); if(st) st.textContent='· saving…';
   _bfTimer=setTimeout(()=>{ _bfTimer=null; saveBizFacts(true); }, 700);
 }
-// Downloads and Advice Local calls act on what's ON SCREEN: flush any
+// Downloads and LLO calls act on what's ON SCREEN: flush any
 // pending debounce AND commit fields that differ from the saved intake —
 // including scraper-prefilled suggestions the user never typed in (auto-save
 // only fires on input, so untouched prefills would otherwise never save and
@@ -5445,7 +5445,7 @@ async function bfFlush(){
 // ── ADVICE LOCAL — automated citation submission (LLO fulfillment) ──────────
 // The advice-local Edge Function holds the partner API key and does the
 // talking; the console just drives it. Sync pushes the approved business
-// facts to Advice Local (create once, update thereafter); the order button
+// facts to LLO (create once, update thereafter); the order button
 // activates the LLO product — that one is billable and AM/admin-gated
 // server-side.
 async function alInvoke(payload){
@@ -5466,15 +5466,15 @@ async function renderALPanel(){
       activeClient._al=(!error&&data)||{}; }catch(_){ activeClient._al={}; }
   }
   const a=activeClient._al||{};
-  const linked=a.al_client_id?`Linked — Advice Local location #${a.al_client_id}`+
+  const linked=a.al_client_id?`Linked — LLO location #${a.al_client_id}`+
       (a.al_synced_at?` · synced ${fmtDate(String(a.al_synced_at).slice(0,10))}`:'')
-    :'Not linked yet — Sync sends the approved business facts to Advice Local';
+    :'Not linked yet — Sync sends the approved business facts to LLO';
   const ordered=a.al_order_id?` · LLO order #${a.al_order_id} on file`:'';
   el.innerHTML=`<div style="border-top:1px solid var(--line);padding:12px 14px 14px">
-    <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Advice Local — automated citation submission</div>
+    <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">LLO — automated citation submission</div>
     <div class="wmeta" id="al-state" style="margin:6px 0 10px">${esc(linked+ordered)}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="tbtn" id="al-sync-btn" onclick="alSync()">${a.al_client_id?'<i class="fa-solid fa-rotate"></i> Re-sync listing':'<i class="fa-solid fa-cloud-arrow-up"></i> Sync to Advice Local'}</button>
+      <button class="tbtn" id="al-sync-btn" onclick="alSync()">${a.al_client_id?'<i class="fa-solid fa-rotate"></i> Re-sync listing':'<i class="fa-solid fa-cloud-arrow-up"></i> Sync to LLO'}</button>
       <button class="tbtn" id="al-order-btn" onclick="alOrder()" ${a.al_order_id?'disabled title="Order already on file"':''}><i class="fa-solid fa-file-invoice-dollar"></i> Place LLO order</button>
       <button class="tbtn" onclick="alStatus()"><i class="fa-solid fa-tower-broadcast"></i> Fulfillment status</button>
     </div>
@@ -5497,31 +5497,31 @@ async function alSync(){
   try{
     const d=await alInvoke({action:'sync', client_id:activeClient.id});
     activeClient._al={...(activeClient._al||{}), al_client_id:d.al_client_id, al_synced_at:new Date().toISOString()};
-    showToast(`${d.partial?'⚠ Listing partially synced':'✓ Listing synced'} on Advice Local — location #${d.al_client_id}`+(d.warning?` · ${d.warning}`:''), !!d.partial, !d.partial);
+    showToast(`${d.partial?'⚠ Listing partially synced':'✓ Listing synced'} on LLO — location #${d.al_client_id}`+(d.warning?` · ${d.warning}`:''), !!d.partial, !d.partial);
     renderALPanel();
-  }catch(e){ showToast('Advice Local sync failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.innerHTML='<i class="fa-solid fa-cloud-arrow-up"></i> Sync to Advice Local'; } }
+  }catch(e){ showToast('LLO sync failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.innerHTML='<i class="fa-solid fa-cloud-arrow-up"></i> Sync to LLO'; } }
 }
 async function alOrder(){
   await bfFlush();
   if(!alDescGuard()) return;
   const ok=await dialog({ title:'Place LLO order', okLabel:'Place order',
-    body:'Activates the Local Listing Optimization product with Advice Local for this client — directory submissions start on their side. <b>This bills the 44i account</b> (monthly, per their contract). The listing syncs first if needed.'});
+    body:'Activates the Local Listing Optimization product with LLO for this client — directory submissions start on their side. <b>This bills the 44i account</b> (monthly, per their contract). The listing syncs first if needed.'});
   if(!ok) return;
   const b=document.getElementById('al-order-btn'); if(b){ b.disabled=true; b.textContent='Ordering…'; }
   try{
     const d=await alInvoke({action:'order', client_id:activeClient.id});
     activeClient._al={...(activeClient._al||{}), al_client_id:d.al_client_id, al_order_id:d.order_id};
-    showToast(`✓ LLO order placed — order #${d.order_id||'—'}${d.price!=null?` · $${d.price}`:''}. Directory submissions start on Advice Local's side; check Fulfillment status in a day or two.`, false, true);
+    showToast(`✓ LLO order placed — order #${d.order_id||'—'}${d.price!=null?` · $${d.price}`:''}. Directory submissions start on LLO's side; check Fulfillment status in a day or two.`, false, true);
     renderALPanel();
   }catch(e){ showToast('Order failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.innerHTML='<i class="fa-solid fa-file-invoice-dollar"></i> Place LLO order'; } }
 }
-// Advice Local fulfillment statuses → plain-English groups. rank: which of
+// LLO fulfillment statuses → plain-English groups. rank: which of
 // a directory's duplicate records wins; order: table order (action first).
 const AL_GROUPS=[
-  {key:'attn',  label:'Needs attention', cls:'bad',   rank:1, order:0, help:'refused or failed — raise it with Advice Local if it persists'},
+  {key:'attn',  label:'Needs attention', cls:'bad',   rank:1, order:0, help:'refused or failed — raise it with LLO if it persists'},
   {key:'verify',label:'Verification',    cls:'warn',  rank:4, order:1, help:'the directory wants a phone/email/postcard confirmation from the business'},
   {key:'live',  label:'Live',            cls:'ok',    rank:5, order:2, help:'listed and claimed'},
-  {key:'retry', label:'Retrying',        cls:'retry', rank:3, order:3, help:'a temporary hiccup at the directory; Advice Local resubmits automatically, usually within days'},
+  {key:'retry', label:'Retrying',        cls:'retry', rank:3, order:3, help:'a temporary hiccup at the directory; LLO resubmits automatically, usually within days'},
   {key:'queued',label:'Queued',          cls:'q',     rank:2, order:4, help:'not submitted yet'},
   {key:'other', label:'Other',           cls:'q',     rank:0, order:5, help:'see the raw status on hover'},
 ];
@@ -5541,7 +5541,7 @@ async function alStatus(){
   try{
     const d=await alInvoke({action:'status', client_id:activeClient.id});
     const dirs=d.directories||[];
-    if(!dirs.length){ el.innerHTML='<div class="wmeta">No directory submissions reported yet — Advice Local typically starts within a couple of business days of the order.</div>'; return; }
+    if(!dirs.length){ el.innerHTML='<div class="wmeta">No directory submissions reported yet — LLO typically starts within a couple of business days of the order.</div>'; return; }
     // One row per directory (AL keeps several records for some), the most
     // advanced state winning, in plain English with a summary on top.
     const byDir=new Map();
@@ -5560,7 +5560,7 @@ async function alStatus(){
       <div class="wmeta" style="margin:4px 0 10px">${AL_GROUPS.filter(g=>counts[g.key]).map(g=>`<b>${g.label}</b>: ${g.help}`).join(' · ')}</div>
       <div style="overflow-x:auto"><table class="team-tbl"><thead><tr><th>Directory</th><th>Status</th><th>Before</th><th>Listing</th><th>Updated</th></tr></thead><tbody>${
       rows.map(f=>`<tr><td><b>${esc(f.directory||'—')}</b></td>
-        <td><span class="al-pill ${f.g.cls}" title="Advice Local status: ${esc(String(f.status||'—'))}">${f.g.label}</span></td><td>${esc(was(f.initial))}</td>
+        <td><span class="al-pill ${f.g.cls}" title="LLO status: ${esc(String(f.status||'—'))}">${f.g.label}</span></td><td>${esc(was(f.initial))}</td>
         <td>${f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener">open <i class="fa-solid fa-arrow-up-right-from-square"></i></a>`:'—'}</td>
         <td>${f.updated?fmtDate(String(f.updated).slice(0,10)):'—'}</td></tr>`).join('')}</tbody></table></div>`;
   }catch(e){ if(el) el.innerHTML=`<div class="wmeta" style="color:#c0392b">${esc(String(e.message||e))}</div>`; }
