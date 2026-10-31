@@ -180,8 +180,8 @@ Deno.serve(async (req) => {
     const parseCategory=(v:unknown)=>{
       const text=String(v||"").trim();
       if(!text)return null;
-      const code=text.startsWith("gcid:")?text.slice(5):text;
-      return /^[a-z][a-z0-9_]*$/.test(code)?code:null;
+      const code=text.startsWith("gcid:")?text.slice(5):null;
+      return code&&/^[a-z][a-z0-9_]*$/.test(code)?code:null;
     };
     const categoryPrimary=parseCategory(iv.category_primary);
     const secondaryLabels=list(iv.category_secondary);
@@ -207,8 +207,10 @@ Deno.serve(async (req) => {
       payload.extra=plannedExtra;
     }
     if(categoryPrimary)payload.categoryGoogle=categoryPrimary;
-    const unmapped=["Year established","Facebook and X profiles","Logo and cover images","Gallery images","Tracked keywords"];
+    const unmapped=["Year established","Facebook and X profiles","Logo and cover images","Gallery images"];
     const unmappedWarning="Not automatically synced by this location update: "+unmapped.join(", ");
+    const trackedKeywords=Array.from({length:40},(_,n)=>String(iv["kw"+(n+1)]||"").trim()).filter(Boolean);
+    const keywordWarning="Keywords sync separately to Advice Local ranking tracking, not as listing metadata.";
     // Create (POST) or update (PUT) the AL location. AL answers a bad field
     // with a bare "Invalid Request" and no field name, so when the full
     // listing is refused: send the core NAP listing alone, then add each
@@ -260,10 +262,25 @@ Deno.serve(async (req) => {
       return error ? `AL succeeded but the id could not be saved (${error.message}) — run advice_local.sql` : null;
     };
 
+    const syncKeywords=async (id:number):Promise<string[]>=>{
+      if(!trackedKeywords.length)return [];
+      const warnings:string[]=[];
+      try{
+        const current=await al("GET",`/legacykeywords/${id}`);
+        const items=Array.isArray(current)?current:Array.isArray(current?.keywords)?current.keywords:[];
+        const existing=new Set(items.map((v:any)=>String(typeof v==="string"?v:v.keyword||"").toLowerCase().trim()));
+        for(const keyword of trackedKeywords){
+          if(existing.has(keyword.toLowerCase()))continue;
+          try{await al("POST",`/legacykeywords/${id}`,{keyword});}
+          catch(e){warnings.push("Keyword "+keyword+" could not be added: "+msg(e));}
+        }
+      }catch(e){warnings.push("Could not check existing tracked keywords: "+msg(e));}
+      return warnings;
+    };
     if (action === "preview") {
       return json({ ok: true, payload, missing, product_id: PRODUCT_ID,
         al_client_id: client.al_client_id || null, al_order_id: client.al_order_id || null,
-        al_synced_at: client.al_synced_at || null, hours_warning: hoursWarning, sync_warnings:[...categoryWarnings,unmappedWarning] });
+        al_synced_at: client.al_synced_at || null, hours_warning: hoursWarning, sync_warnings:[...categoryWarnings,unmappedWarning,keywordWarning], tracked_keywords:trackedKeywords });
     }
 
     if (action === "sync") {
@@ -271,9 +288,10 @@ Deno.serve(async (req) => {
       const existing = client.al_client_id ? Number(client.al_client_id) : null;
       const up = await upsertLocation(existing);
       if (!up.id) return json({ error: "Advice Local did not return a location id", response: up.created }, 502);
+      const keywordErrors=await syncKeywords(up.id);
       const warn = await remember({ al_client_id: up.id, al_synced_at: new Date().toISOString() });
       return json({ ok: true, mode: existing ? "updated" : "created", al_client_id: up.id, payload, rejected: up.rejected,
-        warning: [hoursWarning,...categoryWarnings,unmappedWarning,rejectedNote(up.rejected), warn].filter(Boolean).join(" · ") || null });
+        warning: [hoursWarning,...categoryWarnings,unmappedWarning,...keywordErrors,rejectedNote(up.rejected), warn].filter(Boolean).join(" · ") || null });
     }
 
     if (action === "status") {
