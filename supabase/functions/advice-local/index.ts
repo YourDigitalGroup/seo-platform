@@ -210,7 +210,7 @@ Deno.serve(async (req) => {
     const unmapped=["Year established","Facebook and X profiles","Logo and cover images","Gallery images"];
     const unmappedWarning="Not automatically synced by this location update: "+unmapped.join(", ");
     const trackedKeywords=Array.from({length:40},(_,n)=>String(iv["kw"+(n+1)]||"").trim()).filter(Boolean);
-    const keywordWarning="Keywords sync separately to Advice Local ranking tracking, not as listing metadata.";
+    const keywordWarning="Keywords use a separate ranking endpoint and are not part of the location listing.";
     // Create (POST) or update (PUT) the AL location. AL answers a bad field
     // with a bare "Invalid Request" and no field name, so when the full
     // listing is refused: send the core NAP listing alone, then add each
@@ -289,8 +289,9 @@ Deno.serve(async (req) => {
       const up = await upsertLocation(existing);
       if (!up.id) return json({ error: "Advice Local did not return a location id", response: up.created }, 502);
       const keywordErrors=await syncKeywords(up.id);
+      const incomplete=[...categoryWarnings,...keywordErrors];
       const warn = await remember({ al_client_id: up.id, al_synced_at: new Date().toISOString() });
-      return json({ ok: true, mode: existing ? "updated" : "created", al_client_id: up.id, payload, rejected: up.rejected,
+      return json({ ok: true, partial: incomplete.length>0||up.rejected.length>0, mode: existing ? "updated" : "created", al_client_id: up.id, payload, rejected: up.rejected,
         warning: [hoursWarning,...categoryWarnings,unmappedWarning,...keywordErrors,rejectedNote(up.rejected), warn].filter(Boolean).join(" · ") || null });
     }
 
