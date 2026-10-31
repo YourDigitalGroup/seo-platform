@@ -93,3 +93,4 @@ Deno.serve(async(req)=>{
   }
   return respond({ok:true,description,characters:description.length,website_scanned:true});
  }catch(e){console.error("generate-gbp-description",String(e));return respond({error:"Generation encountered an error"},500);}
+});
