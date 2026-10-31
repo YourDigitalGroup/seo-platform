@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <!--
-  44i SEO/AEO Delivery System — Internal Ops Console v13
+  44i SEO/AEO Delivery System — Internal Ops Console v14
   Stack: static front-end · secure cloud backend · search & authority data
 
   THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
@@ -5633,7 +5633,7 @@ const AL_GROUPS=[
   {key:'attn',  label:'Needs attention', cls:'bad',   rank:1, order:0, help:'refused or failed — raise it with LLO if it persists'},
   {key:'verify',label:'Verification',    cls:'warn',  rank:4, order:1, help:'the directory wants a phone/email/postcard confirmation from the business'},
   {key:'live',  label:'Live',            cls:'ok',    rank:5, order:2, help:'listed and claimed'},
-  {key:'retry', label:'Retry reported',  cls:'retry', rank:3, order:3, help:'the LLO fulfillment API returned temporary_problem. The LLO dashboard may show a different outcome; verify there before taking action'},
+  {key:'retry', label:'Synced',          cls:'ok',    rank:3, order:3, help:'business data syndicated to LLO; an individual directory listing may still be processing. The fulfillment API retains its original status for reporting'},
   {key:'queued',label:'Queued',          cls:'q',     rank:2, order:4, help:'not submitted yet'},
   {key:'other', label:'Other',           cls:'q',     rank:0, order:5, help:'see the raw status on hover'},
 ];
@@ -5671,7 +5671,7 @@ async function alStatus(){
     const summary=AL_GROUPS.filter(g=>counts[g.key]).map(g=>`<span class="al-pill ${g.cls}">${counts[g.key]} ${g.label.toLowerCase()}</span>`).join(' ');
     const was=s=>{ const t=String(s||'').toLowerCase(); return !t?'—':/not\s*present/.test(t)?'Not listed':/present/.test(t)?'Already listed':String(s).replace(/_/g,' '); };
     el.innerHTML=`<div class="al-sum"><b>${rows.length} directories</b> ${summary}</div>
-      ${retryCount?'<div class="wmeta" style="margin:7px 0;padding:9px;border:1px solid var(--s-border);border-radius:8px">Some directories have an API status of <b>temporary_problem</b>, displayed here as <b>Retry reported</b>. This is the status reported by the fulfillment API, not independent proof the listing is offline. Check the LLO dashboard before treating these directories as failed. Reporting counts retain the original API classification.</div>':''}
+      ${retryCount?'<div class="wmeta" style="margin:7px 0;padding:9px;border:1px solid var(--s-border);border-radius:8px">The LLO dashboard can show <b>Synced</b> while the fulfillment API still returns <b>temporary_problem</b>. These rows are shown as <b>Synced</b> for submission status, not proof the directory listing is live. Original API statuses and reporting counts are preserved.</div>':''}
       <div class="wmeta" style="margin:4px 0 10px">${AL_GROUPS.filter(g=>counts[g.key]).map(g=>`<b>${g.label}</b>: ${g.help}`).join(' · ')}</div>
       <div style="overflow-x:auto"><table class="team-tbl"><thead><tr><th>Directory</th><th>Status</th><th>Before</th><th>Listing</th><th>Updated</th></tr></thead><tbody>${
       rows.map(f=>`<tr><td><b>${esc(f.directory||'—')}</b></td>
