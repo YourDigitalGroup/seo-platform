@@ -156,12 +156,20 @@ each check in `reputation_snapshots`. Cost: one Place Details call (with
 reviews) per client per day, about 1,500 a month for 48 clients, plus a text
 search the first time an unpinned client is matched.
 
-**Local Incite** (a white label of Shout About Us, API docs at
-docs.shoutaboutus.com, base `https://production-api.shoutaboutus.com/api/v1`)
-has two slots: `LOCAL_INCITE_API_KEY` (a Personal access token from Local
-Incite → API Keys, sent as a Bearer token) and `LOCAL_INCITE_API_ID` (only
-for app credentials). Test checks `GET /verify-token`. Review sync plugs into
-the reputation function as a second source.
+**Local Incite** (reviews.localincite.com, a white label of Online Review
+Manager; API docs at api.online-review-manager.com/docs/swagger) is the
+second source. Key: `LOCAL_INCITE_API_KEY` = the agency **Api Key** from
+Local Incite → Settings → White Label API Information (sent as the
+`api_key` parameter; the App Id and SSO hash aren't used). Run
+`supabase/migrations/local_incite.sql`. Each daily run makes one
+`getlocations` and one `reports/reviews/stats` call, links clients whose
+name matches a Local Incite location exactly
+(`clients.local_incite_location_id`; others are picked on the client's
+Reputation panel), then pulls each linked client's last 45 days of reviews
+from every site. `getreviews` always sends `mark_review_retrieve=N` —
+without it the API marks reviews as retrieved and stops returning them.
+Snapshots are `source='local_incite'` with lifetime rating / count and
+`stats` (response backlog, star breakdown, reviews per site).
 
 ## 1a-5. Plan add-ons  (Supabase → SQL Editor)
 
