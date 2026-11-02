@@ -395,6 +395,7 @@ body[data-theme=dark] .bf-field input.bf-sug,body[data-theme=dark] .bf-kwrow inp
 .rep-rev{background:var(--s-card);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;font-size:13px}
 .rep-rev.low{border-color:rgba(192,57,43,.55);background:rgba(192,57,43,.05)}
 .rep-txt{margin-top:4px;line-height:1.5}
+.rep-li{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
 .rep-pickbox{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);display:flex;flex-direction:column;gap:8px}
 .rep-cand{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
 .team-tbl th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line)}
@@ -1023,7 +1024,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.27.6</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.28.0</div>
   </div>
   </div>
 </div>
@@ -1111,7 +1112,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.27.6</span>
+        <span>44i, Inc. · Internal Ops Console · V5.28.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1159,7 +1160,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.27.6</span>
+        <span>44i, Inc. · Internal Ops Console · V5.28.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1322,7 +1323,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.27.6 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.28.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1340,7 +1341,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.27.6</span>
+      <span>44i, Inc. · Internal Ops Console · V5.28.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1386,7 +1387,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.27.6</span>
+      <span>44i, Inc. · Internal Ops Console · V5.28.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -4241,31 +4242,37 @@ async function loadReputation(){
 function renderReputation(){
   const el=document.getElementById('rep-list'); if(!el||!REP) return;
   const all=REP.clients||[];
-  const checked=all.filter(c=>c.latest);
-  const avg=checked.length?checked.reduce((a,c)=>a+(Number(c.latest.rating)||0),0)/checked.length:null;
-  const alerts=all.filter(c=>c.low_reviews_7d>0).length, problems=all.filter(c=>!c.latest||c.last_error).length;
-  document.getElementById('rep-sub').innerHTML=!REP.google_key_set
-    ?'<span style="color:#c0392b;font-weight:700"><i class="fa-solid fa-triangle-exclamation"></i> No Google Places key yet</span> — a Super Admin adds it in Team &amp; access → API keys, then checks start the next morning (or click Check all now).'
-    :`${checked.length} of ${all.length} active clients tracked${avg!=null?` · average rating ${avg.toFixed(2)}`:''} · ${all.reduce((a,c)=>a+(c.new_reviews_7d||0),0)} new reviews this week · checked daily`;
+  const best=c=>(c.li?.latest?.review_count?c.li.latest:null)||c.latest;   // all-sites numbers when linked, else Google
+  const checked=all.filter(c=>best(c));
+  const avg=checked.length?checked.reduce((a,c)=>a+(Number(best(c).rating)||0),0)/checked.length:null;
+  const bad=c=>(!c.latest&&!c.li?.latest)||(REP.google_key_set&&c.last_error)||c.li?.last_error;
+  const alerts=all.filter(c=>c.low_reviews_7d>0).length, problems=all.filter(bad).length;
+  const missing=[!REP.google_key_set&&'Google Places',!REP.local_incite_key_set&&'Local Incite'].filter(Boolean);
+  document.getElementById('rep-sub').innerHTML=(missing.length?`<span style="color:#c0392b;font-weight:700"><i class="fa-solid fa-triangle-exclamation"></i> No ${missing.join(' or ')} key yet</span> — a Super Admin adds it in Team &amp; access → API keys. `:'')
+    +`${checked.length} of ${all.length} active clients tracked · ${all.filter(c=>c.li_linked).length} linked to Local Incite${avg!=null?` · average rating ${avg.toFixed(2)}`:''} · ${all.reduce((a,c)=>a+(c.new_reviews_7d||0),0)} new reviews this week · checked daily`;
   const F=[['all',`All (${all.length})`],['low',`Low reviews this week (${alerts})`],['new',`New reviews this week (${all.filter(c=>c.new_reviews_7d>0).length})`],['problem',`Needs attention (${problems})`]];
   document.getElementById('rep-filters').innerHTML=F.map(([k,l])=>`<button class="rep-f${REP_FILTER.only===k?' on':''}" onclick="REP_FILTER.only='${k}';renderReputation()">${l}</button>`).join('');
   const q=REP_FILTER.q.trim().toLowerCase();
   const rows=all.filter(c=>(!q||(c.name||'').toLowerCase().includes(q)||(c.url||'').toLowerCase().includes(q))
-    &&(REP_FILTER.only==='all'||(REP_FILTER.only==='low'&&c.low_reviews_7d>0)||(REP_FILTER.only==='new'&&c.new_reviews_7d>0)||(REP_FILTER.only==='problem'&&(!c.latest||c.last_error))));
+    &&(REP_FILTER.only==='all'||(REP_FILTER.only==='low'&&c.low_reviews_7d>0)||(REP_FILTER.only==='new'&&c.new_reviews_7d>0)||(REP_FILTER.only==='problem'&&bad(c))));
   if(!rows.length){ el.innerHTML='<div class="wmeta" style="padding:18px 0">No clients match.</div>'; return; }
-  el.innerHTML=`<table class="team-tbl"><thead><tr><th>Client</th><th>Google rating</th><th>Reviews</th><th>30-day change</th><th>This week</th><th>Listing</th><th>Checked</th></tr></thead><tbody>${rows.map(c=>{
-    const L=c.latest;
+  el.innerHTML=`<table class="team-tbl"><thead><tr><th>Client</th><th>Google</th><th>All review sites</th><th>30-day change</th><th>This week</th><th>Listing</th><th>Checked</th></tr></thead><tbody>${rows.map(c=>{
+    const L=c.latest, LI=c.li?.latest, Ls=LI?.stats||{};
+    const all_sites=!c.li_linked?'<span class="wmeta">not linked</span>'
+      :LI?`${repStars(LI.review_count?LI.rating:null)} <span class="wmeta">${LI.review_count??0} reviews</span>${Ls.negative_unanswered?`<div style="color:#c0392b;font-size:12px;font-weight:700" title="1–3 star reviews with no reply recorded in Local Incite">${Ls.negative_unanswered} negative, no reply on record</div>`:''}`
+      :c.li?.last_error?`<span style="color:#c0392b" title="${esc(c.li.last_error)}"><i class="fa-solid fa-circle-exclamation"></i> check failed</span>`:'<span class="wmeta">not checked yet</span>';
+    const chg=c.li_linked&&c.li?c.li:c;
     const listing=c.last_error?`<span style="color:#c0392b" title="${esc(c.last_error)}"><i class="fa-solid fa-circle-exclamation"></i> ${esc(c.last_error.length>60?c.last_error.slice(0,60)+'…':c.last_error)}</span>`
       :L?`${L.listing_url?`<a href="${esc(L.listing_url)}" target="_blank" rel="noopener">${esc(L.listing_name||'Google listing')}</a>`:esc(L.listing_name||'')}${c.pinned?' <i class="fa-solid fa-thumbtack wmeta" title="Pinned"></i>':''}`
       :'<span class="wmeta">not checked yet</span>';
     return `<tr>
       <td><a href="#" onclick="repOpen('${c.id}','${c.group_id||''}');return false"><b>${esc(c.name||c.url)}</b></a><div class="wmeta">${esc(c.url||'')}</div></td>
-      <td>${repStars(L?.rating)}</td>
-      <td>${L?.review_count??'—'}</td>
-      <td>${c.rating_change_30d||c.reviews_change_30d?`${repDelta(c.rating_change_30d,1)} rating · ${repDelta(c.reviews_change_30d)} reviews`:'<span class="wmeta">—</span>'}</td>
+      <td>${repStars(L?.rating)}${L?` <span class="wmeta">${L.review_count??0}</span>`:''}</td>
+      <td>${all_sites}</td>
+      <td>${chg.rating_change_30d||chg.reviews_change_30d?`${repDelta(chg.rating_change_30d,1)} rating · ${repDelta(chg.reviews_change_30d)} reviews`:'<span class="wmeta">—</span>'}</td>
       <td>${c.new_reviews_7d?`${c.new_reviews_7d} new`:'<span class="wmeta">—</span>'}${c.low_reviews_7d?` · <span style="color:#c0392b;font-weight:700"><i class="fa-solid fa-flag"></i> ${c.low_reviews_7d} low</span>`:''}</td>
       <td>${listing}</td>
-      <td class="wmeta">${repWhen(c.last_checked)}</td></tr>`;}).join('')}</tbody></table>`;
+      <td class="wmeta">${repWhen(c.li?.last_checked||c.last_checked)}</td></tr>`;}).join('')}</tbody></table>`;
 }
 async function repOpen(cid,gid){
   const g=GROUPS.find(x=>x.id===gid);
@@ -4293,7 +4300,24 @@ async function renderClientReputation(){
   const S=d.summary||{}, L=S.latest;
   REP_PINNED=!!d.client.place_id;
   const stat=(k,v,sub='')=>`<div class="rep-stat"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="wmeta">${sub}</div>`:''}</div>`;
-  const reviews=(d.recent_reviews||[]).slice(0,5);
+  const reviews=(d.recent_reviews||[]).slice(0,6);
+  const I=S.li, IL=I?.latest, IS=IL?.stats||{};
+  const sites=Object.entries(IS.sites_45d||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${esc(k)} ${v}`).join(' · ');
+  const liBlock=!d.local_incite_key_set?''
+    :`<div class="rep-li">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <div style="font-size:13px;font-weight:600"><i class="fa-solid fa-layer-group"></i> All review sites (Local Incite) — ${d.client.li_location_id?(IL?esc(IL.listing_name||'linked'):'linked'):'<span class="wmeta">not linked to a Local Incite location</span>'}
+          ${I?.last_error?`<div class="wmeta" style="color:#c0392b;margin-top:3px"><i class="fa-solid fa-circle-exclamation"></i> ${esc(I.last_error)}</div>`:''}</div>
+        ${canPin?`<button class="ds-save" style="background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="repLiPick()"><i class="fa-solid fa-link"></i> ${d.client.li_location_id?'Change location':'Link location'}</button>`:''}
+      </div>
+      <div id="rep-li-pick"></div>
+      ${IL?`<div class="rep-stats">
+        ${stat('Rating, all sites',repStars(IL.review_count?IL.rating:null),I.rating_change_30d!=null?`${repDelta(I.rating_change_30d,1)} in 30 days`:'')}
+        ${stat('Reviews, all sites',IL.review_count??'—',I.reviews_change_30d!=null?`${repDelta(I.reviews_change_30d)} in 30 days`:'')}
+        ${stat('No reply on record',IS.awaiting_response??'—',IS.negative_unanswered?`<span style="color:#c0392b;font-weight:700">${IS.negative_unanswered} negative (1–3 stars)</span>`:'replies made in Local Incite')}
+        ${stat('Avg. reply time',IS.avg_response_days!=null?`${Number(IS.avg_response_days).toFixed(1)}d`:'—',IS.responses!=null?`${IS.responses} replies so far`:'')}
+      </div>${sites?`<div class="wmeta" style="margin-top:6px">Last 45 days by site: ${sites}</div>`:''}`:''}
+    </div>`;
   el.innerHTML=`<div class="rep-panel">
     ${!d.google_key_set?`<div class="wmeta" style="color:#c0392b;margin-bottom:8px"><i class="fa-solid fa-triangle-exclamation"></i> No Google Places key yet — a Super Admin adds it in Team &amp; access → API keys.</div>`:''}
     <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
@@ -4311,19 +4335,49 @@ async function renderClientReputation(){
       ${stat('Last checked',repWhen(S.last_checked))}
     </div>`:''}
     <div id="rep-pick"></div>
+    ${liBlock}
     ${reviews.length?`<div class="rep-reviews">${reviews.map(r=>`<div class="rep-rev${(r.rating??5)<=2?' low':''}">
-        <div><span class="rep-star">${'<i class="fa-solid fa-star"></i>'.repeat(Math.max(0,Math.min(5,r.rating||0)))}</span> <b>${esc(r.author||'Google user')}</b> <span class="wmeta">${r.published_at?new Date(r.published_at).toLocaleDateString():''}</span>
-          ${r.review_url?` <a class="wmeta" href="${esc(r.review_url)}" target="_blank" rel="noopener">reply on Google</a>`:''}</div>
+        <div><span class="rep-star">${'<i class="fa-solid fa-star"></i>'.repeat(Math.max(0,Math.min(5,r.rating||0)))}</span> <b>${esc(r.author||'Reviewer')}</b> <span class="wmeta">${esc(r.site||'Google')} · ${r.published_at?new Date(r.published_at).toLocaleDateString():''}</span>
+          ${r.review_url?` <a class="wmeta" href="${esc(r.review_url)}" target="_blank" rel="noopener">open on ${esc(r.site||'Google')}</a>`:''}</div>
         ${r.text?`<div class="rep-txt">${esc(r.text.length>400?r.text.slice(0,400)+'…':r.text)}</div>`:''}</div>`).join('')}</div>
-      <div class="wmeta" style="margin-top:6px">Google shares the five most relevant reviews per check; every review seen is kept, so new ones show up here and on the Reputation page.</div>`:''}
+      <div class="wmeta" style="margin-top:6px">${d.client.li_location_id?'Newest reviews from every site Local Incite watches. Reply from Local Incite or the site itself.':'Google shares the five most relevant reviews per check; every review seen is kept, so new ones show up here and on the Reputation page.'}</div>`:''}
   </div>`;
 }
 async function repCheck(){
   if(!activeClient) return;
   showToast('Checking the Google listing…');
-  try{ const s=(await fnInvoke('reputation',{action:'collect', client_id:activeClient.id})).snapshot||{};
-    showToast(s.error?s.error:`${s.listing_name||'Listing'}: ${s.rating??'—'} stars from ${s.review_count??0} reviews`,!!s.error,!s.error); }
+  try{ const r=await fnInvoke('reputation',{action:'collect', client_id:activeClient.id}); const s=r.snapshot||{}, l=r.li_snapshot;
+    const msg=l&&!l.error?`All sites: ${l.rating??'—'} stars from ${l.review_count??0} reviews`:s.error?s.error:`${s.listing_name||'Listing'}: ${s.rating??'—'} stars from ${s.review_count??0} reviews`;
+    const err=l?!!l.error&&!!s.error:!!s.error;
+    showToast(l?.error&&!s.error?`Google ${s.rating??'—'} stars · Local Incite: ${l.error}`:msg,err,!err); }
   catch(e){ showToast('Could not check — '+String(e.message||e),true); }
+  renderClientReputation();
+}
+// Link the client to its Local Incite location (pre-selects an exact or close name match).
+async function repLiPick(){
+  if(!activeClient) return;
+  const box=document.getElementById('rep-li-pick'); if(!box) return;
+  box.innerHTML='<div class="wmeta" style="margin-top:10px">Loading Local Incite locations…</div>';
+  let r;
+  try{ r=await fnInvoke('reputation',{action:'li_locations', client_id:activeClient.id}); }
+  catch(e){ box.innerHTML=`<div class="wmeta" style="color:#c0392b;margin-top:10px">${esc(String(e.message||e))}</div>`; return; }
+  const sel=r.current||r.suggested||'';
+  box.innerHTML=`<div class="rep-pickbox">
+    <div class="ds-field"><label>Local Incite location <span>${r.suggested&&!r.current?'closest name match pre-selected — check it':`${(r.locations||[]).length} locations on the agency account`}</span></label>
+      <select id="rep-li-sel" style="border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font-size:13px;font-family:inherit;color:var(--ink);background:var(--s-card)">
+        <option value="">— not on Local Incite —</option>
+        ${(r.locations||[]).map(l=>`<option value="${esc(l.location_id)}"${l.location_id===sel?' selected':''}>${esc(l.name)} — ${esc([l.city,l.state].filter(Boolean).join(', '))}${l.linked_to?` (linked to ${esc(l.linked_to)})`:''}${l.enabled?'':' (disabled)'}</option>`).join('')}
+      </select></div>
+    <div style="display:flex;gap:8px"><button class="ds-save" onclick="repLiSave()">Save &amp; check</button><button class="tbtn" onclick="document.getElementById('rep-li-pick').innerHTML=''">Cancel</button></div>
+  </div>`;
+}
+async function repLiSave(){
+  if(!activeClient) return;
+  const lid=document.getElementById('rep-li-sel')?.value||null;
+  showToast(lid?'Linking and pulling reviews…':'Unlinking…');
+  try{ const s=(await fnInvoke('reputation',{action:'set_li_location', client_id:activeClient.id, location_id:lid})).snapshot;
+    showToast(s?.error?s.error:lid?`Linked — ${s?.rating??'—'} stars from ${s?.review_count??0} reviews across all sites`:'Unlinked',!!s?.error,!s?.error); }
+  catch(e){ showToast('Could not link — '+String(e.message||e),true); }
   renderClientReputation();
 }
 let REP_PINNED=false;
