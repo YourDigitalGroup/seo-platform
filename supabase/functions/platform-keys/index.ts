@@ -66,6 +66,11 @@ async function testKey(def: KeyDef, value: string, admin: any): Promise<{ ok: bo
     const body = await r.text();
     return { ok: r.ok, status: r.status, body };
   };
+  // Google 403s have two different fixes: a key restricted to websites can't
+  // be used from a server; otherwise the API isn't enabled / allowed.
+  const googleFix = (b: string, api: string) => /referer/i.test(b)
+    ? " — this key is restricted to websites (HTTP referrers), which blocks server calls. In Google Cloud → Credentials → this key, set Application restrictions to None (or IP addresses)."
+    : ` — enable “${api}” on the key's Google Cloud project and allow it in the key's API restrictions.`;
   const why = (b: string) => { try { const j = JSON.parse(b); return String(j?.error?.message || j?.error || j?.message || b).slice(0, 200); } catch { return b.slice(0, 200); } };
   switch (def.name) {
     case "ANTHROPIC_API_KEY": {
@@ -84,12 +89,12 @@ async function testKey(def: KeyDef, value: string, admin: any): Promise<{ ok: bo
         headers: { "X-Goog-Api-Key": value, "X-Goog-FieldMask": "places.id", "Content-Type": "application/json" },
         body: JSON.stringify({ textQuery: "Googleplex Mountain View CA" }) });
       return r.ok ? { ok: true, detail: "Places API (New) accepted the key." }
-        : { ok: false, detail: `Google ${r.status}: ${why(r.body)}${r.status === 403 ? " — enable “Places API (New)” on the key's Google Cloud project and allow it in the key's API restrictions." : ""}` };
+        : { ok: false, detail: `Google ${r.status}: ${why(r.body)}${r.status === 403 ? googleFix(r.body, "Places API (New)") : ""}` };
     }
     case "PAGESPEED_API_KEY": {
       const r = await http(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent("https://example.com/")}&category=performance&strategy=mobile&key=${encodeURIComponent(value)}`);
       return r.ok ? { ok: true, detail: "PageSpeed Insights accepted the key." }
-        : { ok: false, detail: `Google ${r.status}: ${why(r.body)}${r.status === 403 ? " — enable the PageSpeed Insights API on the key's Google Cloud project." : ""}` };
+        : { ok: false, detail: `Google ${r.status}: ${why(r.body)}${r.status === 403 ? googleFix(r.body, "PageSpeed Insights API") : ""}` };
     }
     case "GSC_SERVICE_ACCOUNT": case "GSC_SERVICE_ACCOUNT_44I": {
       try { const j = JSON.parse(value); return j.client_email && j.private_key ? { ok: true, detail: `Valid service-account file for ${j.client_email}.` } : { ok: false, detail: "The JSON is missing client_email or private_key." }; }
