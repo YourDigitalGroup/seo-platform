@@ -27,6 +27,14 @@
 //    collect_all                      SA/service  daily run over every active client (background)
 //    li_locations { client_id? }      SA / AM     Local Incite locations (+ suggested match)
 //    set_li_location { client_id, location_id|null }  SA / AM  link (or unlink), then check
+//    li_backfill  { client_id?, months? }  SA/service  rebuild reputation_monthly for the
+//                                     last N months (default 12) from review history
+//
+//  reputation_monthly (Looker: looker_reputation_monthly / _sites / _reviews)
+//  holds the report's Reputation Monitoring pages per client per month:
+//  lifetime total + rating, the month's reviews + rating, the same per review
+//  site, and the 12-month star breakdown. The daily run writes the current
+//  month and, during the first five days of a month, re-finalizes the last.
 //  Keys: GOOGLE_PLACES_API_KEY, LOCAL_INCITE_API_KEY (Team & access → API keys).
 // ============================================================================
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -57,7 +65,7 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const PLACES = "https://places.googleapis.com/v1";
 const DETAIL_FIELDS = "id,displayName,formattedAddress,rating,userRatingCount,reviews,googleMapsUri,websiteUri,businessStatus";
 const SEARCH_FIELDS = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.websiteUri,places.googleMapsUri";
@@ -119,15 +127,22 @@ const LI = "https://api.online-review-manager.com/v1";
 async function li(path: string, params: Record<string, string> = {}, form = false) {
   const key = await platformKey("LOCAL_INCITE_API_KEY");
   if (!key) throw new Error("no Local Incite key — add it in Team & access → API keys");
-  let r: Response;
-  if (form) {
-    const fd = new FormData(); fd.set("api_key", key);
-    for (const [k, v] of Object.entries(params)) fd.set(k, v);
-    r = await fetch(`${LI}/${path}`, { method: "POST", body: fd, headers: { Accept: "application/json" }, signal: AbortSignal.timeout(30_000) });
-  } else {
-    const u = new URL(`${LI}/${path}`); u.searchParams.set("api_key", key);
-    for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
-    r = await fetch(u, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(30_000) });
+  let r!: Response;
+  // The API rate-limits per key (429 "Too Many Attempts"): wait and retry.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (form) {
+      const fd = new FormData(); fd.set("api_key", key);
+      for (const [k, v] of Object.entries(params)) fd.set(k, v);
+      r = await fetch(`${LI}/${path}`, { method: "POST", body: fd, headers: { Accept: "application/json" }, signal: AbortSignal.timeout(30_000) });
+    } else {
+      const u = new URL(`${LI}/${path}`); u.searchParams.set("api_key", key);
+      for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+      r = await fetch(u, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(30_000) });
+    }
+    if (r.status !== 429 || attempt === 4) break;
+    await r.body?.cancel();
+    const wait = Number(r.headers.get("retry-after")) || 5 * 2 ** attempt;
+    await new Promise((res) => setTimeout(res, Math.min(60, wait) * 1000));
   }
   const txt = await r.text();
   let j: any = null; try { j = JSON.parse(txt); } catch { /* non-JSON */ }
@@ -140,6 +155,7 @@ async function liLocations() {
     const full = String(l.location_name || ""), city = String(l.city || "");
     return { location_id: String(l.location_id || ""), store_id: String(l.store_id || ""), full_name: full,
       name: city && full.endsWith(` - ${city}`) ? full.slice(0, -(city.length + 3)) : full,
+      address: [l.address, city].map((x: unknown) => String(x || "").trim()).filter(Boolean).join(", "),
       city, state: String(l.state || ""), url: String(l.location_url || ""), enabled: l.locationStatus !== "disable" };
   }).filter((l: any) => l.location_id);
 }
@@ -163,7 +179,83 @@ function liMatch(c: any, locs: any[]) {
   const loose = locs.filter((l) => { const m = norm(l.name); return n.length >= 5 && m.length >= 5 && (m.includes(n) || n.includes(m)); });
   return loose.length === 1 ? { loc: loose[0], sure: false } : null;
 }
-type LiCtx = { locs?: any[]; stats?: Map<string, any> };
+const num = (v: unknown) => v === "" || v == null || isNaN(Number(v)) ? null : Number(v);
+const avgRating = (rs: any[]) => { const r = rs.filter((x) => x.rating != null); return r.length ? Math.round(r.reduce((a, x) => a + x.rating, 0) / r.length * 100) / 100 : null; };
+const monthStart = (d: Date, add = 0) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + add, 1));
+const ymd = (d: Date) => d.toISOString().slice(0, 10);
+
+// Every review for a location since `since` (pages of 100, newest first).
+async function liReviews(locationId: string, since: Date) {
+  const out: any[] = [];
+  for (let page = 1; page <= 30; page++) {
+    const rv = await li("getreviews", { location_id: locationId, start_date: ymd(since), end_date: ymd(new Date(Date.now() + 86400000)),
+      review_count: "100", page: String(page), sequence: "desc", mark_review_retrieve: "N" });
+    const m = rv?.message || {};
+    for (const r of m.reviews || []) {
+      const link = String(r.link || ""), dir = String(r.directory_url || "");
+      out.push({ review_id: String(r.review_id ?? ""), site: siteName(r.review_site),
+        rating: r.rating === "" || r.rating == null ? null : Number(r.rating),
+        author: r.reviewer || null, text: r.message || "",
+        published_at: r.review_date ? new Date(String(r.review_date).replace(" ", "T") + "Z").toISOString() : null,
+        review_url: /^https?:/i.test(link) ? link : dir || (link ? `https://${link}` : null) });
+    }
+    if (!m.last_page || page >= Number(m.last_page)) break;
+  }
+  return out.filter((r) => r.review_id);
+}
+// Lifetime / last-N-days review statistics, overall and by site.
+async function liReviewStats(locationId: string, days: number) {
+  const j = await li("kpis/review_statistics", { location_id: locationId, days: String(days) });
+  return j?.statistics?.ReviewResponseStatistics || {};
+}
+
+// reputation_monthly rows for `months` (first days), from the lifetime
+// statistics (as of now) minus the reviews published after each month ended.
+// `reviews` must cover every month asked for, through today.
+async function saveMonthly(supa: any, clientId: string, loc: any, reviews: any[], since: Date, life: any, year: any, months: Date[]) {
+  const now = new Date();
+  const lifeTotal = num(life.reviewStatistics?.total_reviews) ?? 0, lifeAvg = num(life.reviewStatistics?.avgReviewRating);
+  const lifeSites = (Object.values(life.reviewResponseBySite || {}) as any[]).map((x) => ({ site: siteName(x.name), total: num(x.review_count) ?? 0, avg: num(x.avgRating) }));
+  const asOf = (total: number, avg: number | null, later: any[]) => {
+    const rated = later.filter((r) => r.rating != null);
+    const t = Math.max(0, total - later.length), tr = total - rated.length;
+    const rating = avg == null || tr <= 0 ? null : Math.round(((avg * total - rated.reduce((a, r) => a + r.rating, 0)) / tr) * 100) / 100;
+    return { total: t, rating: rating == null ? null : Math.min(5, Math.max(0, rating)) };
+  };
+  const rows = months.map((m) => {
+    const end = monthStart(m, 1), isCurrent = end > now;
+    const inMonth = reviews.filter((r) => r.published_at && new Date(r.published_at) >= m && new Date(r.published_at) < end);
+    const later = isCurrent ? [] : reviews.filter((r) => r.published_at && new Date(r.published_at) >= end);
+    const overall = asOf(lifeTotal, lifeAvg, later);
+    const names = [...new Set([...lifeSites.map((x) => x.site), ...inMonth.map((r) => r.site)])];
+    const sites = names.map((name) => {
+      const L = lifeSites.find((x) => x.site === name), P = inMonth.filter((r) => r.site === name);
+      const a = asOf(L?.total ?? 0, L?.avg ?? null, later.filter((r) => r.site === name));
+      return { site: name, total_reviews: a.total, rating: a.rating, period_reviews: P.length, period_rating: avgRating(P) };
+    }).filter((x) => x.total_reviews || x.period_reviews).sort((a, b) => b.total_reviews - a.total_reviews);
+    // Star breakdown for the 12 months to the month's end: the API's own figure
+    // for the current / just-closed month, otherwise counted from the reviews.
+    let stars: any = null;
+    if (isCurrent || monthStart(now, -1).getTime() === m.getTime()) stars = year.allReviewStats || null;
+    else {
+      const from = monthStart(m, -11);
+      if (since <= from) {
+        const win = reviews.filter((r) => r.published_at && new Date(r.published_at) >= from && new Date(r.published_at) < end);
+        stars = Object.fromEntries([1, 2, 3, 4, 5].map((n) => [String(n), win.filter((r) => r.rating === n).length]));
+      }
+    }
+    return { client_id: clientId, month: ymd(m), source: "local_incite", location_name: loc.full_name, location_address: loc.address || null,
+      total_reviews: overall.total, overall_rating: overall.rating, period_reviews: inMonth.length, period_rating: avgRating(inMonth),
+      sites, stars_12m: stars, captured_at: now.toISOString() };
+  });
+  if (rows.length) {
+    const { error } = await supa.from("reputation_monthly").upsert(rows, { onConflict: "client_id,month,source" });
+    if (error) throw new Error(`saving monthly reputation: ${error.message}`);
+  }
+  return rows.length;
+}
+
+type LiCtx = { locs?: any[]; stats?: Map<string, any>; backfillMonths?: number };
 async function collectLocalIncite(supa: any, c: any, ctx: LiCtx = {}) {
   const row: any = { client_id: c.id, source: "local_incite", place_id: c.local_incite_location_id };
   try {
@@ -171,32 +263,34 @@ async function collectLocalIncite(supa: any, c: any, ctx: LiCtx = {}) {
     const loc = locs.find((l: any) => l.location_id === c.local_incite_location_id);
     if (!loc) throw new Error("the linked Local Incite location wasn't found — pick it again on the Reputation panel");
     const st = ctx.stats?.get(loc.store_id) || [...(await liStats(loc.location_id)).values()][0];
-    const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-    const rv = await li("getreviews", { location_id: loc.location_id, start_date: day(Date.now() - 45 * 86400000), end_date: day(Date.now() + 86400000),
-      review_count: "100", sequence: "desc", mark_review_retrieve: "N" });
-    const reviews = (rv?.message?.reviews || []).map((r: any) => ({
-      review_id: String(r.review_id ?? ""), site: siteName(r.review_site),
-      rating: r.rating === "" || r.rating == null ? null : Number(r.rating),
-      author: r.reviewer || null, text: r.message || "",
-      published_at: r.review_date ? new Date(String(r.review_date).replace(" ", "T") + "Z").toISOString() : null,
-      review_url: r.link || r.directory_url || null,
-    })).filter((r: any) => r.review_id);
+    // Reviews from the start of last month (the report month while it's being
+    // finalized, plus the current month), and the 45-day site counts.
+    const now = new Date(), backfill = Math.max(1, Math.min(24, ctx.backfillMonths || 0));
+    const since = monthStart(now, ctx.backfillMonths ? -(backfill + 11) : -1);
+    const reviews = await liReviews(loc.location_id, since);
     const ag = st?.aggregate || {}, av = st?.average || {}, rt = st?.rating || {};
-    const num = (v: unknown) => v === "" || v == null || isNaN(Number(v)) ? null : Number(v);
     const sites: Record<string, number> = {};
-    for (const r of reviews) sites[r.site] = (sites[r.site] || 0) + 1;
+    for (const r of reviews) if (r.published_at && Date.now() - new Date(r.published_at).getTime() < 45 * 86400000) sites[r.site] = (sites[r.site] || 0) + 1;
     Object.assign(row, { listing_name: loc.full_name, rating: num(av.avg_rating) == null ? null : Math.round(num(av.avg_rating)! * 100) / 100,
-      review_count: num(ag.total_reviews), reviews: reviews.slice(0, 10),
+      review_count: num(ag.total_reviews), reviews: reviews.slice(0, 10).map(({ text, ...r }: any) => ({ ...r, text: String(text).slice(0, 600) })),
       stats: { awaiting_response: num(ag.reviews_no_responses), negative_unanswered: num(ag.negative_reviews_no_responses),
         responses: num(ag.total_responses), avg_response_days: num(av.avg_response_time_in_days), flagged: num(ag.total_flagged_reviews),
         stars: [1, 2, 3, 4, 5].map((n) => num(rt[`total_rating_${n}`]) ?? 0), sites_45d: sites } });
     if (!st) row.error = "Local Incite has no review stats for this location yet";
     if (reviews.length) {
-      await supa.from("reputation_reviews").upsert(reviews.map((r: any) => ({
-        client_id: c.id, source: "local_incite", review_id: r.review_id, site: r.site, rating: r.rating, author: r.author,
-        text: r.text, published_at: r.published_at, review_url: r.review_url,
-      })), { onConflict: "client_id,source,review_id", ignoreDuplicates: true });
+      for (let i = 0; i < reviews.length; i += 500) {
+        await supa.from("reputation_reviews").upsert(reviews.slice(i, i + 500).map((r: any) => ({
+          client_id: c.id, source: "local_incite", review_id: r.review_id, site: r.site, rating: r.rating, author: r.author,
+          text: r.text, published_at: r.published_at, review_url: r.review_url, location_name: loc.full_name, location_address: loc.address || null,
+        })), { onConflict: "client_id,source,review_id" });
+      }
     }
+    // Report months: the current month, the last one while it settles (first
+    // five days), or the last N months on a backfill.
+    const months = ctx.backfillMonths ? Array.from({ length: backfill + 1 }, (_, i) => monthStart(now, -i))
+      : now.getUTCDate() <= 5 ? [monthStart(now), monthStart(now, -1)] : [monthStart(now)];
+    const life = await liReviewStats(loc.location_id, 36500), year = await liReviewStats(loc.location_id, 365);
+    await saveMonthly(supa, c.id, loc, reviews, since, life, year, months);
   } catch (e) {
     row.error = String((e as any)?.message || e).slice(0, 400);
   }
@@ -306,6 +400,7 @@ Deno.serve(async (req) => {
     search: ["super_admin", "account_manager"], set_place: ["super_admin", "account_manager"],
     collect_all: ["super_admin"],
     li_locations: ["super_admin", "account_manager"], set_li_location: ["super_admin", "account_manager"],
+    li_backfill: ["super_admin"],
   };
   if (!(action in roles)) return json({ error: `unknown action "${action}"` }, 400);
   const who = await gateCaller(req, roles[action]);
@@ -352,6 +447,22 @@ Deno.serve(async (req) => {
       const er = (globalThis as any).EdgeRuntime;
       if (er?.waitUntil) er.waitUntil(work); else await work;
       return json({ ok: true, background: true, clients: ids.length }, 202);
+    }
+
+    if (action === "li_backfill") {
+      let q = supa.from("clients").select("id, name, url, local_incite_location_id").eq("status", "active").not("local_incite_location_id", "is", null);
+      if (body.client_id) q = q.eq("id", String(body.client_id));
+      const { data: cl } = await q;
+      const months = Math.max(1, Math.min(24, Number(body.months) || 12));
+      const work = (async () => {
+        const ctx: LiCtx = { locs: await liLocations(), backfillMonths: months };
+        const byId = new Map((cl || []).map((c: any) => [c.id, c]));
+        return eachClient([...byId.keys()], (id) => collectLocalIncite(supa, byId.get(id), ctx), 2);
+      })().then((r) => console.log("reputation li_backfill", JSON.stringify(r).slice(0, 2000)))
+        .catch((e) => console.error("reputation li_backfill", e));
+      const er = (globalThis as any).EdgeRuntime;
+      if (er?.waitUntil) er.waitUntil(work); else await work;
+      return json({ ok: true, background: true, clients: (cl || []).length, months }, 202);
     }
 
     const clientId = String(body.client_id || "");
