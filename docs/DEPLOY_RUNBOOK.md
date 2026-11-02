@@ -171,6 +171,15 @@ without it the API marks reviews as retrieved and stops returning them.
 Snapshots are `source='local_incite'` with lifetime rating / count and
 `stats` (response backlog, star breakdown, reviews per site).
 
+**Report pages.** `supabase/migrations/reputation_looker.sql` adds
+`reputation_monthly` (one row per client per month: lifetime and in-month
+totals and ratings, per-site figures, 12-month star breakdown) and the views
+`looker_reputation_monthly` / `_sites` / `_reviews` (see
+docs/LOOKER_INTEGRATION.md). `reputation` 1.2.0 writes them daily;
+`{"action":"li_backfill","months":12}` rebuilds history. The API rate-limits
+per key (429 "Too Many Attempts"); calls retry with backoff and the backfill
+runs two clients at a time.
+
 ## 1a-5. Plan add-ons  (Supabase → SQL Editor)
 
 Paste `supabase/migrations/addons.sql` and Run (idempotent; AFTER

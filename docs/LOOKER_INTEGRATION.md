@@ -48,6 +48,24 @@ build & deploy assets"), `phase_title`, `phase_detail`, `program_label`,
 Every view carries `client_id`, `client_url` and `partner_group`. Blend on
 `report_id` (report views) or `client_id` (everything).
 
+## Reputation Monitoring pages
+
+`supabase/migrations/reputation_looker.sql` (applied on the live project)
+adds three views fed by Local Incite through the `reputation` function. Filter
+by client and `month` (first day of the report month).
+
+| View | One row per | Report widget |
+|---|---|---|
+| `looker_reputation_monthly` | client per month | Overview: `total_reviews` + `period_reviews` ("Total Reviews 230 / Reviews (Oct) 4"), `overall_rating` + `period_rating` ("Overall Rating 4.92 / Rating in Oct 5"), `industry_average_rating` (4.4), and the "Review Site Rating Last 12 Months" pie: `stars_1_12m` … `stars_5_12m` and `stars_*_pct_12m` |
+| `looker_reputation_sites` | review site per client per month | the per-site tiles: `review_site`, `total_reviews`, `rating` ("Todays Rating"), `period_reviews`, `period_rating` |
+| `looker_reputation_reviews` | review | "Public Reviews": `review_heading` ("Google Review By Rick Crouse"), `location_name`, `location_address`, `review_date`, `rating` / `stars_label`, `review_text`, `review_url` |
+
+Totals and site ratings are as of the end of the month. The daily run keeps
+the current month up to date and re-finalizes last month during the first
+five days of a month; the 12 months before Nov 2026 were backfilled from the
+review history. Clients must be linked to their Local Incite location
+(Reputation panel on the client's Setup tab).
+
 ## Setup — once, in Supabase
 
 1. **SQL Editor → paste `looker_views.sql` → Run.** Safe to re-run: it never
@@ -88,15 +106,19 @@ Looker's cache refresh defaults to 12h; set data freshness to 1h if needed.
 
 For TapClicks plans without a database connector (SmartConnector pulls a URL):
 
-1. **Deploy** `supabase/functions/report-feed/index.ts` as `report-feed`.
-2. **Set the secret** `REPORT_FEED_TOKEN` to a long random string (32+ chars).
-3. **Turn OFF "Enforce JWT verification"** for this one function. BI pullers
-   can't send Supabase JWTs, so the token is the gate.
-4. Feed URLs (treat them as secrets, since the token rides in the URL):
+1. **Deployed** on the live project (`report-feed` 1.1.0, JWT verification off:
+   BI pullers can't send Supabase JWTs, so the token is the gate).
+2. **Set the token:** make up a long random string (32+ characters, letters
+   and numbers; a password manager's generator is ideal) and paste it into
+   **Team & access → API keys → Report feed token**. It takes effect within a
+   minute; change it the same way to revoke every URL that used the old one.
+3. Feed URLs (treat them as secrets, since the token rides in the URL):
 
-   `https://YOURPROJECT.supabase.co/functions/v1/report-feed?token=TOKEN&view=reports`
+   `https://qjmwsxwoefixuuqvkqmz.supabase.co/functions/v1/report-feed?token=TOKEN&view=reports`
 
    - `view=` `reports_monthly` · `report_grades_monthly` · `report_items_monthly` ·
+     `ai_visibility` · `ai_visibility_items` · `reputation` · `reputation_sites` ·
+     `reputation_reviews` ·
      `reports` · `report_grades` · `report_items` · `audits` ·
      `clients` · `content` · `deliverables`
    - `&format=json` for JSON instead of CSV

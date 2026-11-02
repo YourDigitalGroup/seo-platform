@@ -5,13 +5,15 @@
 // ----------------------------------------------------------------------------
 //  GET /functions/v1/report-feed?token=…&view=audits[&format=csv][&group=…][&days=90]
 //
-//   · token   REQUIRED — must equal the REPORT_FEED_TOKEN function secret.
-//             (Set a long random value: Edge Functions → report-feed →
-//             Secrets. The token travels in the URL because SmartConnectors
-//             can't send custom headers — treat the URL itself as a secret.)
+//   · token   REQUIRED — must equal REPORT_FEED_TOKEN (Team & access → API
+//             keys, or the function secret): a long random value. It travels
+//             in the URL because SmartConnectors can't send custom headers —
+//             treat the URL itself as a secret.
 //   · view    audits | clients | content | deliverables | reports |
 //             report_grades | report_items (+ _monthly variants) — the looker_* views
-//             from supabase/migrations/looker_views.sql (run that first).
+//             from supabase/migrations/looker_views.sql (run that first);
+//             ai_visibility | ai_visibility_items (ai_citations_looker.sql);
+//             reputation | reputation_sites | reputation_reviews (reputation_looker.sql).
 //             Whitelisted names only; nothing else is reachable.
 //   · format  csv (default) | json
 //   · group   optional partner-group name — a per-partner feed for
@@ -44,7 +46,7 @@ async function platformKey(name: string): Promise<string> {
   return v;
 }
 
-const FEED_VERSION = "1.0.0";
+const FEED_VERSION = "1.1.0";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -66,6 +68,13 @@ const VIEWS: Record<string, { table: string; order: string; asc: boolean }> = {
   reports_monthly:       { table: "looker_reports_monthly",       order: "report_date", asc: false },
   report_grades_monthly: { table: "looker_report_grades_monthly", order: "report_date", asc: false },
   report_items_monthly:  { table: "looker_report_items_monthly",  order: "report_date", asc: false },
+  // AI citation tracking (report section 6)
+  ai_visibility:       { table: "looker_ai_visibility",       order: "report_date", asc: false },
+  ai_visibility_items: { table: "looker_ai_visibility_items", order: "report_date", asc: false },
+  // Reputation Monitoring pages (reputation_looker.sql)
+  reputation:         { table: "looker_reputation_monthly", order: "month",        asc: false },
+  reputation_sites:   { table: "looker_reputation_sites",   order: "month",        asc: false },
+  reputation_reviews: { table: "looker_reputation_reviews", order: "published_at", asc: false },
 };
 
 const csvCell = (v: unknown): string => {
