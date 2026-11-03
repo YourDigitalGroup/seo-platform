@@ -370,6 +370,7 @@ body[data-theme=dark] .bf-field input.bf-sug,body[data-theme=dark] .bf-kwrow inp
 .key-row{display:flex;gap:14px;justify-content:space-between;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}
 .key-main{flex:1;min-width:0}
 .key-main .wmeta{font-size:12.5px;line-height:1.5;margin-top:2px}
+#gbp-settings .wmeta{font-size:12.5px;line-height:1.5}
 #rep-list a,#rep-client a{color:var(--blue);text-decoration:none;font-weight:600}
 #rep-list a:hover,#rep-client a:hover{text-decoration:underline}
 .key-name{font-size:13.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px}
@@ -1024,7 +1025,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.28.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.29.0</div>
   </div>
   </div>
 </div>
@@ -1112,7 +1113,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.28.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.29.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1160,7 +1161,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.28.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.29.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1323,7 +1324,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.28.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.29.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1341,7 +1342,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.28.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.29.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1375,6 +1376,12 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="keys-list"><div class="wmeta">Loading…</div></div>
     </div>
     <div class="widget" style="margin-top:18px">
+      <div class="widget-h"><div><h2>Google Business Profile.</h2>
+        <div class="wmeta">Directions, calls, website clicks, Search &amp; Maps views and search terms for report page 1 (Local Listing Optimization). Each Google account is connected once; every listing it manages is matched to its client.</div></div>
+        <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="loadGbp()"><i class="fa-solid fa-rotate"></i> Refresh</button></div>
+      <div id="gbp-settings"><div class="wmeta">Loading…</div></div>
+    </div>
+    <div class="widget" style="margin-top:18px">
       <div class="widget-h"><div><h2>Trello integration.</h2>
         <div class="wmeta">Where “Submit to SEO/AEO specialist” creates its cards — board, per-strategist column, card title.</div></div>
         <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="trelloLoadLists()">Load board columns</button></div>
@@ -1387,7 +1394,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.28.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.29.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1767,6 +1774,7 @@ async function loadTeam(){
     TEAM_USERS=d.users||[];
     renderTeam();
     loadKeys();
+    loadGbp();
     loadTrelloSettings();
     loadAiTracking();
   }catch(e){
@@ -2590,6 +2598,7 @@ function onAuth(){
   const isAdmin=me.role==='admin';
   document.getElementById('nav-team').style.display=isAdmin?'':'none';
   document.getElementById('nav-team-label').style.display=isAdmin?'':'none';
+  if(GBP_RETURN&&isAdmin){ const r=GBP_RETURN; GBP_RETURN=null; navigate('team'); showToast(r.gbp==='connected'?`Google Business Profile ${r.gbp_msg||'connected'}`:`Google Business Profile not connected — ${r.gbp_msg||'unknown error'}`,r.gbp!=='connected',r.gbp==='connected'); return; }
   navigate('groups');
 }
 function showErr(m){ const e=document.getElementById('l-err'); e.textContent=m; e.style.display='block'; }
@@ -4223,6 +4232,75 @@ async function keyClear(i){
     showToast(r.falls_back_to_secret?`Removed — now using the Supabase secret for ${k.label}`:`Removed — ${k.label} is no longer set`,!r.falls_back_to_secret&&!k.optional); }
   catch(e){ showToast('Could not remove — '+String(e.message||e),true); }
   loadKeys();
+}
+
+// ── GOOGLE BUSINESS PROFILE (gbp / gbp-callback Edge Functions; Super Admins) ──
+// Connect = Google sign-in in this tab; gbp-callback stores the token and
+// sends the browser back here with ?gbp=connected|error.
+let GBP=null, GBP_RETURN=null;
+(()=>{ try{ const q=new URLSearchParams(location.search); if(q.get('gbp')){
+  GBP_RETURN={gbp:q.get('gbp'), gbp_msg:q.get('gbp_msg')||'', conn:q.get('gbp_conn')||''};
+  ['gbp','gbp_msg','gbp_conn'].forEach(k=>q.delete(k));
+  history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+location.hash); } }catch(_){} })();
+async function loadGbp(){
+  const el=document.getElementById('gbp-settings'); if(!el) return;
+  el.innerHTML='<div class="wmeta">Loading…</div>';
+  try{ GBP=await fnInvoke('gbp',{action:'status'}); renderGbp(); }
+  catch(e){ el.innerHTML=`<div class="wmeta" style="color:#c0392b">Could not load — ${esc(String(e.message||e))}</div>`; }
+}
+function renderGbp(){
+  const el=document.getElementById('gbp-settings'); if(!el||!GBP) return;
+  const g=GBP, fmt=d=>d?new Date(d).toLocaleString():'never';
+  const anyConnected=(g.connections||[]).some(c=>c.connected);
+  el.innerHTML=`
+    <div class="wmeta" style="margin-bottom:10px">Google OAuth redirect URI (paste into Google Auth Platform → Clients → your web client → Authorized redirect URIs):
+      <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap"><code id="gbp-cb" style="font-size:12px;background:var(--mist);padding:6px 8px;border-radius:6px;word-break:break-all">${esc(g.callback_url)}</code>
+      <button class="tbtn" onclick="navigator.clipboard.writeText(document.getElementById('gbp-cb').textContent).then(()=>showToast('Copied',false,true))">Copy</button></div></div>
+    ${g.oauth_client_set?'':'<div class="wmeta" style="color:#c0392b;margin-bottom:10px"><i class="fa-solid fa-triangle-exclamation"></i> Add the Business Profile OAuth client ID and secret in API keys above before connecting.</div>'}
+    ${(g.connections||[]).map(c=>`<div class="key-row">
+      <div class="key-main">
+        <div class="key-name"><b>${esc(c.label)}</b> <code>${esc(c.expected_email||'')}</code>
+          ${c.connected?`<span class="key-chip ok"><i class="fa-solid fa-link"></i> Connected${c.account_email?' as '+esc(c.account_email):''}</span>`:'<span class="key-chip off">Not connected</span>'}</div>
+        <div class="wmeta">Assigned to: ${esc(c.scope_note||'')}${c.connected_at?` · connected ${fmt(c.connected_at)}${c.connected_by?' by '+esc(c.connected_by):''}`:''}${c.last_discovery_at?` · ${c.locations_found??0} listings found ${fmt(c.last_discovery_at)}`:''}</div>
+        ${c.connected&&c.account_email&&c.expected_email&&c.account_email.toLowerCase()!==c.expected_email.toLowerCase()?`<div class="wmeta" style="color:#b9770e">Signed in as ${esc(c.account_email)}, not ${esc(c.expected_email)} — fine if that account manages the same listings.</div>`:''}
+        ${c.last_error?`<div class="wmeta" style="color:#c0392b"><i class="fa-solid fa-circle-exclamation"></i> ${esc(c.last_error)}</div>`:''}
+      </div>
+      <div class="key-acts">
+        <button class="tbtn" ${g.oauth_client_set?'':'disabled'} onclick="gbpConnect('${esc(c.key)}')">${c.connected?'Reconnect':'Connect'}</button>
+        ${c.connected?`<button class="tbtn danger" onclick="gbpDisconnect('${esc(c.key)}','${esc(c.label)}')">Disconnect</button>`:''}
+      </div></div>`).join('')}
+    <div class="wmeta" style="margin:12px 0 10px">${g.matched_clients} of ${g.active_clients} active clients matched to a listing · performance last pulled ${fmt(g.last_fetched)} · pulled daily at 13:10 UTC (this month and last)</div>
+    <div class="bf-actions" style="justify-content:flex-start;flex-wrap:wrap">
+      <button class="ds-save" ${anyConnected?'':'disabled'} onclick="gbpDiscover()"><i class="fa-solid fa-magnifying-glass"></i> Find listings &amp; match clients</button>
+      <button class="ds-save" style="background:var(--mist);color:var(--ink);border:1px solid var(--line)" ${g.matched_clients?'':'disabled'} onclick="gbpCollect(2)"><i class="fa-solid fa-rotate"></i> Pull performance now</button>
+      <button class="ds-save" style="background:var(--mist);color:var(--ink);border:1px solid var(--line)" ${g.matched_clients?'':'disabled'} onclick="gbpCollect(13)">Backfill 12 months</button>
+    </div>
+    <div id="gbp-result"></div>`;
+}
+async function gbpConnect(key){
+  try{ const r=await fnInvoke('gbp',{action:'connect', connection:key, return_to:location.origin+location.pathname}); location.href=r.url; }
+  catch(e){ showToast('Could not start Google sign-in — '+String(e.message||e),true); }
+}
+async function gbpDisconnect(key,label){
+  if(!confirm(`Disconnect ${label}? Performance stops updating for the listings only this account manages until it's connected again.`)) return;
+  try{ await fnInvoke('gbp',{action:'disconnect', connection:key}); showToast(`${label} disconnected`); }
+  catch(e){ showToast('Could not disconnect — '+String(e.message||e),true); }
+  loadGbp();
+}
+async function gbpDiscover(){
+  const box=document.getElementById('gbp-result');
+  showToast('Finding Business Profile listings…');
+  try{ const r=await fnInvoke('gbp',{action:'discover'});
+    showToast(`${r.listings} listings found · ${r.matched} clients matched`,!!(r.errors||[]).length,!(r.errors||[]).length);
+    if(box) box.innerHTML=`<div class="wmeta" style="margin-top:10px">${(r.errors||[]).map(x=>`<div style="color:#c0392b">${esc(x)}</div>`).join('')}
+      ${(r.unmatched||[]).length?`Not matched (their listing's website isn't the client's domain, or neither account manages it): ${(r.unmatched||[]).map(esc).join(', ')}`:'Every active client is matched.'}</div>`; }
+  catch(e){ showToast('Could not find listings — '+String(e.message||e),true); }
+  loadGbp();
+}
+async function gbpCollect(months){
+  try{ const r=await fnInvoke('gbp',{action:'collect_all', months});
+    showToast(r.skipped?r.skipped:`Pulling ${r.months} months for ${r.clients} clients in the background — refresh in a few minutes`,!!r.skipped,!r.skipped); }
+  catch(e){ showToast('Could not start — '+String(e.message||e),true); }
 }
 
 // ── REPUTATION (reputation Edge Function) ─────────────────────────────────
