@@ -180,6 +180,38 @@ docs/LOOKER_INTEGRATION.md). `reputation` 1.2.0 writes them daily;
 per key (429 "Too Many Attempts"); calls retry with backoff and the backfill
 runs two clients at a time.
 
+## 1a-4g. Google Business Profile performance  (report page 1)
+
+`supabase/migrations/gbp_connections.sql` (applied) records
+`gbp_performance_monthly` (read by `looker_llo_google_business_profile`) and
+adds `gbp_connections`, `gbp_oauth_states`, `clients.gbp_location /
+gbp_location_title / gbp_connection` and the `seop-daily-gbp-performance`
+job (13:10 UTC). Functions: `gbp` (JWT on) and `gbp-callback` (JWT OFF;
+Google can't send a Supabase JWT, the one-time OAuth state is the gate).
+
+Google side, once:
+1. Cloud project approved for the Business Profile APIs (Basic API Access
+   form; quota 0 QPM = not approved yet, 300 QPM = approved).
+2. Enable Business Profile Performance API, My Business Account Management
+   API, My Business Business Information API.
+3. Google Auth Platform: External audience; Web application client;
+   Authorized redirect URI
+   `https://qjmwsxwoefixuuqvkqmz.supabase.co/functions/v1/gbp-callback`.
+   Scope used: `business.manage` (plus openid/email to show who connected).
+4. Paste the client ID / secret into Team & access → API keys
+   (`GBP_OAUTH_CLIENT_ID`, `GBP_OAUTH_CLIENT_SECRET`).
+
+Then Team & access → Google Business Profile: Connect 44i Digital
+(media@44interactive.com) and Your Digital Group (yourdigitalgroup@gmail.com);
+each refresh token is kept in Vault as `GBP_REFRESH_44I` / `GBP_REFRESH_YDG`.
+"Find listings & match clients" matches each listing to a client by website,
+then exact name; "Backfill 12 months" fills history. The daily run refreshes
+this month and last (Google finalizes a few days late). Monthly rows: the
+seven daily metrics summed (directions, website clicks, calls, desktop/mobile
+Maps/Search impressions; search_views / maps_views are the Search / Maps
+sums) plus that month's search terms (`impressions`, or `under` = Google's
+"fewer than N" threshold for small counts).
+
 ## 1a-5. Plan add-ons  (Supabase → SQL Editor)
 
 Paste `supabase/migrations/addons.sql` and Run (idempotent; AFTER
