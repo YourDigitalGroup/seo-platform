@@ -226,7 +226,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.11.0";
+const ENGINE_VERSION = "5.11.1";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -555,18 +555,32 @@ async function runAuditPipeline(body: any): Promise<Response> {
       const pe = await ah("site-audit/page-explorer", { project_id: String(crawlProjectId), limit: String(CRAWL_PAGE_LIMIT), order_by: "page_rating:desc",
         select: "url,http_code,page_is_noindex,title,titles_length,meta_description,meta_description_length,h1,h1_length,content_nr_word,links_count_images,links_count_images_without_alt,jsonld_schema_types,canonical,og_tags_valid,page_type" });
       const rows = (pe?.pages ?? pe?.rows ?? []);
+      // Ahrefs returns title / meta / h1 (and their lengths) as lists, so an
+      // empty [] is truthy: take the first value. The crawl also lists the
+      // site's CSS, JS, images and redirecting URLs — none of them are pages,
+      // and counting them failed every title / meta / content / URL check.
+      const one = (v: any) => Array.isArray(v) ? v[0] : v;
+      const ASSET = /\.(css|js|mjs|map|svg|png|jpe?g|webp|avif|gif|ico|bmp|woff2?|ttf|otf|eot|pdf|xml|json|txt|csv|mp3|mp4|webm|mov|zip|gz)(\?|#|$)/i;
       pages = rows
-        .filter((r: any) => r && (r.http_code === undefined || (r.http_code >= 200 && r.http_code < 400)))
-        .filter((r: any) => (r.title || r.content_nr_word))   // HTML pages only
+        .filter((r: any) => r && (r.http_code === undefined || (r.http_code >= 200 && r.http_code < 300)))
+        .filter((r: any) => !ASSET.test(String(r.url || "")) && !/\/wp-(content|includes|json)\//i.test(String(r.url || "")))
+        .filter((r: any) => String(one(r.title) ?? "").trim() || Number(one(r.content_nr_word)) > 0)   // HTML pages only
         .map((r: any) => {
           const st = Array.isArray(r.jsonld_schema_types) ? r.jsonld_schema_types : String(r.jsonld_schema_types || "").split(/[,\s]+/).filter(Boolean);
+          const title = String(one(r.title) ?? ""), metaDesc = String(one(r.meta_description) ?? "");
           return { url: r.url, status: r.http_code ?? 200, ok: true, https: String(r.url||"").startsWith("https://"),
-            title: String(r.title ?? ""), titleLen: r.titles_length ?? String(r.title ?? "").length, metaDesc: String(r.meta_description ?? ""), metaLen: r.meta_description_length ?? String(r.meta_description ?? "").length,
-            h1: r.h1_length > 0 || r.h1 ? 1 : 0, words: r.content_nr_word ?? 0,
+            title, titleLen: Number(one(r.titles_length)) || title.length, metaDesc, metaLen: Number(one(r.meta_description_length)) || metaDesc.length,
+            h1: Number(one(r.h1_length)) > 0 || String(one(r.h1) ?? "").trim() ? 1 : 0, words: Number(one(r.content_nr_word)) || 0,
             imgs: r.links_count_images ?? 0, imgsNoAlt: r.links_count_images_without_alt ?? 0,
             schemaTypes: st, og: !!r.og_tags_valid, canonical: !!r.canonical, viewport: true, noindex: !!r.page_is_noindex,
             aeo: { hasFAQSchema: st.includes("FAQPage"), questionHeadings: 0 } };
-        });
+        })
+        // One entry per page: www./scheme/trailing-slash twins share a title
+        // and description, which failed the duplicate checks on their own.
+        .filter(function (this: Set<string>, p: any) {
+          const k = String(p.url || "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
+          if (this.has(k)) return false; this.add(k); return true;
+        }, new Set<string>());
       if (pages.length) { crawlUsed = true; note.push(`Full-site crawl used (${pages.length} pages audited; health ${healthScore ?? "—"}).`); }
     }
     let sitemapCrawled = false;
