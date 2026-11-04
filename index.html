@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <!--
-  44i SEO/AEO Delivery System — Internal Ops Console v18
+  44i SEO/AEO Delivery System — Internal Ops Console v19
   Stack: static front-end · secure cloud backend · search & authority data
 
   THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
@@ -5703,6 +5703,22 @@ async function alInvoke(payload){
   if(data?.error) throw new Error(data.error);
   return data;
 }
+function lloSyncDetailHtml(data){
+  const names={year_established:'Year established',facebook:'Facebook',x:'X (Twitter)',instagram:'Instagram',linkedin:'LinkedIn',logo_url:'Logo',cover_image_url:'Cover image',gallery_image_urls:'Gallery images',hours:'Hours',description:'Description',services:'Services',category_primary:'Primary category',category_secondary:'Secondary categories',service_areas:'Service areas',keywords:'Keywords'};
+  const results=Object.entries(data.results||{});
+  if(!results.length&&!data.warning)return '';
+  const display={submitted:'Submitted, not yet verified',not_sent:'Not sent',rejected:'Rejected',not_verified:'Needs verification'};
+  return `<section aria-label="LLO sync results" style="margin-top:12px;border:1px solid var(--line);padding:10px;border-radius:8px">
+    <div style="font-weight:800;font-size:12px">LLO field sync results</div>
+    <div class="wmeta" style="margin:4px 0 8px">A successful location submission does not guarantee every field is saved in Advice Local.</div>
+    ${results.map(([key,v])=>`<div style="padding:6px 0;border-top:1px solid var(--line);font-size:12px">
+      <b>${esc(names[key]||key)}:</b>
+      <span style="color:${v.status==='submitted'?'var(--muted)':'var(--danger,#b45309)'}">${esc(display[v.status]||v.status)}</span>
+      <div class="wmeta">${esc(v.detail||'')}</div>
+    </div>`).join('')}
+    ${data.warning?`<div class="wmeta" style="margin-top:8px"><b>Warnings:</b> ${esc(data.warning)}</div>`:''}
+  </section>`;
+}
 async function renderALPanel(){
   const el=document.getElementById('al-panel'); if(!el||OFFLINE||!activeClient) return;
   if(activeClient._al===undefined){
@@ -5723,6 +5739,7 @@ async function renderALPanel(){
       <button class="tbtn" onclick="alStatus()"><i class="fa-solid fa-tower-broadcast"></i> Fulfillment status</button>
     </div>
     <div id="al-status" style="margin-top:10px"></div>
+    ${activeClient._alSyncDetails?lloSyncDetailHtml(activeClient._alSyncDetails):''}
   </div>`;
 }
 function alDescGuard(){
@@ -5741,8 +5758,9 @@ async function alSync(){
   try{
     const d=await alInvoke({action:'sync', client_id:activeClient.id});
     activeClient._al={...(activeClient._al||{}), al_client_id:d.al_client_id, al_synced_at:new Date().toISOString()};
-    showToast(`${d.partial?'⚠ Listing partially synced':'✓ Listing synced'} on LLO — location #${d.al_client_id}`+(d.warning?` · ${d.warning}`:''), !!d.partial, !d.partial);
-    renderALPanel();
+    activeClient._alSyncDetails={results:d.field_results||{},warning:d.warning||'',partial:!!d.partial};
+    showToast(`${d.partial?'LLO location synced with unsent or unverified fields':'LLO location submitted'} — location #${d.al_client_id}`+(d.warning?' · Review sync details below':''),!!d.partial,!d.partial);
+    await renderALPanel();
   }catch(e){ showToast('LLO sync failed — '+String(e.message||e),true); if(b){ b.disabled=false; b.innerHTML='<i class="fa-solid fa-cloud-arrow-up"></i> Sync to LLO'; } }
 }
 async function alOrder(){
