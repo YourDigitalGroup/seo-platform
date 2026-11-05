@@ -226,7 +226,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.12.0";
+const ENGINE_VERSION = "5.12.1";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -594,8 +594,14 @@ async function runAuditPipeline(body: any): Promise<Response> {
         if (smr.ok) {
           let xml = await smr.text();
           if (/<sitemapindex/i.test(xml)) {
-            const first = xml.match(/<loc>\s*([^<]+?)\s*<\/loc>/i)?.[1];
-            if (first) { try { const cs = await fetch(first.trim()); if (cs.ok) xml = await cs.text(); } catch { /* ignore */ } }
+            // Follow up to four child sitemaps, PAGES first: Yoast / Rank Math
+            // list the post sitemap first, and following only that one audited
+            // blog posts while service pages (where FAQs live) went unseen.
+            const kids = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map((m) => m[1].trim())
+              .filter((u) => !/(category|tag|author|attachment|format|local|news|video|image|elementor[-_]?hf|e[-_]?landing[-_]?page|product[-_]?cat)[-_]?sitemap|sitemap[-_]?(category|tag|author)/i.test(u))
+              .sort((a, b) => (/page/i.test(b) ? 1 : 0) - (/page/i.test(a) ? 1 : 0)).slice(0, 4);
+            const parts = await Promise.all(kids.map(async (k) => { try { const cs = await fetch(k); return cs.ok ? await cs.text() : ""; } catch { return ""; } }));
+            if (parts.some(Boolean)) xml = parts.join("\n");
           }
           smList = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map((m) => m[1].trim())
             .filter((u) => rootOf(u) === root && !/\.(jpg|jpeg|png|gif|webp|svg|pdf|xml)(\?|$)/i.test(u));
@@ -624,15 +630,17 @@ async function runAuditPipeline(body: any): Promise<Response> {
     pages.forEach((p: any) => (p.schemaTypes || []).forEach((t: string) => allSchema.add(t)));
     [homePage, aboutPage].forEach((p: any) => p && (p.schemaTypes || []).forEach((t: string) => allSchema.add(t)));
     const schemaPresent = EXPECT_SCHEMA.filter((t) => allSchema.has(t) || (t === "Organization" && allSchema.has("LocalBusiness")));
-    const hasFAQ = allSchema.has("FAQPage");
+    let hasFAQ = allSchema.has("FAQPage");
     // Question headings live on BLOG/FAQ pages, not the homepage — count every
     // sampled page (deduped by URL; crawl-path pages carry a 0 stub, so a
     // configured crawl undercounts prose signals — the fetch sample covers it).
     let questionHeads = 0;
+    const qhCounted = new Map<string, number>();   // per URL, so the deep-inspection sample can top up crawl stubs
     { const qhSeen = new Set<string>();
       for (const p of [homePage, aboutPage, ...pages]) {
         const u = p?.url; if (!p || !u || qhSeen.has(u)) continue; qhSeen.add(u);
-        questionHeads += p?.aeo?.questionHeadings || 0;
+        const n = p?.aeo?.questionHeadings || 0;
+        questionHeads += n; qhCounted.set(String(u).replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase(), n);
       } }
     const hasNAP = !!(homePage?.nap?.hasPhone && homePage?.nap?.hasAddress);
     const eeat = { ...(aboutPage?.eeat || {}), ...(homePage?.eeat || {}),
@@ -909,7 +917,8 @@ async function runAuditPipeline(body: any): Promise<Response> {
     if (aboutPage?.ok && aboutPage.url) sAdd(aboutPage.url, "about");
     ownPages.filter((p: any) => isPost(p.url)).slice(0, 2).forEach((p: any) => sAdd(p.url, "post"));
     sAdd(ownPages.find((p: any) => isHowTo(p) && !isListing(p.url))?.url, "howto");
-    sAdd(ownPages.find((p: any) => (p.schemaTypes || []).includes("FAQPage") || /\/faqs?\/?$/i.test(p.url))?.url, "faq");
+    sAdd(ownPages.find((p: any) => (p.schemaTypes || []).includes("FAQPage") || /\/faqs?\/?$/i.test(p.url))?.url
+      || ownPages.find((p: any) => (p?.aeo?.questionHeadings || 0) >= 2)?.url, "faq");
     sAdd(ownPages.find((p: any) => !isPost(p.url) && !isListing(p.url) && sKey(p.url) !== sKey(home))?.url, "service");
     const fetchHtml = async (u: string) => {
       const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), 8000);
@@ -918,7 +927,17 @@ async function runAuditPipeline(body: any): Promise<Response> {
     };
     const inspected = [{ url: home, role: "home", html: homeHtmlRaw },
       ...(await Promise.all(sample.slice(0, 6).map(async (s) => ({ ...s, html: await fetchHtml(s.url) }))))]
-      .filter((x) => x.html).map((x) => ({ url: x.url, role: x.role, ...inspectSchemaHtml(x.html) }));
+      .filter((x) => x.html).map((x) => ({ url: x.url, role: x.role, ...inspectSchemaHtml(x.html),
+        qh: countMatches(x.html, /<h[2-4][^>]*>[^<]*\?\s*<\/h[2-4]>/gi) }));
+    // The sampled pages' own JSON-LD and headings count toward the site-wide
+    // signals — crawl data carries no heading counts, and a sampled FAQ page
+    // is FAQ coverage whether or not the crawl listed its types.
+    for (const x of inspected) {
+      x.nodes.forEach((n) => typesOf(n).forEach((t) => allSchema.add(t)));
+      const k = sKey(x.url);
+      if (!qhCounted.get(k)) { questionHeads += x.qh; qhCounted.set(k, x.qh); }
+    }
+    hasFAQ = allSchema.has("FAQPage");
     const sd = {
       pages: inspected.length,
       withJsonLd: inspected.filter((x) => x.blocks > 0).length,
