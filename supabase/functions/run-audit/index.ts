@@ -226,7 +226,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.11.1";
+const ENGINE_VERSION = "5.12.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -894,6 +894,82 @@ async function runAuditPipeline(body: any): Promise<Response> {
     const pctStatus = (good: number, total: number, passAt = 0.9, warnAt = 0.6): ChkStatus =>
       total === 0 ? "na" : (good / total) >= passAt ? "pass" : (good / total) >= warnAt ? "warn" : "fail";
 
+    // ── STRUCTURED DATA DEEP INSPECTION + AI CRAWLER ACCESS ──────────────────
+    // The crawl only reports schema TYPES per page; the AEO checks need the
+    // JSON-LD itself and the visible text beside it. Sample the homepage plus
+    // up to six representative pages: about, two blog posts, a how-to, an FAQ
+    // page and a service page.
+    const sKey = (u: string) => String(u || "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
+    const sSeen = new Set<string>([sKey(home)]), sample: { url: string; role: string }[] = [];
+    const sAdd = (url: string | undefined, role: string) => { if (!url) return; const k = sKey(url); if (sSeen.has(k)) return; sSeen.add(k); sample.push({ url, role }); };
+    const ownPages = okPages.filter((p: any) => p?.url && rootOf(p.url) === root);
+    const isListing = (u: string) => /\/(category|tag|author|page)\/|\/(blog|news)\/?$|\/\d{4}\/\d{2}(\/\d{2})?\/?$/i.test(u);
+    const isPost = (u: string) => !isListing(u) && /\/(blog|news|articles?|insights|resources|tips)\/[^/?#]+\/?$|\/\d{4}\/\d{2}\/[^/?#]+\/?$/i.test(u);
+    const isHowTo = (p: any) => /^\s*how\s+to\b|step[- ]by[- ]step|\bguide\b/i.test(String(p.title || "")) || /\/how-to-/i.test(p.url);
+    if (aboutPage?.ok && aboutPage.url) sAdd(aboutPage.url, "about");
+    ownPages.filter((p: any) => isPost(p.url)).slice(0, 2).forEach((p: any) => sAdd(p.url, "post"));
+    sAdd(ownPages.find((p: any) => isHowTo(p) && !isListing(p.url))?.url, "howto");
+    sAdd(ownPages.find((p: any) => (p.schemaTypes || []).includes("FAQPage") || /\/faqs?\/?$/i.test(p.url))?.url, "faq");
+    sAdd(ownPages.find((p: any) => !isPost(p.url) && !isListing(p.url) && sKey(p.url) !== sKey(home))?.url, "service");
+    const fetchHtml = async (u: string) => {
+      const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), 8000);
+      try { const r = await fetch(u, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 (compatible; 44i-audit/1.0)" } }); return r.ok ? await r.text() : ""; }
+      catch { return ""; } finally { clearTimeout(tm); }
+    };
+    const inspected = [{ url: home, role: "home", html: homeHtmlRaw },
+      ...(await Promise.all(sample.slice(0, 6).map(async (s) => ({ ...s, html: await fetchHtml(s.url) }))))]
+      .filter((x) => x.html).map((x) => ({ url: x.url, role: x.role, ...inspectSchemaHtml(x.html) }));
+    const sd = {
+      pages: inspected.length,
+      withJsonLd: inspected.filter((x) => x.blocks > 0).length,
+      microdataOnly: inspected.filter((x) => !x.blocks && (x.microdata || x.rdfa)).map((x) => x.url),
+      mixed: inspected.filter((x) => x.blocks && (x.microdata || x.rdfa)).map((x) => x.url),
+      parseErrors: inspected.reduce((n, x) => n + x.parseErrors + x.badContext, 0),
+      problems: [...new Set(inspected.flatMap((x) => schemaProblems(x.nodes).map((p) => `${p} (${x.url.replace(/^https?:\/\/[^/]+/, "") || "/"})`)))],
+      mirror: [] as string[], mirrorChecked: 0, answerWords: [] as number[],
+      posts: [] as { url: string; ok: boolean; missing: string[] }[], howtos: [] as { url: string; ok: boolean }[],
+    };
+    for (const x of inspected) {
+      const mp = mirrorProblems(x.nodes, x.text);
+      sd.mirrorChecked += mp.checked; sd.answerWords.push(...mp.answerWords);
+      sd.mirror.push(...mp.issues.map((i) => `${i} (${x.url.replace(/^https?:\/\/[^/]+/, "") || "/"})`));
+      if (x.role === "post") {
+        const art = x.nodes.find((n) => typesOf(n).some((t) => /^(Article|BlogPosting|NewsArticle|TechArticle)$/.test(t)));
+        const missing = !art ? ["Article/BlogPosting schema"] : [
+          ...(!art.author ? ["author"] : []), ...(!art.datePublished ? ["datePublished"] : []), ...(!art.dateModified ? ["dateModified"] : [])];
+        sd.posts.push({ url: x.url, ok: !missing.length, missing });
+      }
+      if (x.role === "howto") {
+        const ht = x.nodes.find((n) => typesOf(n).includes("HowTo"));
+        sd.howtos.push({ url: x.url, ok: !!ht && ([] as any[]).concat(ht.step || []).length >= 2 });
+      }
+    }
+    // The business name in the schema should be the one visitors see.
+    { const h = inspected.find((x) => x.role === "home");
+      const org = h?.nodes.find((n) => (typesOf(n).includes("Organization") || typesOf(n).some((t) => LOCAL_TYPES.test(t))) && n.name);
+      if (h && org) { sd.mirrorChecked++;
+        const nm = normTxt(org.name).replace(/\b(llc|inc|co|ltd|corp|company|the)\b/g, " ").replace(/\s+/g, " ").trim();
+        if (nm && !h.text.includes(nm)) sd.mirror.push(`Business name in the schema ("${String(org.name).slice(0, 50)}") isn't visible on the homepage`); } }
+
+    // AI crawlers: robots.txt rules, plus a live request with the bots' user
+    // agents — CDNs (Cloudflare's "Block AI bots") refuse them at the edge.
+    const aiSearchBlocked = robotsFound ? AI_SEARCH_BOTS.filter((b) => robotsBlocksBot(robotsTxt, b)) : [];
+    const aiTrainBlocked = robotsFound ? AI_TRAINING_BOTS.filter((b) => robotsBlocksBot(robotsTxt, b)) : [];
+    const aiEdgeBlocked: string[] = [];
+    if (homeHtmlRaw) {
+      const UA: Record<string, string> = {
+        "OAI-SearchBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot",
+        "PerplexityBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)",
+        "GPTBot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.1; +https://openai.com/gptbot" };
+      await Promise.all(Object.entries(UA).map(async ([bot, ua]) => {
+        const ctrl = new AbortController(); const tm = setTimeout(() => ctrl.abort(), 8000);
+        try { const r = await fetch(home, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": ua } });
+          await r.body?.cancel();
+          if (r.status === 401 || r.status === 403 || r.status === 429 || r.status === 503) aiEdgeBlocked.push(`${bot} (HTTP ${r.status})`);
+        } catch { /* network blip — not evidence of a block */ } finally { clearTimeout(tm); }
+      }));
+    }
+
     // On-page tallies (shared with the findings engine below).
     const noTitle = okPages.filter((p: any) => !p.title || p.titleLen < 20 || p.titleLen > 65);
     const noMeta  = okPages.filter((p: any) => !p.metaDesc || p.metaLen < 70 || p.metaLen > 165);
@@ -956,6 +1032,25 @@ async function runAuditPipeline(body: any): Promise<Response> {
     check("schema_rating", "schema", 2, "AggregateRating schema", B(allSchema.has("AggregateRating")), "", "aggregate_rating_schema", "Mark up real reviews with AggregateRating.", "Schema Implementation");
     check("schema_website", "schema", 1, "WebSite schema (+SearchAction)", B(allSchema.has("WebSite")), "", "website_schema", "Add WebSite JSON-LD for a clean brand entity and sitelinks searchbox.", "Schema Implementation");
 
+    // Structured-data quality: the format, the required fields, and the
+    // page types AI engines lean on (articles with authors/dates, how-tos).
+    check("schema_jsonld", "schema", 1, "Structured data uses JSON-LD (not Microdata/RDFa)",
+      !sd.withJsonLd && !sd.microdataOnly.length ? "na" : sd.microdataOnly.length ? "fail" : sd.mixed.length ? "warn" : "pass",
+      sd.microdataOnly.length ? `Microdata/RDFa only on ${sd.microdataOnly.length} page(s)` : sd.mixed.length ? `JSON-LD mixed with Microdata/RDFa on ${sd.mixed.length} page(s)` : "",
+      null, "Move structured data to JSON-LD in the page head; remove legacy itemprop/RDFa markup once the JSON-LD covers it.", "Schema Implementation");
+    check("schema_valid", "schema", 2, "Schema parses and has required fields (Rich Results)",
+      !sd.withJsonLd ? "na" : sd.parseErrors ? "fail" : sd.problems.length > 2 ? "fail" : sd.problems.length ? "warn" : "pass",
+      [sd.parseErrors ? `${sd.parseErrors} JSON-LD block(s) don't parse or lack the schema.org @context` : "", ...sd.problems.slice(0, 4)].filter(Boolean).join("; "),
+      null, "Fix the JSON-LD so every node has Google's required fields (check each URL in the Rich Results Test), and remove blocks that don't parse.", "Schema Implementation");
+    check("schema_article", "schema", 2, "Blog posts carry Article schema (author + dates)",
+      !sd.posts.length ? "na" : sd.posts.every((x) => x.ok) ? "pass" : sd.posts.some((x) => x.ok) ? "warn" : "fail",
+      sd.posts.filter((x) => !x.ok).map((x) => `${x.url.replace(/^https?:\/\/[^/]+/, "")}: missing ${x.missing.join(", ")}`).join("; "),
+      null, "Add BlogPosting/Article JSON-LD to every post with a named author (Person), datePublished and dateModified — the SEO Platform connector plugin adds it automatically.", "Schema Implementation");
+    check("schema_howto", "schema", 1, "How-to guides carry HowTo schema",
+      !sd.howtos.length ? "na" : sd.howtos.every((x) => x.ok) ? "pass" : "fail",
+      sd.howtos.filter((x) => !x.ok).map((x) => x.url.replace(/^https?:\/\/[^/]+/, "")).join(", "),
+      null, "Mark up step-by-step guides with HowTo JSON-LD (one HowToStep per numbered step) — the connector plugin builds it from the post's numbered list.", "Schema Implementation");
+
     // AEO (answer engines / AI assistants)
     check("aeo_faq", "aeo", 3, "FAQ/answer content exists", B(hasFAQ), "", "faq_schema", "Publish FAQ content with FAQPage markup on the money pages.", "AEO Research & Optimization", "content");
     check("aeo_qheads", "aeo", 2, "Question-formatted headings", questionHeads >= 3 ? "pass" : questionHeads >= 1 ? "warn" : "fail", `${questionHeads} question headings found`, null, "Add H2/H3s phrased as real customer questions with direct answers.", "AEO Research & Optimization", "content");
@@ -964,6 +1059,27 @@ async function runAuditPipeline(body: any): Promise<Response> {
     check("aeo_snippets", "aeo", 2, "Featured-snippet capture", snippetKws.length ? (snippetWon.length ? "pass" : "fail") : "na", snippetKws.length ? `${snippetWon.length}/${snippetKws.length} captured` : "", null, "Structure direct 40–60 word answers at the top of ranking pages.", "AEO Research & Optimization", "content");
     check("aeo_overviews", "aeo", 3, "AI Overview citation", aiOverviewKws.length ? (aiCaptured.length ? "pass" : "fail") : "na", aiOverviewKws.length ? `${aiCaptured.length}/${aiOverviewKws.length} captured` : "", null, "Publish quotable, declarative answer paragraphs AI can cite.", "AEO Research & Optimization", "content");
     check("aeo_sov", "aeo", 3, "AI share of voice vs competitors", brandRadar ? ((brandRadar.ourSov || 0) >= (brandRadar.topCompetitor?.sov || 0) && brandRadar.mentions > 0 ? "pass" : brandRadar.mentions > 0 ? "warn" : "fail") : "na", brandRadar ? `SoV ${((brandRadar.ourSov || 0) * 100).toFixed(0)}%, ${brandRadar.mentions} mentions` : "", null, "Grow citable content + entity signals until AI mentions lead the market.", "AEO Research & Optimization", "content");
+
+    // AI readability: crawlers allowed, schema mirrors the page, answers concise.
+    check("aeo_ai_crawlers", "aeo", 2, "AI search crawlers can read the site",
+      aiSearchBlocked.length || aiEdgeBlocked.length ? "fail" : aiTrainBlocked.length ? "warn" : robotsFound || homeHtmlRaw ? "pass" : "na",
+      aiSearchBlocked.length || aiEdgeBlocked.length
+        ? [aiSearchBlocked.length ? `robots.txt blocks ${aiSearchBlocked.join(", ")}` : "", aiEdgeBlocked.length ? `firewall/CDN refuses ${aiEdgeBlocked.join(", ")}` : ""].filter(Boolean).join("; ")
+        : aiTrainBlocked.length ? `training-only crawlers blocked: ${aiTrainBlocked.join(", ")} (citations unaffected)` : "",
+      aiSearchBlocked.length || aiTrainBlocked.length ? "robots_txt" : null,
+      aiEdgeBlocked.length
+        ? "Allow AI crawlers at the CDN/firewall (e.g. Cloudflare → Security → Bots → turn off \"Block AI bots\"), and in robots.txt."
+        : "Allow OAI-SearchBot, ChatGPT-User, PerplexityBot, Claude-SearchBot, Googlebot and Bingbot in robots.txt (and GPTBot / Google-Extended / ClaudeBot unless the client opts out of AI training).",
+      "Site Health Scan");
+    check("schema_mirror", "aeo", 2, "Schema matches the visible page text",
+      !sd.mirrorChecked ? "na" : !sd.mirror.length ? "pass" : sd.mirror.length / sd.mirrorChecked > 0.3 ? "fail" : "warn",
+      sd.mirror.slice(0, 3).join("; ") + (sd.mirror.length > 3 ? ` (+${sd.mirror.length - 3} more)` : ""),
+      null, "Every FAQ question/answer, HowTo step and business name in the JSON-LD must appear on the page word-for-word — AI engines skip schema that doesn't match what visitors see.", "Schema Implementation");
+    { const aw = sd.answerWords, avg = aw.length ? aw.reduce((a, b) => a + b, 0) / aw.length : 0, long = aw.filter((w) => w > 120).length;
+      check("aeo_answer_length", "aeo", 1, "FAQ answers are direct and concise (40–90 words)",
+        !aw.length ? "na" : avg >= 25 && avg <= 90 && !long ? "pass" : "warn",
+        aw.length ? `average ${Math.round(avg)} words${long ? `; ${long} answer(s) over 120 words` : ""}` : "",
+        "faq_schema", "Open each answer with a complete 40–70 word direct answer (no lead-in), then at most a sentence or two of detail.", "AEO Research & Optimization", "content"); }
 
     // E-E-A-T / TRUST
     check("eeat_about", "eeat", 2, "About/team story present", B(!!eeat.hasAbout), "", null, "Publish an About page with the real team, story and service area.", "Content Recommendations", "content");
@@ -1195,6 +1311,9 @@ async function runAuditPipeline(body: any): Promise<Response> {
         local: { localIntentKws: localIntentKws.length, localPackKws: localPackKws.length, localPackWon: localPackWon.length, hasNAP },
         schema: { present: schemaPresent, all: [...allSchema] },
         onpageTotals: { noTitle: noTitle.length, noMeta: noMeta.length, badH1: badH1.length, thin: thin.length, noAlt: noAlt.length },
+        schemaAudit: { pages: inspected.map((x) => ({ url: x.url, role: x.role, blocks: x.blocks, types: [...new Set(x.nodes.flatMap(typesOf))].slice(0, 20) })),
+          problems: sd.problems.slice(0, 20), mirror: sd.mirror.slice(0, 20), parse_errors: sd.parseErrors,
+          ai_search_blocked: aiSearchBlocked, ai_training_blocked: aiTrainBlocked, ai_edge_blocked: aiEdgeBlocked },
         pages: crawlUsed ? pages.slice(0, 40) : pages, clientTopPages, competitorPages: compPages, competitorsDetail: competitors,
         gsc: { queries: gsc.length, clicks: gscClicks, impressions: gscImpr, striking: striking.length, ctrBleed: ctrBleed.length },
         deep_sources: { site_audit_project: crawlProjectId, brand_radar_report: client.brand_radar_report_id || null },
@@ -1247,7 +1366,9 @@ async function runAuditPipeline(body: any): Promise<Response> {
     if (compPages.length || gaps.length) planFix("internal_link", home, "Internal-linking opportunities from new and gap pages");
     if (brandRadar && brandRadar.mentions === 0) planFix("page_copy", home, "Build citable answer content to earn AI mentions", { aeo: true });
     // v4 kinds — one staged fix per failed site-probe check.
-    if (!robotsFound || !robotsOk || !sitemapDeclared) planFix("robots_txt", home, robotsFound ? (robotsOk ? "robots.txt missing Sitemap: line" : "robots.txt blocks crawling") : "No robots.txt", { sitemap_url: sitemapUrl, current: robotsTxt.slice(0, 800) });
+    if (!robotsFound || !robotsOk || !sitemapDeclared || aiSearchBlocked.length || aiTrainBlocked.length)
+      planFix("robots_txt", home, robotsFound ? (!robotsOk ? "robots.txt blocks crawling" : aiSearchBlocked.length || aiTrainBlocked.length ? `robots.txt blocks AI crawlers (${[...aiSearchBlocked, ...aiTrainBlocked].join(", ")})` : "robots.txt missing Sitemap: line") : "No robots.txt",
+        { sitemap_url: sitemapUrl, current: robotsTxt.slice(0, 800), ai_blocked: [...aiSearchBlocked, ...aiTrainBlocked] });
     if (!sitemapOk || !(smUrls || 0)) planFix("sitemap_xml", home, sitemapOk ? "Sitemap present but empty/invalid" : "No XML sitemap", { pages: okPages.slice(0, 50).map((p: any) => p.url) });
     if (httpsRedirect === false || hostCanonical === false) planFix("redirect_map", home, httpsRedirect === false ? "http:// does not redirect to https://" : `Duplicate host: ${altHost} also serves 200`, { alt_host: altHost, https_redirect: httpsRedirect, host_canonical: hostCanonical });
     if (crawlUsed && crawlIssues.some((i: any) => /4xx|404|not found|broken/i.test(String(i.name || "")))) planFix("redirect_map", home, "Broken URLs (4XX) found in the crawl", { from_crawl: true });
@@ -1768,6 +1889,126 @@ async function runAuditPipeline(body: any): Promise<Response> {
     console.error("run-audit fatal", e);
     return json({ error: "unhandled", detail: String((e as any)?.stack || e).slice(0, 500), ahrefs_errors: errors }, 500);
   }
+}
+
+// ── AI crawler access ────────────────────────────────────────────────────────
+// Search / answer bots fetch pages to CITE them live (ChatGPT search,
+// Perplexity, Claude, Google & Bing — AI Overviews use Googlebot itself).
+// Training bots only feed model training; blocking them is a client choice
+// that doesn't stop citations, so it warns rather than fails.
+const AI_SEARCH_BOTS = ["OAI-SearchBot", "ChatGPT-User", "PerplexityBot", "Perplexity-User", "Claude-SearchBot", "Claude-User", "Googlebot", "Bingbot", "Applebot"];
+const AI_TRAINING_BOTS = ["GPTBot", "Google-Extended", "ClaudeBot", "CCBot", "Applebot-Extended", "Meta-ExternalAgent"];
+
+// RFC 9309: a crawler obeys the group(s) naming it, otherwise the * group.
+// Blocked = that group disallows the root and nothing re-allows it.
+function robotsBlocksBot(txt: string, bot: string): boolean {
+  type G = { agents: string[]; rules: { allow: boolean; path: string }[] };
+  const groups: G[] = []; let cur: G | null = null, lastUA = false;
+  for (const raw of String(txt || "").split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, "").trim(); if (!line) continue;
+    const m = /^([A-Za-z-]+)\s*:\s*(.*)$/.exec(line); if (!m) continue;
+    const k = m[1].toLowerCase(), v = m[2].trim();
+    if (k === "user-agent") { if (!cur || !lastUA) { cur = { agents: [], rules: [] }; groups.push(cur); } cur.agents.push(v.toLowerCase()); lastUA = true; continue; }
+    lastUA = false;
+    if (cur && (k === "allow" || k === "disallow")) cur.rules.push({ allow: k === "allow", path: v });
+  }
+  const b = bot.toLowerCase();
+  const own = groups.filter((g) => g.agents.includes(b));
+  const rules = (own.length ? own : groups.filter((g) => g.agents.includes("*"))).flatMap((g) => g.rules);
+  const root = (p: string) => p === "/" || p === "/*" || p === "*";
+  return rules.some((r) => !r.allow && root(r.path)) && !rules.some((r) => r.allow && (root(r.path) || r.path === "/$"));
+}
+
+// ── Structured-data deep inspection (the AEO "mirror test" + validity) ──────
+// Reads the JSON-LD itself on a sample of pages: does it parse, does each
+// node carry the fields Google's Rich Results Test requires, and does the
+// FAQ / HowTo / business text in the schema match what a visitor sees.
+const normTxt = (s: unknown) => String(s || "").toLowerCase()
+  .replace(/&amp;/g, "&").replace(/&#0?39;|&rsquo;|&lsquo;|[‘’]/g, "'").replace(/&nbsp;|&#160;/g, " ")
+  .replace(/&[a-z#0-9]+;/gi, " ").replace(/[^a-z0-9]+/g, " ").trim();
+const visibleText = (html: string) => normTxt(String(html || "").replace(/<head[\s\S]*?<\/head>/i, " ")
+  .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " "));
+const typesOf = (n: any): string[] => ([] as any[]).concat(n?.["@type"] || []).map(String);
+const LOCAL_TYPES = /LocalBusiness$|^(HomeAndConstructionBusiness|GeneralContractor|RoofingContractor|Plumber|Electrician|HVACBusiness|HousePainter|Locksmith|MovingCompany|Dentist|Physician|MedicalBusiness|MedicalClinic|Attorney|LegalService|AutoRepair|AutomotiveBusiness|Restaurant|FoodEstablishment|Store|ProfessionalService|FinancialService|InsuranceAgency|RealEstateAgent|HealthAndBeautyBusiness|LodgingBusiness|SportsActivityLocation|EntertainmentBusiness|ChildCare|EmergencyService)$/;
+
+function inspectSchemaHtml(html: string) {
+  const nodes: any[] = []; let blocks = 0, parseErrors = 0, badContext = 0;
+  const walk = (o: any) => {
+    if (!o || typeof o !== "object") return;
+    if (Array.isArray(o)) { o.forEach(walk); return; }
+    if (o["@type"]) nodes.push(o);
+    for (const k of Object.keys(o)) if (k !== "@context" && typeof o[k] === "object") walk(o[k]);
+  };
+  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi; let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    blocks++;
+    const raw = m[1].trim().replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "").trim();
+    if (!raw) continue;
+    try {
+      const j = JSON.parse(raw);
+      const ctx = JSON.stringify(Array.isArray(j) ? j.map((x: any) => x?.["@context"]) : j?.["@context"] ?? "");
+      if (!/schema\.org/i.test(ctx)) badContext++;
+      walk(j);
+    } catch { parseErrors++; }
+  }
+  return { blocks, parseErrors, badContext, nodes, text: visibleText(html),
+    microdata: /\bitemscope\b|\bitemtype=["']https?:\/\/schema\.org/i.test(html),
+    rdfa: /\bvocab=["']https?:\/\/schema\.org|\btypeof=["'][A-Z][A-Za-z]+["']/.test(html) };
+}
+
+// Missing required properties (Google's Rich Results requirements) per node.
+function schemaProblems(nodes: any[]): string[] {
+  const out: string[] = [];
+  const has = (v: any) => v != null && v !== "" && !(Array.isArray(v) && !v.length);
+  for (const n of nodes) {
+    if (!Object.keys(n).some((k) => k !== "@type" && k !== "@id" && k !== "@context")) continue; // a reference, not a node
+    const t = typesOf(n), miss = (props: string[]) => props.filter((p) => !has(n[p]));
+    let missing: string[] = [];
+    if (t.some((x) => LOCAL_TYPES.test(x))) missing = miss(["name", "address"]);
+    else if (t.includes("Organization")) missing = miss(["name"]);
+    else if (t.includes("FAQPage")) {
+      const q = ([] as any[]).concat(n.mainEntity || []);
+      if (!q.length) missing = ["mainEntity (questions)"];
+      else if (q.some((x: any) => !has(x?.name) || !has(x?.acceptedAnswer?.text))) missing = ["a Question name or acceptedAnswer.text"];
+    } else if (t.some((x) => /^(Article|BlogPosting|NewsArticle|TechArticle)$/.test(x))) {
+      missing = miss(["headline", "datePublished"]);
+      const a = n.author;
+      if (!has(a) || (typeof a === "object" && !Array.isArray(a) && !has(a.name) && !has(a["@id"]))) missing.push("author");
+    } else if (t.includes("HowTo")) {
+      missing = miss(["name"]);
+      if (!([] as any[]).concat(n.step || []).length) missing.push("step");
+    } else if (t.includes("AggregateRating")) {
+      missing = miss(["ratingValue"]);
+      if (!has(n.ratingCount) && !has(n.reviewCount)) missing.push("ratingCount or reviewCount");
+    } else if (t.includes("Review")) missing = miss(["reviewRating", "author"]);
+    else if (t.includes("BreadcrumbList")) {
+      const it = ([] as any[]).concat(n.itemListElement || []);
+      if (!it.length || it.some((x: any) => !has(x?.position) || !has(x?.name ?? x?.item?.name))) missing = ["itemListElement position / name"];
+    } else if (t.includes("Person")) missing = miss(["name"]);
+    if (missing.length) out.push(`${t[0]}: missing ${missing.join(", ")}`);
+  }
+  return [...new Set(out)];
+}
+
+// FAQ / HowTo text in the schema must be readable on the page itself.
+function mirrorProblems(nodes: any[], text: string) {
+  const issues: string[] = [], answerWords: number[] = []; let checked = 0;
+  const onPage = (s: string) => { const n = normTxt(s); return n.length < 8 || text.includes(n.slice(0, 120)); };
+  for (const n of nodes) {
+    const t = typesOf(n);
+    if (t.includes("FAQPage")) for (const q of ([] as any[]).concat(n.mainEntity || [])) {
+      const name = String(q?.name || ""), ans = String(q?.acceptedAnswer?.text || "").replace(/<[^>]+>/g, " ");
+      if (!name) continue;
+      checked++; answerWords.push((ans.match(/\b[\w'-]+\b/g) || []).length);
+      if (!onPage(name)) issues.push(`FAQ question not visible on the page: "${name.slice(0, 70)}"`);
+      else if (ans && !onPage(ans)) issues.push(`FAQ answer in the schema differs from the page: "${name.slice(0, 60)}"`);
+    }
+    if (t.includes("HowTo")) for (const s of ([] as any[]).concat(n.step || [])) {
+      const st = String(s?.text || s?.name || ""); if (!st) continue;
+      checked++; if (!onPage(st)) issues.push(`HowTo step not visible on the page: "${st.slice(0, 60)}"`);
+    }
+  }
+  return { checked, issues, answerWords };
 }
 
 // A site-wide block only counts when it applies to every crawler (User-agent: *)

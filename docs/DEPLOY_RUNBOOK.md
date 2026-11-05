@@ -212,6 +212,38 @@ Maps/Search impressions; search_views / maps_views are the Search / Maps
 sums) plus that month's search terms (`impressions`, or `under` = Google's
 "fewer than N" threshold for small counts).
 
+## 1a-4h. AEO: schema accuracy + AI crawler access  (run-audit 5.12.0, plugin 1.11.0)
+
+Deploy `run-audit` (5.12.0) and `generate-fixes`; rebuild the connector zip
+(`wp-plugin/build-zip.sh`) and upload it to client sites.
+
+The audit samples the homepage plus up to six pages (about, two posts, a
+how-to, an FAQ page, a service page) and reads their JSON-LD. New checks:
+- `schema_jsonld` (schema): JSON-LD, not Microdata/RDFa.
+- `schema_valid` (schema): every block parses with a schema.org @context and
+  each node has Google's required fields (LocalBusiness name+address, FAQ
+  questions with answers, Article headline/date/author, HowTo steps,
+  AggregateRating counts, Breadcrumb positions…).
+- `schema_article` (schema): sampled blog posts carry Article/BlogPosting
+  with author, datePublished and dateModified.
+- `schema_howto` (schema): "How to…" pages carry HowTo with steps.
+- `schema_mirror` (aeo): FAQ questions/answers, HowTo steps and the business
+  name in the schema appear word-for-word on the page.
+- `aeo_answer_length` (aeo): FAQ answers average 25–90 words, none over 120.
+- `aeo_ai_crawlers` (aeo): robots.txt doesn't block AI search bots
+  (OAI-SearchBot, ChatGPT-User, PerplexityBot, Claude-SearchBot, Googlebot,
+  Bingbot…) — fail — or training bots (GPTBot, Google-Extended, ClaudeBot…)
+  — warn; plus a live homepage request as OAI-SearchBot / PerplexityBot /
+  GPTBot catches CDN/firewall blocks (403/401/429/503).
+`raw.schemaAudit` keeps the sampled pages, problems and blocked bots. The
+robots.txt fix now names the AI search and training crawlers explicitly;
+FAQ fixes are written as 40–70 word direct answers.
+
+Not done on purpose: HowTo and FAQ rich results no longer show in Google
+(HowTo retired 2023; FAQ limited to government/health sites) — the schema is
+still read by AI engines, which is why it's kept. Google-Extended controls
+Gemini training only; AI Overviews use Googlebot.
+
 ## 1a-5. Plan add-ons  (Supabase → SQL Editor)
 
 Paste `supabase/migrations/addons.sql` and Run (idempotent; AFTER

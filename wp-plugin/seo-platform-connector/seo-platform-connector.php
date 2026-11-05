@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Your Digital Group SEO Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from your agency's SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.10.0
+ * Version: 1.11.0
  * Author: Your Digital Group
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -19,7 +19,7 @@ if (defined('SEOP_VERSION')) {
     add_action('admin_init', function () {
         if (!function_exists('deactivate_plugins') || !current_user_can('activate_plugins')) return;
         $mine = plugin_basename(__FILE__);
-        if (version_compare(SEOP_VERSION, '1.10.0', '<')) {
+        if (version_compare(SEOP_VERSION, '1.11.0', '<')) {
             // the copy that loaded first is older — retire it, keep this one
             foreach ((array) get_option('active_plugins', []) as $p) {
                 if ($p !== $mine && basename($p) === basename(__FILE__)) deactivate_plugins($p, true);
@@ -38,7 +38,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.10.0');
+define('SEOP_VERSION', '1.11.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -401,6 +401,108 @@ function seop_llms_fallback() {
     return $out;
 }
 
+/* v1.11: the page body as visitors see it. Page builders (Elementor) keep
+ * their content outside post_content, so schema built from post_content alone
+ * missed their FAQs entirely. */
+function seop_rendered_html($pid) {
+    static $cache = [];
+    if (isset($cache[$pid])) return $cache[$pid];
+    $html = '';
+    if (class_exists('\\Elementor\\Plugin') && get_post_meta($pid, '_elementor_edit_mode', true) === 'builder') {
+        try { $html = (string) \Elementor\Plugin::$instance->frontend->get_builder_content_for_display($pid, false); }
+        catch (\Throwable $e) { $html = ''; }
+    }
+    if ($html === '') {
+        $p = get_post($pid);
+        $html = $p ? (function_exists('do_blocks') ? do_blocks($p->post_content) : $p->post_content) : '';
+    }
+    return $cache[$pid] = $html;
+}
+
+function seop_norm($s) {
+    $s = html_entity_decode(wp_strip_all_tags((string) $s), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    return trim(preg_replace('/[^a-z0-9]+/', ' ', strtolower($s)));
+}
+function seop_clean_text($s) {
+    return trim(preg_replace('/\s+/u', ' ', html_entity_decode(wp_strip_all_tags((string) $s), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+}
+
+/* v1.11: question/answer pairs visible on a page: H2/H3 questions with the
+ * copy under them, <details><summary>, and Elementor accordion/toggle tabs.
+ * Answers are kept whole (40–1500 characters) — too long means skipped, never
+ * truncated, so the FAQPage text always matches the page. */
+function seop_faq_from_html($html) {
+    $out = []; $seen = [];
+    $add = function ($q, $a) use (&$out, &$seen) {
+        $q = seop_clean_text($q); $a = seop_clean_text($a);
+        if ($q === '' || substr($q, -1) !== '?' || mb_strlen($a) < 40 || mb_strlen($a) > 1500) return;
+        $k = seop_norm($q); if (isset($seen[$k])) return;
+        $seen[$k] = true; $out[] = ['q' => $q, 'a' => $a];
+    };
+    if (preg_match_all('/<h([23])[^>]*>(.*?)<\/h\1>(.*?)(?=<h[1-6][^>]*>|<\/section>|$)/is', $html, $m, PREG_SET_ORDER)) {
+        foreach ($m as $x) $add($x[2], $x[3]);
+    }
+    if (preg_match_all('/<details\b[^>]*>\s*<summary\b[^>]*>(.*?)<\/summary>(.*?)<\/details>/is', $html, $m, PREG_SET_ORDER)) {
+        foreach ($m as $x) $add($x[1], $x[2]);
+    }
+    if (preg_match_all('/class="[^"]*elementor-tab-title[^"]*"[^>]*>(.*?)<\/(?:div|a|h[1-6])>.*?class="[^"]*elementor-tab-content[^"]*"[^>]*>(.*?)<\/div>/is', $html, $m, PREG_SET_ORDER)) {
+        foreach ($m as $x) $add($x[1], $x[2]);
+    }
+    return array_slice($out, 0, 12);
+}
+
+/* v1.11: steps of a "How to …" guide — its first numbered list (2–20 items). */
+function seop_howto_steps($title, $html) {
+    if (!preg_match('/^\s*how\s+to\b/i', (string) $title)) return [];
+    if (!preg_match('/<ol\b[^>]*>(.*?)<\/ol>/is', $html, $ol)) return [];
+    if (!preg_match_all('/<li\b[^>]*>(.*?)<\/li>/is', $ol[1], $li)) return [];
+    $steps = array_values(array_filter(array_map('seop_clean_text', $li[1]), function ($t) { return mb_strlen($t) >= 3; }));
+    return count($steps) >= 2 && count($steps) <= 20 ? $steps : [];
+}
+
+/* v1.11: FAQ questions/answers in the platform's stored JSON-LD for a page. */
+function seop_stored_faq($pid) {
+    $blobs = [];
+    if ($pid) {
+        $blobs[] = get_post_meta($pid, '_seoplatform_schema', true);
+        foreach ((array) get_post_meta($pid, '_seoplatform_schema_list', true) as $b) $blobs[] = $b;
+    }
+    if (is_front_page()) foreach ((array) get_option(SEOP_OPT_SITE_SCHEMA, []) as $b) $blobs[] = $b;
+    $out = [];
+    $walk = function ($o) use (&$walk, &$out) {
+        if (!is_array($o)) return;
+        $t = (array) ($o['@type'] ?? []);
+        if (in_array('FAQPage', $t, true)) {
+            foreach ((array) ($o['mainEntity'] ?? []) as $q) {
+                $name = trim((string) ($q['name'] ?? '')); $ans = trim((string) ($q['acceptedAnswer']['text'] ?? ''));
+                if ($name !== '' && $ans !== '') $out[] = ['q' => $name, 'a' => $ans];
+            }
+        }
+        foreach ($o as $v) if (is_array($v)) $walk($v);
+    };
+    foreach ($blobs as $b) { if (is_string($b) && $b !== '') $walk(json_decode(wp_unslash($b), true)); }
+    return $out;
+}
+
+/* v1.11: an FAQ shipped as schema must also be READABLE on the page — AI
+ * engines skip FAQPage markup whose questions visitors can't see. Print the
+ * questions the page doesn't already show, word-for-word from the schema. */
+add_filter('the_content', function ($content) {
+    if (!is_singular() || !in_the_loop() || !is_main_query()) return $content;
+    $qa = seop_stored_faq(get_queried_object_id());
+    if (!$qa) return $content;
+    $plain = seop_norm($content);
+    $missing = array_values(array_filter($qa, function ($x) use ($plain) { return strpos($plain, seop_norm($x['q'])) === false; }));
+    if (!$missing) return $content;
+    $h = "\n" . '<section class="seop-faq" style="max-width:800px;margin:2rem auto;line-height:1.6">'
+       . '<h2 class="seop-faq-title" style="margin:0 0 1.25rem">Frequently Asked Questions</h2>';
+    foreach ($missing as $x) {
+        $h .= '<div class="seop-faq-item" style="margin:0 0 1.25rem;padding:0 0 1.25rem;border-bottom:1px solid rgba(0,0,0,.08)">'
+            . '<h3 style="margin:0 0 .5rem">' . esc_html($x['q']) . '</h3><p style="margin:0">' . esc_html($x['a']) . '</p></div>';
+    }
+    return $content . $h . '</section>' . "\n";
+}, 97);
+
 /* Schema @types already emitted for this request by other sources. */
 function seop_head_types() {
     $types = [];
@@ -516,22 +618,27 @@ add_action('wp_head', function () {
                 'inLanguage' => get_bloginfo('language')];
         }
         if (empty($have['BreadcrumbList']) && !is_front_page()) $graph[] = seop_breadcrumb_node($pid);
-        // v1.4: FAQPage from the page's OWN question headings — an <h2>/<h3>
-        // ending in "?" plus the copy that follows it. Real content only;
-        // pages without Q&A material simply get no FAQPage node.
+        // v1.4 / v1.11: FAQPage from the page's OWN Q&A — question headings,
+        // <details>/<summary> and Elementor accordions/toggles — read from the
+        // RENDERED page (Elementor keeps content outside post_content). Answers
+        // are copied whole, never cut short, so the schema mirrors the page.
         if (empty($have['FAQPage']) && $p) {
             $faq = [];
-            if (preg_match_all('/<h([23])[^>]*>([^<]*\?)\s*<\/h\1>(.*?)(?=<h[1-6][^>]*>|$)/is', $p->post_content, $qm, PREG_SET_ORDER)) {
-                foreach (array_slice($qm, 0, 10) as $m) {
-                    $q = trim(wp_strip_all_tags($m[2]));
-                    $a = trim(mb_substr(preg_replace('/\s+/', ' ', wp_strip_all_tags($m[3])), 0, 500));
-                    if ($q !== '' && mb_strlen($a) >= 40) {
-                        $faq[] = ['@type' => 'Question', 'name' => $q,
-                            'acceptedAnswer' => ['@type' => 'Answer', 'text' => $a]];
-                    }
-                }
+            foreach (seop_faq_from_html(seop_rendered_html($pid)) as $x) {
+                $faq[] = ['@type' => 'Question', 'name' => $x['q'], 'acceptedAnswer' => ['@type' => 'Answer', 'text' => $x['a']]];
             }
             if (count($faq) >= 2) $graph[] = ['@type' => 'FAQPage', '@id' => $url . '#faq', 'mainEntity' => $faq];
+        }
+        // v1.11: HowTo for "How to …" guides — one HowToStep per item of the
+        // page's numbered list, text copied verbatim.
+        if (empty($have['HowTo']) && $p) {
+            $steps = seop_howto_steps(get_the_title($pid), seop_rendered_html($pid));
+            if ($steps) {
+                $node = ['@type' => 'HowTo', '@id' => $url . '#howto', 'name' => get_the_title($pid), 'step' => []];
+                foreach ($steps as $i => $st) $node['step'][] = ['@type' => 'HowToStep', 'position' => $i + 1, 'text' => $st, 'url' => $url . '#step-' . ($i + 1)];
+                $img = get_the_post_thumbnail_url($pid, 'full'); if ($img) $node['image'] = $img;
+                $graph[] = $node;
+            }
         }
         // Posts: BlogPosting with a real author Person — the E-E-A-T backbone.
         if ($p && $p->post_type === 'post' && empty($have['BlogPosting']) && empty($have['Article'])) {
