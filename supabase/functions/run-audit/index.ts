@@ -119,6 +119,13 @@ async function gateCaller(req: Request, roles?: string[]): Promise<{ userId: str
   const svc = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!tok) return json({ error: "sign in required" }, 401);
   if (svc && tok === svc) return { userId: null, role: "service" };
+  // pg_cron / seop_invoke_function send the Vault copy of the service key (a
+  // legacy JWT the gateway's verify_jwt has already checked): trust its role.
+  try {
+    const part = tok.split(".")[1] || "";
+    const claims = JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "=")));
+    if (claims?.role === "service_role") return { userId: null, role: "service" };
+  } catch { /* not a JWT */ }
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, svc, { auth: { persistSession: false } });
   const { data } = await admin.auth.getUser(tok);
   if (!data?.user) return json({ error: "sign in required" }, 401);
@@ -226,7 +233,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.12.1";
+const ENGINE_VERSION = "5.12.2";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
