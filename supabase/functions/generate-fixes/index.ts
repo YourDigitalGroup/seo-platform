@@ -246,7 +246,7 @@ function promptFor(kind: string, a: { name: string; city: string; kw: string; pa
       return { max: 1600, system: "You write conversion-focused, locally-relevant web page copy with clear headings and a strong CTA. Output clean copy with H2/H3 markers.",
         user: `Write expanded page copy for ${a.name}${loc}. Target keyword: "${a.kw}". Page: ${a.page}. The current page is thin; produce 500–700 words of genuinely useful content.${tail}` };
     case "faq_schema":
-      return { max: 900, system: "You write FAQ content for answer-engine optimization. Return 5–6 question/answer pairs. Each answer is 2–4 declarative sentences. Format exactly as 'Q: ...' then 'A: ...' lines.",
+      return { max: 900, system: "You write FAQ content for answer-engine optimization. Return 5–6 question/answer pairs. Each answer is 40–70 words: the first sentence answers the question completely on its own (no lead-in like 'Great question' or 'At Company…'), then one or two sentences of specific supporting detail. Plain factual language, no fluff, no 'contact us to learn more'. Format exactly as 'Q: ...' then 'A: ...' lines.",
         user: `Business: ${a.name}${loc}. Topic/keyword: "${a.kw}". Write FAQs real customers ask, with direct answers.${tail}` };
     case "internal_link":
       return { max: 600, system: "You produce an internal-linking plan: for each suggested anchor text, give the source page idea and target page. Output a concise list.",
@@ -311,6 +311,24 @@ function buildFileArtifact(kind: string, a: { name: string; city: string; page: 
       return [
         "# robots.txt — deploy at the site root",
         "User-agent: *",
+        "Allow: /",
+        "",
+        "# AI search & answer engines: they fetch pages to cite them in",
+        "# ChatGPT search, Perplexity and Claude answers.",
+        "User-agent: OAI-SearchBot",
+        "User-agent: ChatGPT-User",
+        "User-agent: PerplexityBot",
+        "User-agent: Perplexity-User",
+        "User-agent: Claude-SearchBot",
+        "User-agent: Claude-User",
+        "Allow: /",
+        "",
+        "# AI training crawlers. Delete this group to opt out of model training;",
+        "# citations in AI answers are unaffected either way.",
+        "User-agent: GPTBot",
+        "User-agent: Google-Extended",
+        "User-agent: ClaudeBot",
+        "User-agent: Applebot-Extended",
         "Allow: /",
         "",
         `Sitemap: ${a.ctx.sitemap_url || `${origin}/sitemap.xml`}`,

@@ -59,6 +59,19 @@ WordPress site automatically — without ever touching the site's appearance.
   - **AggregateRating** rendered only when the package delivers real rating
     data (`business.rating_value`/`rating_count`) — never fabricated.
 
+- **v1.11 — AI-answer readiness (AEO)**:
+  - **Visible FAQ that mirrors its schema**: an FAQ shipped in the deploy
+    package as FAQPage JSON-LD is also printed on the page (a plain
+    "Frequently Asked Questions" section after the content, H3 question +
+    answer, word-for-word from the schema) for any question the page doesn't
+    already show. AI engines skip FAQ markup visitors can't read.
+  - **Auto-FAQ reads the rendered page**: Elementor pages (content lives
+    outside post_content) now get FAQPage too, from question headings,
+    `<details>/<summary>` blocks and Elementor accordion/toggle widgets.
+    Answers are copied whole (never truncated), so schema = page text.
+  - **HowTo schema** for "How to …" posts and pages, one `HowToStep` per
+    item of the page's numbered list.
+
 ## What it cannot do (by design)
 - No theme, template, CSS, layout, menu, widget, or settings changes.
 - Unapproved content is never published — it arrives as drafts; only content
