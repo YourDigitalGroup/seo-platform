@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <!--
-  44i SEO/AEO Delivery System — Internal Ops Console v19
+  44i SEO/AEO Delivery System — Internal Ops Console v20
   Stack: static front-end · secure cloud backend · search & authority data
 
   THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
@@ -1376,6 +1376,12 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="keys-list"><div class="wmeta">Loading…</div></div>
     </div>
     <div class="widget" style="margin-top:18px">
+      <div class="widget-h"><div><h2>Google Search Console accounts.</h2>
+        <div class="wmeta">Authorize each Google account once for all Search Console properties it can access. Daily collection automatically uses the connected account for each partner group.</div></div>
+        <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="loadGscOauth()"><i class="fa-solid fa-rotate"></i> Refresh</button></div>
+      <div id="gsc-oauth-settings"><div class="wmeta">Loading…</div></div>
+    </div>
+    <div class="widget" style="margin-top:18px">
       <div class="widget-h"><div><h2>Google Business Profile.</h2>
         <div class="wmeta">Directions, calls, website clicks, Search &amp; Maps views and search terms for report page 1 (Local Listing Optimization). Each Google account is connected once; every listing it manages is matched to its client.</div></div>
         <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="loadGbp()"><i class="fa-solid fa-rotate"></i> Refresh</button></div>
@@ -1774,6 +1780,7 @@ async function loadTeam(){
     TEAM_USERS=d.users||[];
     renderTeam();
     loadKeys();
+    loadGscOauth();
     loadGbp();
     loadTrelloSettings();
     loadAiTracking();
@@ -4232,6 +4239,53 @@ async function keyClear(i){
     showToast(r.falls_back_to_secret?`Removed — now using the Supabase secret for ${k.label}`:`Removed — ${k.label} is no longer set`,!r.falls_back_to_secret&&!k.optional); }
   catch(e){ showToast('Could not remove — '+String(e.message||e),true); }
   loadKeys();
+}
+
+// ── GOOGLE SEARCH CONSOLE: OAuth accounts, assigned by partner group ──
+let GSC_OAUTH=null;
+async function loadGscOauth(){
+  const el=document.getElementById('gsc-oauth-settings');if(!el||OFFLINE)return;
+  el.innerHTML='<div class="wmeta">Checking Google account connections…</div>';
+  try{GSC_OAUTH=await fnInvoke('gsc-oauth',{action:'status'});renderGscOauth();}
+  catch(e){el.innerHTML='<div class="wmeta" style="color:#c0392b">'+esc(String(e.message||e))+'</div>';}
+}
+function renderGscOauth(){
+  const el=document.getElementById('gsc-oauth-settings');if(!el||!GSC_OAUTH)return;
+  const g=GSC_OAUTH;
+  el.innerHTML=`
+    <div class="wmeta" style="margin-bottom:10px">
+      In Google Cloud → Google Auth Platform → Clients, create an OAuth 2.0 Web application.
+      Add this <b>Authorized redirect URI</b> to the Google client:
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+        <code id="gsc-oauth-callback" style="font-size:12px;background:var(--mist);padding:6px 8px;border-radius:6px;word-break:break-all">${esc(g.callback_url||'')}</code>
+        <button class="tbtn" onclick="navigator.clipboard.writeText(document.getElementById('gsc-oauth-callback').textContent).then(()=>showToast('Copied',false,true))">Copy</button>
+      </div>
+      Then set <code>GSC_OAUTH_CLIENT_ID</code> and <code>GSC_OAUTH_CLIENT_SECRET</code> in API keys above.
+      Use an OAuth consent app in Production with Google Search Console read-only scope.
+    </div>
+    ${g.oauth_client_set?'':`<div class="wmeta" style="color:#c0392b;margin:9px 0"><i class="fa-solid fa-triangle-exclamation"></i> Google OAuth client ID or secret is missing. Add both in API keys above, then refresh.</div>`}
+    ${(g.connections||[]).map(c=>`<div class="key-row">
+      <div class="key-main">
+        <div class="key-name"><b>${c.connection==='44i'?'44i partner group':'All other partner groups'}</b>
+          <code>${esc(c.expected_email)}</code>
+          ${c.connected?`<span class="key-chip ok"><i class="fa-solid fa-check"></i> Connected as ${esc(c.account_email||c.expected_email)}</span>`:'<span class="key-chip off">Not yet authorized (existing service-account fallback)</span>'}
+        </div>
+        <div class="wmeta">${c.connected?`${Number(c.properties_count||0)} properties visible at authorization · connected ${new Date(c.connected_at).toLocaleString()}`:'The first account authorization will enable automatic data collection for all its accessible properties.'}</div>
+        ${c.last_error?`<div class="wmeta" style="color:#c0392b">${esc(c.last_error)}</div>`:''}
+      </div>
+      <div class="key-acts"><button class="tbtn" ${g.oauth_client_set?'':'disabled'} onclick="gscOauthConnect('${esc(c.connection)}')">${c.connected?'Reconnect':'Connect Google'}</button></div>
+    </div>`).join('')}
+    <div class="wmeta" style="margin-top:10px">After authorizing, click Refresh above, then use Pull Search Console data on a client to verify access. The existing daily schedule remains active at 13:10 UTC. Properties must be accessible to the selected Google account.</div>`;
+}
+async function gscOauthConnect(connection){
+  // Open synchronously from the click, so browsers don't block Google sign-in.
+  const popup=window.open('about:blank','_blank');
+  if(popup){popup.document.title='Google Search Console sign-in';popup.document.body.textContent='Opening Google sign-in…';}
+  try{
+    const res=await fnInvoke('gsc-oauth',{action:'connect',connection});
+    if(popup)popup.location.href=res.url;
+    else {showToast('Allow popups, then click Connect Google again.',true);}
+  }catch(e){if(popup)popup.close();showToast('Google connection failed: '+String(e.message||e),true);}
 }
 
 // ── GOOGLE BUSINESS PROFILE (gbp / gbp-callback Edge Functions; Super Admins) ──
