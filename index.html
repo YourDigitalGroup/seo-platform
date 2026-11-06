@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <!--
-  44i SEO/AEO Delivery System — Internal Ops Console v21
+  44i SEO/AEO Delivery System — Internal Ops Console v22
   Stack: static front-end · secure cloud backend · search & authority data
 
   THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
@@ -4270,7 +4270,9 @@ async function loadGscOauth(){
 }
 function renderGscOauth(){
   const el=document.getElementById('gsc-oauth-settings');if(!el||!GSC_OAUTH)return;
-  const g=GSC_OAUTH;
+  const g=GSC_OAUTH,quality=g.data_quality||{},q=quality.counts||{},all=quality.clients||[];
+  const issues=all.filter(c=>c.data_status!=='verified_recent');
+  const formatStatus={verified_recent:'Verified, recent',sync_failed:'Sync failed',needs_review:'Needs verification',not_verified:'Never verified',stale:'Stale data',not_connected:'Not connected'};
   el.innerHTML=`
     <div class="wmeta" style="margin-bottom:10px">
       In Google Cloud → Google Auth Platform → Clients, create an OAuth 2.0 Web application.
@@ -4294,7 +4296,17 @@ function renderGscOauth(){
       </div>
       <div class="key-acts"><button class="tbtn" ${g.oauth_client_set?'':'disabled'} onclick="gscOauthConnect('${esc(c.connection)}')">${c.connected?'Reconnect':'Connect Google'}</button></div>
     </div>`).join('')}
-    <div class="wmeta" style="margin-top:10px">After authorizing, click Refresh above, then use Pull Search Console data on a client to verify access. The existing daily schedule remains active at 13:10 UTC. Properties must be accessible to the selected Google account.</div>`;
+    <div class="wmeta" style="margin-top:10px">After authorizing, click Refresh above, then use Pull Search Console data on a client to verify access. The existing daily schedule remains active at 13:10 UTC. Properties must be accessible to the selected Google account.</div>
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
+      <b>GSC data quality across all active clients</b>
+      <div class="wmeta" style="margin:5px 0 9px">${q.verified_recent||0} verified &amp; recent · ${q.sync_failed||0} failed · ${q.stale||0} stale · ${q.not_verified||0} not verified · ${q.needs_review||0} needs review · ${q.not_connected||0} not connected.</div>
+      <div class="wmeta">A connected flag is not proof of data freshness. The platform now verifies actual Google property totals separately from the top-25-query sample. Missing or unverified figures must not be represented as zero.</div>
+      <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700;font-size:12px">Show clients requiring attention (${issues.length})</summary>
+        <div style="max-height:300px;overflow:auto;margin-top:8px"><table class="team-tbl"><thead><tr><th>Client</th><th>Status</th><th>Account</th><th>Last verified</th></tr></thead><tbody>
+        ${issues.map(c=>`<tr><td>${esc(c.client_name)}<div class="wmeta">${esc(c.client_url||'')}</div></td><td>${esc(formatStatus[c.data_status]||c.data_status)}${c.error_code?`<div class="wmeta" style="color:#c0392b">${esc(c.error_code)}</div>`:''}</td><td>${esc(c.configured_account)}</td><td>${c.last_success_at?new Date(c.last_success_at).toLocaleString():'Never'}</td></tr>`).join('')}
+        </tbody></table></div>
+      </details>
+    </div>`;
 }
 async function gscOauthConnect(connection){
   // Open synchronously from the click, so browsers don't block Google sign-in.
