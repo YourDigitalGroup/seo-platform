@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
 <!--
-  44i SEO/AEO Delivery System — Internal Ops Console v20
+  44i SEO/AEO Delivery System — Internal Ops Console v21
   Stack: static front-end · secure cloud backend · search & authority data
 
   THREE-LEVEL TREE:  partner group  ->  client  ->  deployment package
@@ -3496,6 +3496,24 @@ function requestRewrite(){
   }, 1700);
 }
 
+async function backfillGscLastMonth(){
+  if(OFFLINE||!activeClient)return;
+  const today=new Date(),first=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth()-1,1));
+  const month=first.toISOString().slice(0,10),label=first.toLocaleDateString(undefined,{month:'long',year:'numeric',timeZone:'UTC'});
+  if(!confirm('Retrieve '+label+' top 25 search queries for the preceding 90 days from Google and refresh that historical reporting month?'))return;
+  showToast('Backfilling '+label+' Search Console metrics…');
+  try{
+    const {data,error}=await sb.functions.invoke('pull-gsc',{body:{client_id:activeClient.id,action:'backfill-month',report_month:month}});
+    if(error){
+      let detail=error.message||'request failed';
+      try{const b=await error.context.json();detail=b.message||b.error||detail;}catch(_){}
+      throw new Error(detail);
+    }
+    if(data?.error)throw new Error(data.message||data.error);
+    showToast(label+' GSC historical data saved: '+data.query_count+' queries, '+data.totals.impressions+' impressions, '+data.totals.clicks+' clicks (top 25 query sample). Refresh Looker Studio to display.',false,true);
+  }catch(e){showToast('Could not backfill '+label+': '+String(e.message||e),true);}
+}
+
 // ── platform access panel ──
 function renderAccessPanel(){
   const c=activeClient||{}, connected=PLATFORMS.filter(p=>c[p.key]).length, gap=activeClient&&accessGap(activeClient);
@@ -3503,7 +3521,8 @@ function renderAccessPanel(){
   document.getElementById('access-panel').innerHTML=PLATFORMS.map(p=>{
     const on=!!c[p.key];
     const pull = (p.key==='gsc' && !OFFLINE)
-      ? '<button class="apc-pull" onclick="pullGSC()">Pull Search Console data →</button>' : '';
+      ? '<button class="apc-pull" onclick="pullGSC()">Pull Search Console data →</button>'+
+        (['super_admin','admin'].includes(String(me?.role||'')) ? '<button class="apc-pull" style="margin-top:6px" onclick="backfillGscLastMonth()">Backfill previous month GSC →</button>' : '') : '';
 
     const key = p.key==='wp' ? wpKeyRow(c) : '';
     return `<div class="apc ${on?'on':'off'} ${p.key}">
