@@ -71,6 +71,18 @@ WordPress site automatically — without ever touching the site's appearance.
     Answers are copied whole (never truncated), so schema = page text.
   - **HowTo schema** for "How to …" posts and pages, one `HowToStep` per
     item of the page's numbered list.
+- **v1.12 — No key copying + go-live notices**:
+  - **Connector key comes from the deploy file**: the console puts the
+    client's connector API key in every Deploy file (minting one if the
+    client has none) and the plugin adopts it on import — only when the
+    file's `site` is this site. Nobody pastes keys into Platform Access any
+    more (the paste box stays for plugins older than 1.12).
+  - **Scheduled post goes live → Trello**: when WordPress publishes a
+    scheduled piece the platform sent, the plugin pings the `wp-events`
+    function (non-blocking). The platform marks the deliverable delivered
+    with the live URL and comments on the client's Trello card tagging the
+    account manager on the partner group (their Trello @username from Team &
+    access).
 
 ## What it cannot do (by design)
 - No theme, template, CSS, layout, menu, widget, or settings changes.

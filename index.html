@@ -459,6 +459,7 @@ body[data-theme="dark"] .apc.on.ga4{background:rgba(232,113,10,.13);border-color
 .apc-pull{display:block;width:100%;box-sizing:border-box;margin-top:10px;font-size:11px;font-weight:700;padding:7px 10px;border-radius:8px;border:none;background:#1A3C5E;color:#fff;cursor:pointer;transition:background .12s}
 .apc-pull:hover{background:#142f4a}
 .apc-key{display:flex;gap:6px;align-items:center;margin-top:10px}
+.apc-key-note{margin-top:10px;font-size:11px;line-height:1.45;color:var(--muted)}
 .apc-key input{flex:1;min-width:0;font-size:11px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--s-card,#fff);color:inherit;font-family:inherit}
 .apc-key-on{flex:1;font-size:11px;font-weight:700;color:var(--grow-d)}
 .apc-key-btn{font-size:11px;font-weight:700;padding:6px 10px;border-radius:7px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer}
@@ -660,9 +661,10 @@ footer .fbadges{display:flex;gap:18px}
 .qtitle .qkw{display:block;font-size:11px;color:var(--muted);font-weight:500}
 .qsel{font-family:inherit;font-size:12px;font-weight:600;padding:6px 8px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);color:var(--ink);width:100%}
 .qsel:focus{outline:none;border-color:var(--blue)}
+.qsub{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:8px 12px 2px}
 .qstatus{font-size:11px;font-weight:700;padding:4px 9px;border-radius:999px;text-align:center}
 .qs-queued{background:var(--mist);color:var(--muted)} .qs-drafting{background:var(--high-l);color:var(--s-warn-text)}
-.qs-drafted{background:var(--blue-l);color:var(--blue-d)} .qs-approved{background:var(--mint);color:var(--s-green-text)}
+.qs-drafted{background:var(--blue-l);color:var(--blue-d)} .qs-approved{background:var(--mint);color:var(--s-green-text)} .qs-approved.qa-modified{background:#E8F0FE;color:#1A56B8}
 .qbar{display:flex;align-items:center;justify-content:space-between;padding:11px 18px;background:var(--mist);border-top:1px solid var(--line)}
 .qbar .qsum{font-size:12px;color:var(--muted);font-weight:600}
 .qgen{font-size:12px;font-weight:700;padding:9px 16px;border-radius:999px;border:none;background:var(--blue);color:#fff;transition:.12s}
@@ -1025,7 +1027,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.29.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.30.0</div>
   </div>
   </div>
 </div>
@@ -1113,7 +1115,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.29.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.30.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1161,7 +1163,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.29.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.30.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1324,7 +1326,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.29.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.30.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1342,7 +1344,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.29.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.30.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1400,7 +1402,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.29.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.30.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2562,14 +2564,17 @@ async function loadLiveAudit(){
     const M2K={'sonnet-4-6':'sonnet','opus-4-8':'opus','haiku-4-5':'haiku'};
     let [tr, drf] = await Promise.all([
       sb.from('content_topics').select('*').eq('package_id', pk.package_id),
-      sb.from('content_drafts').select('id,topic_id,body,revision,approved,image_url,image_alt').eq('package_id', pk.package_id),
+      sb.from('content_drafts').select('id,topic_id,body,revision,approved,image_url,image_alt,generated_body,approval_type').eq('package_id', pk.package_id),
     ]);
-    if(drf.error) drf = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', pk.package_id); // platform_extras.sql not run yet
+    // content_approval_type.sql / platform_extras.sql not run yet: older shapes
+    if(drf.error) drf = await sb.from('content_drafts').select('id,topic_id,body,revision,approved,image_url,image_alt').eq('package_id', pk.package_id);
+    if(drf.error) drf = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', pk.package_id);
     const byTopic={}; (drf.data||[]).forEach(d=>{ const c=byTopic[d.topic_id]; if(!c||(d.revision||1)>(c.revision||1)) byTopic[d.topic_id]=d; });
     pk.topics=(tr.data||[]).filter(t=>t.status!=='retired').map(t=>{ const d=byTopic[t.id];
       return { _id:t.id, title:t.title, keyword:t.target_keyword||'', kind:t.kind||'blog', model:M2K[t.model]||'sonnet',
         status: d?(t.status==='approved'?'approved':'drafted'):(t.status||'queued'), source:t.source||'', body:d?d.body:'', revision:d?d.revision:1,
-        link:t.link_target||'', image:(d&&d.image_url)||'', image_alt:(d&&d.image_alt)||'' }; });
+        link:t.link_target||'', image:(d&&d.image_url)||'', image_alt:(d&&d.image_alt)||'',
+        generated:(d&&d.generated_body)||null, approval:(d&&d.approval_type)||null }; });
   }
 }
 let _topicSeq=0;
@@ -3385,7 +3390,7 @@ function openDraft(i){
   if(!t.body) t.body=genBody(t);
   document.getElementById('dm-title').textContent=t.title;
   const m=MODELS[t.model];
-  document.getElementById('dm-sub').innerHTML=`<span class="mtag ${m.cls}">${m.label}</span><span class="dm-kw">↳ ${esc(t.keyword)}</span><span class="dm-rev">rev ${t.revision||1}</span><span class="qstatus qs-${t.status}">${cap(t.status)}</span>`;
+  document.getElementById('dm-sub').innerHTML=`<span class="mtag ${m.cls}">${m.label}</span><span class="dm-kw">↳ ${esc(t.keyword)}</span><span class="dm-rev">rev ${t.revision||1}</span><span class="qstatus qs-${t.status}">${statusLabel(t)}</span>`;
   const edit=canEditContent();
   document.getElementById('dm-readonly').style.display=edit?'none':'block';
   dmSetBody(t.body); dmSetEditable(edit); dmSetMode(DM_MODE,false);
@@ -3436,16 +3441,29 @@ async function setLinkTarget(i,v){
     if(error&&/column/i.test(error.message||'')) showToast('Link target not saved — run platform_extras.sql (see runbook)',true);
   }
 }
+// Approval label: "Approved As Is" when the strategist approved the AI's
+// copy untouched, "Modified & Approved" when they changed it. Compared in the
+// editor's own round-trip form (markdown → HTML → markdown, whitespace
+// collapsed), so merely opening a piece in the visual editor isn't an edit.
+function bodyKey(md){ try{ return html2md(md2html(String(md||''))).replace(/\s+/g,' ').trim(); }catch(_){ return String(md||'').replace(/\s+/g,' ').trim(); } }
+function approvalOf(t, finalBody){
+  if(t.generated!=null) return bodyKey(finalBody)===bodyKey(t.generated)?'as_is':'modified';
+  return t.edited?'modified':'as_is';   // AI copy unknown (pre-migration draft): this session's edits decide
+}
+const APPROVAL_LABEL={as_is:'Approved As Is', modified:'Modified & Approved'};
+function statusLabel(t){ return t.status==='approved'?(APPROVAL_LABEL[t.approval]||'Approved'):cap(t.status); }
 function approveDraft(){
   if(_draftIdx==null||!canEditContent()) return;
   const t=PK.topics[_draftIdx]; t.body=dmGetBody();
   const qa=qaScan(t.body);
   if(qa.blocking.length){ showToast('Cannot approve — '+qa.blocking[0], true); return; }
   if(qa.warnings.length) showToast('Approved with a style note: '+qa.warnings[0]);
-  t.status='approved';
+  t.status='approved'; t.approval=approvalOf(t, t.body);
   if(!OFFLINE&&t._id){
     Promise.all([
-      sb.from('content_drafts').update({approved:true, body:t.body}).eq('topic_id', t._id),
+      sb.from('content_drafts').update({approved:true, body:t.body, approval_type:t.approval}).eq('topic_id', t._id)
+        .then(r=>(r&&r.error&&/approval_type|column|schema cache/i.test(r.error.message||''))   // content_approval_type.sql not run yet
+          ? sb.from('content_drafts').update({approved:true, body:t.body}).eq('topic_id', t._id) : r),
       sb.from('content_topics').update({status:'approved'}).eq('id', t._id),
     ]).then(rs=>{ const e=rs.find(r=>r&&r.error); if(e){ t.status='drafted'; renderQueue(); showToast('Approval NOT saved — '+e.error.message,true); } },
             e=>{ t.status='drafted'; renderQueue(); showToast('Approval NOT saved — '+String(e&&e.message||e),true); });
@@ -3453,9 +3471,9 @@ function approveDraft(){
   // Approval trail: post to the client's Trello card (best-effort, silent).
   if(!OFFLINE&&activeClient&&activeClient.trello_card_id){
     sb.functions.invoke('trello',{body:{action:'comment', client_id:activeClient.id,
-      text:`Approved by ${me.name}: “${t.title}” (${t.kind}) — ships with this month's package.`}}).then(()=>{},()=>{});
+      text:`${APPROVAL_LABEL[t.approval]} by ${me.name}: “${t.title}” (${t.kind}) — ships with this month's package.`}}).then(()=>{},()=>{});
   }
-  renderQueue(); closeDraft(); showToast('Draft approved ✓', false, true);
+  renderQueue(); closeDraft(); showToast(`${APPROVAL_LABEL[t.approval]} ✓`, false, true);
 }
 function requestRewrite(){
   if(_draftIdx==null||!canEditContent()) return;
@@ -3539,7 +3557,7 @@ function wpKeyRow(c){
     return `<div class="apc-key"><span class="apc-key-on"><i class="fa-solid fa-key"></i> API key on file ····${esc(String(c.wp_api_key).slice(-4))}</span>
       <button class="apc-key-btn" onclick="_wpKeyEdit=true;renderAccessPanel()">Replace</button></div>`;
   }
-  return `<div class="apc-key"><input id="wp-key-in" type="password" placeholder="Paste API key from Settings → SEO Platform"
+  return `<div class="apc-key-note">Set automatically: the next <b>Deploy file</b> carries this site's key, and importing it in WordPress (connector 1.12+) connects the plugin. Pasting a key here is only needed for older plugin versions.</div><div class="apc-key"><input id="wp-key-in" type="password" placeholder="Paste API key from Settings → SEO Platform"
       autocomplete="off" onkeydown="if(event.key==='Enter')saveWpKey()">
     <button class="apc-key-btn save" onclick="saveWpKey()">Save key</button>
     ${c.wp_api_key?`<button class="apc-key-btn" onclick="_wpKeyEdit=false;renderAccessPanel()">Keep current</button>`:''}</div>`;
@@ -4690,9 +4708,16 @@ function renderQueue(){
   // month via deliverables.topic_id/month_offset — group under Month headers
   // so the strategist sees the whole campaign's tactics laid out per month.
   const monthOf={}; (PK.campaign||[]).forEach(d=>{ if(d.topic_id) monthOf[d.topic_id]=d.month_offset||1; });
-  const ordered=PK.topics.map((t,i)=>({t,i,m:monthOf[t._id]||null})).sort((a,b)=>((a.m||999)-(b.m||999))||(a.i-b.i));
+  // Within a month, like pieces sit together: site content first (pillar,
+  // landing/service pages, blogs), then every GBP post for that month as one
+  // block — the strategist works GBP posts as a batch.
+  const KIND_RANK={pillar:1, landing:2, service:2, blog:3, faq:4, gbp_post:9};
+  const rankOf=t=>KIND_RANK[t.kind]||5;
+  const ordered=PK.topics.map((t,i)=>({t,i,m:monthOf[t._id]||null}))
+    .sort((a,b)=>((a.m||999)-(b.m||999))||(rankOf(a.t)-rankOf(b.t))||(a.i-b.i));
   const showMonths=ordered.some(x=>x.m);
-  let lastM=-1;
+  const gbpIn={}; ordered.forEach(x=>{ if(x.t.kind==='gbp_post') gbpIn[x.m]=(gbpIn[x.m]||0)+1; });
+  let lastM=-1, gbpHead=-1;
   const rowFor=(t,i)=>{
     const openable=(t.status==='drafted'||t.status==='approved');
     return `<div class="qrow qedit">
@@ -4700,7 +4725,7 @@ function renderQueue(){
         ${(t.kind==='blog'||t.kind==='gbp_post'||t.kind==='pillar')?`<span class="qlink">links to <input value="${esc(t.link||'')}" placeholder="/page-to-link-back-to" onchange="setLinkTarget(${i},this.value)" title="The piece links its focus keyword back to this page — auto-picked, change it if the engine guessed wrong">${t.image?`<i class="fa-solid fa-image" title="image attached"></i>`:''}</span>`:''}</span>
       <span><select class="qsel" onchange="changeKind(${i},this.value)">${kindOpts(t.kind)}</select></span>
       <span><select class="qsel" onchange="changeModel(${i},this.value)">${modelOpts(t.model)}</select></span>
-      <span><span class="qstatus qs-${t.status}">${cap(t.status)}</span></span>
+      <span><span class="qstatus qs-${t.status}${t.status==='approved'&&t.approval?' qa-'+t.approval:''}">${statusLabel(t)}</span></span>
       <span>${openable?`<button class="qopen" onclick="openDraft(${i})">Open</button>`:''}</span>
       <span class="cx">${t._id&&t.status!=='approved'?`<button class="cxbtn" title="Retire — remove from the campaign permanently (logged in the internal review)" onclick="retireTopic(${i})"><i class="fa-solid fa-ban"></i></button>`:''}<button class="cxbtn" title="Remove from queue" onclick="removeTopic(${i})">✕</button></span>
     </div>`;
@@ -4708,6 +4733,7 @@ function renderQueue(){
   let rows=ordered.map(({t,i,m})=>{
     let h='';
     if(showMonths&&m!==lastM){ lastM=m; h=`<div class="qmonth">${m?`Month ${m}`:'Additional / unscheduled'}</div>`; }
+    if(t.kind==='gbp_post'&&gbpHead!==m&&gbpIn[m]>1){ gbpHead=m; h+=`<div class="qsub"><i class="fa-brands fa-google"></i> Google Business Profile posts · ${gbpIn[m]}</div>`; }
     return h+rowFor(t,i);
   }).join('');
   if(!PK.topics.length) rows=`<div class="qempty">No content queued. Select gap keywords above, or add a topic.</div>`;
@@ -5074,9 +5100,12 @@ function addTopic(){
 }
 async function reloadDrafts(){
   if(OFFLINE || !PK.package_id) return;
-  const { data:drf } = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', PK.package_id);
+  let { data:drf, error:drfErr } = await sb.from('content_drafts').select('id,topic_id,body,revision,approved,generated_body,approval_type').eq('package_id', PK.package_id);
+  if(drfErr) ({ data:drf } = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', PK.package_id));
   const byTopic={}; (drf||[]).forEach(d=>{ const c=byTopic[d.topic_id]; if(!c||(d.revision||1)>(c.revision||1)) byTopic[d.topic_id]=d; });
-  PK.topics.forEach(t=>{ const d=byTopic[t._id]; if(d){ t.body=d.body; t.revision=d.revision; if(t.status!=='approved') t.status='drafted'; } });
+  PK.topics.forEach(t=>{ const d=byTopic[t._id]; if(d){ t.body=d.body; t.revision=d.revision;
+    if('generated_body' in d){ t.generated=d.generated_body||null; t.approval=d.approval_type||null; }
+    if(t.status!=='approved') t.status='drafted'; } });
 }
 function generateDrafts(){
   if(OFFLINE){
@@ -6123,7 +6152,7 @@ function buildCampaignDoc(){
   const cTopics=topics.filter(t=>t.kind!=='gbp_post');
   const wordsOf=b=>String(b||'').split(/\s+/).filter(Boolean).length;
   const contentSummary=cTopics.length?`<table><tr><th>Piece</th><th>Type</th><th>Status</th><th>Words</th></tr>${cTopics.map(t=>
-      `<tr><td>${esc(t.title)}</td><td>${esc(t.kind)}</td><td>${t.status==='approved'?'Approved — publishing on schedule':t.body?'Drafted — awaiting approval':'Queued'}</td><td class="num">${t.body?wordsOf(t.body):'—'}</td></tr>`).join('')}</table>
+      `<tr><td>${esc(t.title)}</td><td>${esc(t.kind)}</td><td>${t.status==='approved'?statusLabel(t)+' — publishing on schedule':t.body?'Drafted — awaiting approval':'Queued'}</td><td class="num">${t.body?wordsOf(t.body):'—'}</td></tr>`).join('')}</table>
     <p class="before">Full text of every piece is in Appendix A.</p>`:'<p>No content queued this cycle.</p>';
   const contentAppendix=cTopics.filter(t=>t.body).map(t=>{ const dd=splitDraft(t.body);
     return `<div class="item page-break">
@@ -6415,9 +6444,33 @@ function buildDeployPackage(){
     redirects:{ raw:redirectsRaw, rules:parseRedirects(redirectsRaw) },
     security_headers:{ raw:headers },
     content, manual_tasks:manual,
+    // WordPress connector 1.12+: importing the file sets the plugin's API key
+    // to this one (only on the site named in `site`), so nobody copies keys
+    // between WordPress and the console. Other importers ignore it.
+    ...(c.wp_api_key?{ connector:{ api_key:String(c.wp_api_key) } }:{}),
   };
 }
-function downloadDeployPackage(){
+// The client's connector key, minted here when the site has none yet: the
+// deploy file carries it to WordPress and the plugin adopts it on import.
+function newWpKey(){
+  const A='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', b=new Uint8Array(48);
+  crypto.getRandomValues(b); return Array.from(b,x=>A[x%62]).join('');
+}
+async function ensureWpKey(){
+  const c=activeClient; if(!c||OFFLINE) return false;
+  if(c.wp_api_key) return true;
+  const key=newWpKey();
+  const {error}=await sb.from('clients').update({wp_api_key:key, wp_connected:true}).eq('id',c.id).is('wp_api_key',null);
+  if(error){ console.error('ensureWpKey',error); return false; }
+  // a teammate may have saved one in the meantime: read back what stuck
+  const {data}=await sb.from('clients').select('wp_api_key').eq('id',c.id).maybeSingle();
+  const k=(data&&data.wp_api_key)||null; if(!k) return false;
+  c.wp_api_key=k; c.wp=true;
+  const gc=groupClients.find(x=>x.id===c.id); if(gc){ gc.wp_api_key=k; gc.wp=true; }
+  if(typeof renderAccessPanel==='function') renderAccessPanel();
+  return true;
+}
+async function downloadDeployPackage(){
   if(OFFLINE||!PK.audit){ showToast('Generate the package first',true); return; }
   // APPROVAL FILTER: only approved content ships. Unapproved pieces stay in
   // the platform entirely (they don't even travel as CMS drafts) until a
@@ -6434,6 +6487,7 @@ function downloadDeployPackage(){
   const aqa=assembleQA();
   if(aqa.blocking.length){ showToast(`Deploy file BLOCKED — ${aqa.blocking.length} QA failure(s). Download the campaign doc to get the internal review list.`, true); return; }
   if(aqa.warnings.length) showToast(`Heads up: ${aqa.warnings.length} QA flag(s) — ${aqa.warnings[0]}${aqa.warnings.length>1?' (+ more in the internal review)':''}`, true);
+  if(!(await ensureWpKey())) showToast('Could not set the WordPress connector key — the file will import, but paste the plugin\'s key under Platform Access to connect the site.', true);
   const pkg=buildDeployPackage();
   const n=pkg.seo_meta.length+pkg.schema.length+pkg.og_tags.length+pkg.content.length+pkg.redirects.rules.length;
   if(!n&&!pkg.site_files.robots_txt&&!pkg.site_files.llms_txt){ showToast('Nothing deployable yet — generate/approve fixes and drafts first',true); return; }
