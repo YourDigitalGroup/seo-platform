@@ -1027,7 +1027,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.32.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.33.0</div>
   </div>
   </div>
 </div>
@@ -1115,7 +1115,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.32.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.33.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1163,7 +1163,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.32.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.33.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1326,7 +1326,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.32.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.33.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1344,7 +1344,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.32.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.33.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1407,7 +1407,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.32.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.33.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1463,6 +1463,9 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     <div class="mrow">
       <div class="mfield"><label>SEO/AEO Strategist</label>
         <select id="m-strat"></select>
+      </div>
+      <div class="mfield"><label>Social Media Strategist</label>
+        <select id="m-social" title="Tagged on the Trello card for GBP posts and when scheduled posts go live. Picked automatically from the partner group — change it for this client if needed."></select>
       </div>
     </div>
     <div class="gen-note" id="gen-note">On save, the system generates the full deployment package — audit, competition, fixes, deliverables, and the white-labeled report.</div>
@@ -2987,6 +2990,41 @@ function syncClear(){ const a=filters.search||filters.tier!=='all'||filters.stat
 //  ADD CLIENT (within active group) → generates a package
 // ════════════════════════════════════════════════════════════
 let EDIT_ID=null;   // client id when the modal is editing an existing campaign
+// Social media strategist in the add/edit form: pre-selected from the client's
+// own setting, else its partner group's; whoever saves can change it. A pick
+// equal to the group's strategist stores nothing (the client follows the
+// group); a different pick is stored as this client's override.
+async function fetchSocial(){
+  if(OFFLINE) return SOCIAL;
+  const {data}=await sb.from('app_settings').select('value').eq('key','social_strategists').maybeSingle();
+  const v=(data&&data.value)||{}; SOCIAL={people:v.people||[], groups:v.groups||{}, clients:v.clients||{}};
+  return SOCIAL;
+}
+async function fillSocialSelect(groupId, clientId){
+  const el=document.getElementById('m-social'); if(!el) return;
+  el.innerHTML='<option value="">Loading…</option>';
+  try{ await fetchSocial(); }catch(_){ /* keep whatever is cached */ }
+  const grpH=SOCIAL.groups[groupId]||'', cur=(clientId&&SOCIAL.clients[clientId])||grpH;
+  const grpP=SOCIAL.people.find(p=>p.trello===grpH);
+  el.dataset.group=groupId||''; el.dataset.groupHandle=grpH;
+  el.innerHTML=`<option value="">— none (tag the account manager) —</option>`+SOCIAL.people.map(p=>
+    `<option value="${esc(p.trello)}"${p.trello===cur?' selected':''}>${esc(p.name)}${p.trello===grpH?' · group default':''}</option>`).join('');
+  if(!SOCIAL.people.length) el.innerHTML='<option value="">— set people in Team &amp; access —</option>';
+  el.title=grpP?`Group default: ${grpP.name}. Change it for this client if needed.`:'No strategist set for this partner group — pick one for this client.';
+}
+async function saveClientSocial(clientId){
+  const el=document.getElementById('m-social'); if(!el||OFFLINE||!clientId) return;
+  const pick=el.value||'', grpH=el.dataset.groupHandle||'';
+  try{
+    await fetchSocial();   // latest copy: never clobber someone else's edit
+    const clients={...SOCIAL.clients};
+    if(pick&&pick!==grpH) clients[clientId]=pick; else delete clients[clientId];
+    if(JSON.stringify(clients)===JSON.stringify(SOCIAL.clients)) return;
+    const value={...SOCIAL, clients};
+    const {error}=await sb.from('app_settings').upsert({key:'social_strategists', value, updated_at:new Date().toISOString()});
+    if(error) throw error; SOCIAL=value;
+  }catch(e){ showToast('Social media strategist not saved — '+String(e.message||e),true); }
+}
 function openAddModal(){
   EDIT_ID=null;
   document.getElementById('modal-title').textContent='Add client.';
@@ -3003,6 +3041,7 @@ function openAddModal(){
   document.getElementById('m-startmonth-wrap').style.display='none';
   document.getElementById('m-startmonth').innerHTML=Array.from({length:23},(_,i)=>`<option value="${i+2}">Month ${i+2}</option>`).join('');
   document.getElementById('m-strat').innerHTML=`<option value="">— assign later —</option>`+STRATEGISTS.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+  fillSocialSelect(activeGroup&&activeGroup.id, null);
   document.getElementById('modal-grp').innerHTML=`Adding to <b>${esc(activeGroup.name)}</b> — package deploys in this partner's brand. As ${ROLE_LABEL[me.role]||'staff'}, assign the SEO/AEO strategist here.`;
   document.getElementById('modal').classList.add('open');
 }
@@ -3037,6 +3076,7 @@ function openEditModal(id){
   const keepStrat=c.strategist_id&&!STRATEGISTS.some(s=>s.id===c.strategist_id)
     ? `<option value="${esc(c.strategist_id)}" selected>${esc((userById(c.strategist_id)||{}).name||'Current assignee')} (current)</option>` : '';
   document.getElementById('m-strat').innerHTML=`<option value="">— unassigned —</option>`+keepStrat+STRATEGISTS.map(s=>`<option value="${esc(s.id)}"${s.id===c.strategist_id?' selected':''}>${esc(s.name)}</option>`).join('');
+  fillSocialSelect(c.grpId||(activeGroup&&activeGroup.id), c.id);
   document.getElementById('modal-grp').innerHTML=`Editing <b>${esc(c.url||c.name)}</b> — changing the plan, add-on, contract length or campaign month re-plans the remaining tactics. Delivered and drafted work is never touched.`;
   document.getElementById('gen-note').textContent='On save, the remaining planned tactics are re-spread to match the new details. Anything already delivered, approved or drafted is kept as-is.';
   document.getElementById('modal').classList.add('open');
@@ -3092,6 +3132,7 @@ async function saveClient(){
   const engStart=sd.toISOString().slice(0,10);
   const lab=evergreen?'evergreen':`${lengthMonths}-month`;
   closeAddModal(); showToast(`${name||url} added — building ${lab} campaign${started?` from month ${startMonth}`:''}…`);
+  if(ins&&ins.id) await saveClientSocial(ins.id);
   if(ins&&ins.id) await seedCampaign(ins.id, tier, engStart, evergreen?EVERGREEN_HORIZON:lengthMonths, addons);
   await loadGroupClients(); page=0; loadPage(); renderTriage();
   // "Add & generate" means GENERATE: open the new client and kick off the
@@ -3148,6 +3189,7 @@ async function saveClientEdits(){
   if(error){ showToast('Could not save the changes: '+error.message,true); return; }
   Object.assign(c,upd);
   if(activeClient&&activeClient.id===c.id){ Object.assign(activeClient,upd); activeTier=activeClient.tier; }
+  await saveClientSocial(c.id);
   closeAddModal();
   let res=null;
   if(replanNeeded){
