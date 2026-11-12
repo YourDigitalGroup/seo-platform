@@ -7,9 +7,11 @@
 //  POSTs here, and we:
 //    1. record it once (wp_publish_events, unique per client + piece),
 //    2. mark the campaign deliverable delivered, with the live URL,
-//    3. comment on the client's Trello card tagging the ACCOUNT MANAGER on
-//       the account (partner_groups.am_email → profiles.trello_username),
-//       adding them to the card first so the @mention actually notifies.
+//    3. comment on the client's Trello card tagging the SOCIAL MEDIA
+//       STRATEGIST on the account (app_settings "social_strategists": per
+//       client override, else per partner group — Team & access), falling
+//       back to the group's account manager; they're added to the card first
+//       so the @mention actually notifies.
 //
 //  Auth: the site's connector API key (Authorization: Bearer <key>) must match
 //  clients.wp_api_key — the same gate as wp-ai. Deploy with verify_jwt OFF:
@@ -108,11 +110,18 @@ Deno.serve(async (req) => {
   };
 
   let amName = "", amEmail = "", handle = "";
-  if (client.partner_group_id) {
+  // Social media strategist for this client / partner group (Team & access).
+  try {
+    const { data: ss } = await supa.from("app_settings").select("value").eq("key", "social_strategists").maybeSingle();
+    const v: any = ss?.value || {};
+    const h = String((v.clients || {})[client.id] || (v.groups || {})[client.partner_group_id] || "").replace(/^@/, "").trim();
+    if (h) { handle = h; amName = String(((v.people || []).find((x: any) => String(x?.trello || "").replace(/^@/, "") === h) || {}).name || ""); }
+  } catch { /* settings missing: fall back to the account manager */ }
+  if (!handle && client.partner_group_id) {
     const { data: g } = await supa.from("partner_groups").select("am_name, am_email").eq("id", client.partner_group_id).maybeSingle();
     amName = String(g?.am_name || ""); amEmail = String(g?.am_email || "").trim();
   }
-  if (amEmail) {
+  if (!handle && amEmail) {
     const { data: p } = await supa.from("profiles").select("name, trello_username").ilike("email", amEmail).maybeSingle();
     handle = String(p?.trello_username || "").replace(/^@/, "").trim();
     amName = amName || String(p?.name || "");
@@ -125,7 +134,7 @@ Deno.serve(async (req) => {
       if (m?.id) await trello("POST", `/cards/${cardId}/idMembers`, { value: m.id }).catch(() => { /* already on the card */ });
     } catch { warnings.push(`Trello user @${handle} not found`); }
   } else {
-    warnings.push(amName ? `no Trello @username on ${amName}'s profile (Team & access)` : "no account manager on this partner group");
+    warnings.push(amName ? `no Trello @username on ${amName}'s profile (Team & access)` : "no social media strategist or account manager set for this client/group");
   }
 
   const what = kind === "landing" || kind === "service" ? "page" : kind === "pillar" ? "pillar page" : kind === "blog" ? "blog post" : "post";
