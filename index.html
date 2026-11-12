@@ -1027,7 +1027,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.31.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.32.0</div>
   </div>
   </div>
 </div>
@@ -1115,7 +1115,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.31.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.32.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1163,7 +1163,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.31.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.32.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1326,7 +1326,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.31.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.32.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1344,7 +1344,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.31.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.32.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1396,13 +1396,18 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="trello-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <div class="widget" style="margin-top:18px">
+      <div class="widget-h"><div><h2>Social media strategists.</h2>
+        <div class="wmeta">Who gets tagged on the client's Trello card when GBP posts are ready to schedule and when a scheduled post goes live. Set per partner group; a client setting overrides its group (44i clients are set one by one). Nobody set → the group's account manager is tagged.</div></div></div>
+      <div id="social-settings"><div class="wmeta">Loading…</div></div>
+    </div>
+    <div class="widget" style="margin-top:18px">
       <div class="widget-h"><div><h2>AI citation tracking.</h2>
         <div class="wmeta">Ahrefs Brand Radar asks each client's customer questions on the AI engines and records who gets mentioned and which pages are cited. Feeds report section 6 and Looker.</div></div>
         <button class="add-btn" style="padding:9px 18px;font-size:13px;background:var(--mist);color:var(--ink);border:1px solid var(--line)" onclick="loadAiTracking()"><i class="fa-solid fa-rotate"></i> Refresh</button></div>
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.31.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.32.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1785,6 +1790,7 @@ async function loadTeam(){
     loadGscOauth();
     loadGbp();
     loadTrelloSettings();
+    loadSocialStrategists();
     loadAiTracking();
   }catch(e){
     list.innerHTML=`<div class="wmeta" style="padding:18px 0;color:#c0392b">Could not load users — ${esc(String(e.message||e))}</div>`;
@@ -1903,6 +1909,50 @@ async function teamSetTrello(i,el){
     u.trello_username=v;
     showToast(v?`✓ ${u.email} tags as @${v} on Trello`:`Trello username cleared for ${u.email}`);
   }catch(e){ showToast('Could not save Trello username — '+String(e.message||e),true); el.value=u.trello_username||''; }
+}
+// ── SOCIAL MEDIA STRATEGISTS (app_settings key "social_strategists") ───────
+// { people:[{name, trello}], groups:{<group_id>: handle}, clients:{<client_id>: handle} }
+// Read by the trello (GBP post files) and wp-events (post went live) functions.
+let SOCIAL={people:[], groups:{}, clients:{}}, SOCIAL_CLIENTS=[];
+async function loadSocialStrategists(){
+  const el=document.getElementById('social-settings'); if(!el||OFFLINE) return;
+  try{
+    const {data,error}=await sb.from('app_settings').select('value').eq('key','social_strategists').maybeSingle();
+    if(error) throw error;
+    const v=(data&&data.value)||{};
+    SOCIAL={people:v.people||[], groups:v.groups||{}, clients:v.clients||{}};
+    const g44=GROUPS.find(g=>g.name==='44i');
+    const {data:cl}=await sb.from('clients').select('id,name,partner_group_id').order('name');
+    SOCIAL_CLIENTS=(cl||[]).filter(c=>(g44&&c.partner_group_id===g44.id)||SOCIAL.clients[c.id]);
+    renderSocialStrategists();
+  }catch(e){ el.innerHTML=`<div class="wmeta" style="color:#c0392b">${esc(String(e.message||e))}</div>`; }
+}
+function renderSocialStrategists(){
+  const el=document.getElementById('social-settings'); if(!el) return;
+  const opts=(cur,blank)=>`<option value="">${blank}</option>`+SOCIAL.people.map(p=>`<option value="${esc(p.trello)}"${p.trello===cur?' selected':''}>${esc(p.name)} (@${esc(p.trello)})</option>`).join('');
+  const row=(label,id,cur,blank)=>`<div class="bf-kwrow" style="grid-template-columns:240px 1fr"><span style="font-size:13px;font-weight:700">${esc(label)}</span><select class="qsel" id="${id}">${opts(cur,blank)}</select></div>`;
+  el.innerHTML=`
+    <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:4px 0 8px">People</div>
+    ${SOCIAL.people.map((p,i)=>`<div class="bf-kwrow" style="grid-template-columns:240px 1fr auto"><input id="ss-pn-${i}" value="${esc(p.name)}" placeholder="Name"><input id="ss-pt-${i}" value="${esc(p.trello)}" placeholder="Trello @username"><button class="cxbtn" title="Remove" onclick="SOCIAL.people.splice(${i},1);renderSocialStrategists()">✕</button></div>`).join('')}
+    <div class="bf-kwrow" style="grid-template-columns:240px 1fr auto"><input id="ss-pn-new" placeholder="Add a person — name"><input id="ss-pt-new" placeholder="Trello @username"><span></span></div>
+    <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Partner groups</div>
+    ${GROUPS.map(g=>row(g.name,'ss-g-'+g.id,SOCIAL.groups[g.id]||'','— account manager —')).join('')}
+    <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px">Client overrides <span style="font-weight:600;text-transform:none;letter-spacing:0">— 44i clients, and any client set apart from its group</span></div>
+    ${SOCIAL_CLIENTS.map(c=>row(c.name,'ss-c-'+c.id,SOCIAL.clients[c.id]||'','— use the group setting —')).join('')||'<div class="wmeta">No 44i clients.</div>'}
+    <div class="bf-actions" style="justify-content:flex-start"><button class="ds-save" onclick="saveSocialStrategists()">Save social media strategists</button></div>`;
+}
+async function saveSocialStrategists(){
+  const clean=h=>String(h||'').trim().replace(/^@/,'');
+  const people=SOCIAL.people.map((p,i)=>({name:(document.getElementById('ss-pn-'+i)||{}).value?.trim()||p.name, trello:clean((document.getElementById('ss-pt-'+i)||{}).value||p.trello)})).filter(p=>p.name&&p.trello);
+  const nn=(document.getElementById('ss-pn-new')||{}).value?.trim(), nt=clean((document.getElementById('ss-pt-new')||{}).value);
+  if(nn&&nt) people.push({name:nn, trello:nt});
+  const groups={}, clients={};
+  GROUPS.forEach(g=>{ const v=(document.getElementById('ss-g-'+g.id)||{}).value; if(v) groups[g.id]=v; });
+  SOCIAL_CLIENTS.forEach(c=>{ const v=(document.getElementById('ss-c-'+c.id)||{}).value; if(v) clients[c.id]=v; });
+  const value={people, groups, clients};
+  const {error}=await sb.from('app_settings').upsert({key:'social_strategists', value, updated_at:new Date().toISOString()});
+  if(error){ showToast('Could not save — '+error.message,true); return; }
+  SOCIAL=value; renderSocialStrategists(); showToast('✓ Social media strategists saved', false, true);
 }
 // ── TRELLO INTEGRATION SETTINGS (app_settings key "trello") ────────────────
 // board_id + card-title template + strategist→column mapping. The trello
@@ -6400,8 +6450,13 @@ async function sendGbpPostsToTrello(only, quiet){
   const list=(PK.topics||[]).filter(t=>t.kind==='gbp_post'&&t.body&&t.status==='approved'&&(!only||only.includes(t)));
   if(!list.length){ if(!quiet) showToast('No approved GBP posts to send — approve them first',true); return; }
   const files=list.map(t=>gbpPostFile(t, sch[t._id||t.title]));
+  const shortD=t=>{ const w=sch[t._id||t.title]; return w?w.when.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/Chicago'}):'unscheduled'; };
+  const nm=activeClient.name||activeClient.url;
+  const notify_text=list.length===1
+    ? `GBP post ready to schedule for ${nm}: “${list[0].title}” — publish ${shortD(list[0])}. Full post in the attached ${files[0].name}.`
+    : `${list.length} GBP posts ready to schedule for ${nm} — one .txt file each on this card:\n`+list.map(t=>`• ${shortD(t)} — ${t.title}`).join('\n');
   try{
-    const {data,error}=await sb.functions.invoke('trello',{body:{action:'attach_files', client_id:activeClient.id, files}});
+    const {data,error}=await sb.functions.invoke('trello',{body:{action:'attach_files', client_id:activeClient.id, files, notify_text}});
     let msg=error?error.message:(data&&data.error)||'';
     if(error){ try{ const b=await error.context.json(); msg=b.error||msg; }catch(_){} }
     if(msg||!(data&&data.ok)){ showToast('GBP posts not sent to Trello — '+(msg||(data&&data.failed||[]).join('; ')),true); return; }

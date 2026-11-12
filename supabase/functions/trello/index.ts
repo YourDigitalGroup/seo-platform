@@ -286,7 +286,24 @@ Deno.serve(async (req) => {
           attached++;
         } catch (e) { failed.push(`${f.name} (${String((e as any)?.message || e).slice(0, 60)})`); }
       }
-      return json({ ok: failed.length === 0, attached, replaced, ...(failed.length ? { failed } : {}) });
+      // Tag the client's social media strategist (Team & access → Social
+      // media strategists: per-client override, else per partner group) so
+      // they know posts are waiting to be scheduled.
+      let tagged = "";
+      if (attached && typeof body.notify_text === "string" && body.notify_text.trim()) {
+        try {
+          const { data: ss } = await supa.from("app_settings").select("value").eq("key", "social_strategists").maybeSingle();
+          const v: any = ss?.value || {};
+          const h = String((v.clients || {})[client.id] || (v.groups || {})[client.partner_group_id] || "").replace(/^@/, "").trim();
+          if (h) {
+            try { const m = await trello("GET", `/members/${encodeURIComponent(h)}`, { fields: "id" });
+              if (m?.id) await trello("POST", `/cards/${cardId}/idMembers`, { value: m.id }).catch(() => {}); } catch { /* unknown handle: mention still posts */ }
+            tagged = h;
+          }
+          await trello("POST", `/cards/${cardId}/actions/comments`, { text: `${h ? "@" + h + " " : ""}${String(body.notify_text).trim()}`.slice(0, 1000) });
+        } catch (e) { failed.push(`comment (${String((e as any)?.message || e).slice(0, 60)})`); }
+      }
+      return json({ ok: failed.length === 0, attached, replaced, tagged: tagged || null, ...(failed.length ? { failed } : {}) });
     }
 
     if (action === "comment") {

@@ -81,8 +81,9 @@ WordPress site automatically — without ever touching the site's appearance.
     scheduled piece the platform sent, the plugin pings the `wp-events`
     function (non-blocking). The platform marks the deliverable delivered
     with the live URL and comments on the client's Trello card tagging the
-    account manager on the partner group (their Trello @username from Team &
-    access).
+    client's social media strategist (Team & access → Social media
+    strategists: per client, else per partner group; falls back to the
+    group's account manager).
 
 ## What it cannot do (by design)
 - No theme, template, CSS, layout, menu, widget, or settings changes.
