@@ -702,7 +702,9 @@ footer .fbadges{display:flex;gap:18px}
 /* content queue: open-draft affordance */
 .qopen{font-size:11px;font-weight:700;padding:5px 11px;border-radius:999px;border:1px solid var(--blue);background:var(--s-card);color:var(--blue-d);transition:.12s;white-space:nowrap}
 .qopen:hover{background:var(--blue-l)}
-.qrow.qedit{grid-template-columns:1.7fr 126px 132px 96px 78px 30px}
+.qrow.qedit{grid-template-columns:1.7fr 126px 132px 118px 150px 30px}
+.qacts{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.qtrello{border-color:#0079BF;color:#0079BF}.qtrello:hover{background:#E4F0F6}
 
 /* draft editor modal */
 .modal.draft{max-width:680px}
@@ -747,7 +749,7 @@ footer .fbadges{display:flex;gap:18px}
 .dm-btn.approve{background:var(--green-deep);border-color:var(--green-deep);color:#fff} .dm-btn.approve:hover{filter:brightness(1.05)}
 .dm-btn.rewrite{background:var(--navy);border-color:var(--navy);color:#fff} .dm-btn.rewrite:hover{background:var(--navy-2)}
 .dm-btn:disabled{opacity:.45;cursor:not-allowed}
-@media(max-width:680px){ .qrow.qedit{grid-template-columns:1.5fr 110px 78px 30px} .qrow.qedit>*:nth-child(3),.qrow.qedit>*:nth-child(4){display:none} }
+@media(max-width:680px){ .qrow.qedit{grid-template-columns:1.5fr 110px 150px 30px} .qrow.qedit>*:nth-child(3),.qrow.qedit>*:nth-child(4){display:none} }
 
 /* ── Pillar scorecard, AI/crawl insights, data-source ids ── */
 .scorecard{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:10px;margin-bottom:14px}
@@ -1027,7 +1029,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.33.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.34.0</div>
   </div>
   </div>
 </div>
@@ -1115,7 +1117,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.33.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.34.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1163,7 +1165,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.33.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.34.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1326,7 +1328,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.33.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.34.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1344,7 +1346,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.33.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.34.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1407,7 +1409,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.33.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.34.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -4821,7 +4823,7 @@ function renderQueue(){
       <span><select class="qsel" onchange="changeKind(${i},this.value)">${kindOpts(t.kind)}</select></span>
       <span><select class="qsel" onchange="changeModel(${i},this.value)">${modelOpts(t.model)}</select></span>
       <span><span class="qstatus qs-${t.status}${t.status==='approved'&&t.approval?' qa-'+t.approval:''}">${statusLabel(t)}</span></span>
-      <span>${openable?`<button class="qopen" onclick="openDraft(${i})">Open</button>`:''}</span>
+      <span class="qacts">${openable?`<button class="qopen" onclick="openDraft(${i})">Open</button>`:''}${t.body&&t._id?`<button class="qopen qtrello" onclick="submitPieceToTrello(${i})" title="Put this piece on the client's Trello card as a .txt file (publish date + full content)"><i class="fa-brands fa-trello"></i> Trello</button>`:''}</span>
       <span class="cx">${t._id&&t.status!=='approved'?`<button class="cxbtn" title="Retire — remove from the campaign permanently (logged in the internal review)" onclick="retireTopic(${i})"><i class="fa-solid fa-ban"></i></button>`:''}<button class="cxbtn" title="Remove from queue" onclick="removeTopic(${i})">✕</button></span>
     </div>`;
   };
@@ -4841,6 +4843,7 @@ function renderQueue(){
     `<div class="qbar"><span class="qsum">${PK.topics.length} piece${PK.topics.length===1?'':'s'} · ${summary}</span>
       ${(()=>{const n=PK.topics.filter(t=>t.body&&qaScan(t.body).blocking.length).length;
         return n?`<button class="qgen" style="background:#C0392B;margin-right:8px" onclick="autoFixFlagged()" title="Rewrite every flagged draft with its violations as explicit removal instructions"><i class="fa-solid fa-triangle-exclamation"></i> Auto-fix ${n} flagged →</button>`:'';})()}
+      ${PK.topics.some(t=>t.kind==='gbp_post'&&t.body)?`<button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="downloadGbpPosts()" title="Download every written GBP post — one .txt file each (publish date + full post), zipped"><i class="fa-solid fa-download"></i> GBP posts</button>`:''}
       ${PK.topics.some(t=>t.kind==='gbp_post'&&t.status==='approved')?`<button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="sendGbpPostsToTrello()" title="Put every approved GBP post on the client's Trello card — one .txt file each, with its publish date and the full post"><i class="fa-brands fa-trello"></i> GBP posts → Trello</button>`:''}<button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="downloadClientDoc()" title="Download a clean, partner-branded summary of the approved pieces to send to the client"><i class="fa-solid fa-file-export"></i> Client doc</button><button class="qgen" id="sugbtn" style="background:var(--navy);margin-right:8px" onclick="suggestTopics()" title="Claude combines the owner's business description with the audit data and proposes topics — you pick what to queue"><i class="fa-solid fa-lightbulb"></i> Suggest topics</button>
       <button class="qgen" onclick="generateDrafts()">Generate drafts →</button></div>`;
   document.getElementById('queue-tag').textContent=`${campaignMonthLabel(activeClient)} · ${PK.topics.length} queued · Engine 2`;
@@ -6440,6 +6443,33 @@ function splitDraft(md){
 // month (3 posts → ~6th, 16th, 26th), never in the past and at least 2 days
 // apart. The account manager / strategist posts them to the Business Profile
 // from the files on the card.
+// Website content publish dates (the Deploy file's schedule): each approved
+// piece publishes inside ITS campaign month, spread evenly, 2+ days apart,
+// never in the past. Shared by the Deploy file and "Submit to Trello".
+function contentSchedule(){
+  const deployable=(PK.topics||[]).filter(t=>t.body&&t.kind!=='gbp_post'&&t.status==='approved');
+  const DAY=24*3600*1000, NOW=Date.now();
+  const monthOfT={}; (PK.campaign||[]).forEach(d=>{ if(d.topic_id) monthOfT[d.topic_id]=d.month_offset||1; });
+  const engS=activeClient&&activeClient.engagement_start_date
+    ? new Date(activeClient.engagement_start_date+'T00:00:00Z') : new Date();
+  const schedFor={};
+  {
+    const byM={}; deployable.forEach(t=>{ const m=monthOfT[t._id]||0; (byM[m]=byM[m]||[]).push(t); });
+    Object.keys(byM).map(Number).sort((a,b)=>a-b).forEach(m=>{
+      const list=byM[m];
+      let ws, we;
+      if(m>0){
+        ws=Date.UTC(engS.getUTCFullYear(), engS.getUTCMonth()+m-1, 2, 15, 0, 0);   // ~9-10am US, 2nd of the month
+        we=Date.UTC(engS.getUTCFullYear(), engS.getUTCMonth()+m, 0, 15, 0, 0);     // last day of that month
+      } else { ws=NOW+DAY; we=NOW+28*DAY; }
+      const s0=Math.max(ws, NOW+DAY);                 // never schedule in the past
+      const e0=Math.max(we, s0+2*DAY);
+      const step=list.length>1?Math.max(2*DAY, Math.floor((e0-s0)/(list.length-1))):0;
+      list.forEach((t,i)=>{ schedFor[t._id||t.title]=new Date(Math.min(s0+i*step, e0)).toISOString(); });
+    });
+  }
+  return schedFor;
+}
 function gbpSchedule(){
   const out={}; const DAY=864e5, now=Date.now(), tomorrow=Math.ceil((now+DAY)/DAY)*DAY+15*3600e3;
   const monthOfT={}; (PK.campaign||[]).forEach(d=>{ if(d.topic_id) monthOfT[d.topic_id]=d.month_offset||1; });
@@ -6505,6 +6535,92 @@ async function sendGbpPostsToTrello(only, quiet){
     if(!quiet) showToast(`${data.attached} GBP post file${data.attached===1?'':'s'} on the Trello card`, false, true);
   }catch(e){ showToast('GBP posts not sent to Trello — '+String(e&&e.message||e),true); }
 }
+// One .txt for a website piece (blog / page / pillar): publish date from the
+// Deploy-file schedule, SEO fields, and the full text.
+function contentPieceFile(t){
+  const c=activeClient||{}, d=splitDraft(t.body);
+  const when=t.status==='approved'?contentSchedule()[t._id||t.title]:null;
+  const monthOfT={}; (PK.campaign||[]).forEach(x=>{ if(x.topic_id) monthOfT[x.topic_id]=x.month_offset||1; });
+  const KIND={blog:'Blog post', landing:'Landing page', service:'Service page', pillar:'AEO pillar page', faq:'FAQ'};
+  const slug=String(t.title||'piece').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'piece';
+  const key=String(t._id||'').replace(/[^a-z0-9]/gi,'').slice(0,8);
+  const lines=[
+    (KIND[t.kind]||'Content').toUpperCase(),
+    `Client: ${c.name||c.url||''}`,
+    `Publish date: ${when?fmtPostDate(new Date(when)):(t.status==='approved'?'not scheduled':'not scheduled — approve it to schedule')}`,
+    monthOfT[t._id]?`Campaign month: ${monthOfT[t._id]}`:null,
+    `Status: ${statusLabel(t)}`,
+    `Title (H1): ${d.h1||t.title||''}`,
+    t.keyword&&t.keyword!=='(manual)'?`Focus keyword: ${t.keyword}`:null,
+    d.slug?`URL slug: ${d.slug}`:null,
+    d.seo_title?`SEO title: ${d.seo_title}`:null,
+    d.seo_desc?`Meta description: ${d.seo_desc}`:null,
+    t.link?`Links to: ${t.link}`:null,
+    t.image?`Featured image: ${t.image}`:null,
+    '', '----- CONTENT -----', '',
+    mdToPlain(d.body),
+  ].filter(x=>x!==null);
+  return { name:`${(t.kind||'content')}_${when?String(when).slice(0,10):'unscheduled'}_${slug}${key?'_'+key:''}.txt`, key, text:lines.join('\n')+'\n' };
+}
+function pieceFile(t){ return t.kind==='gbp_post'?gbpPostFile(t, gbpSchedule()[t._id||t.title]):contentPieceFile(t); }
+// "Trello" on a queue row: this one piece onto the client's card. GBP posts
+// tag the social media strategist (they schedule them); other pieces get a
+// plain note — they ship to the site through the Deploy file.
+async function submitPieceToTrello(i){
+  const t=PK.topics[i]; if(!t||!t.body) return;
+  if(OFFLINE){ showToast('Live mode only',true); return; }
+  if(!activeClient||!activeClient.trello_card_id){ showToast('No Trello card on this client yet — submit it to a specialist first',true); return; }
+  if(t.kind==='gbp_post') return sendGbpPostsToTrello([t]);
+  const f=contentPieceFile(t);
+  try{
+    const {data,error}=await sb.functions.invoke('trello',{body:{action:'attach_files', client_id:activeClient.id, files:[f]}});
+    let msg=error?error.message:(data&&data.error)||'';
+    if(error){ try{ const b=await error.context.json(); msg=b.error||msg; }catch(_){} }
+    if(msg||!(data&&data.ok)){ showToast('Not sent to Trello — '+(msg||(data&&data.failed||[]).join('; ')),true); return; }
+    sb.functions.invoke('trello',{body:{action:'comment', client_id:activeClient.id,
+      text:`${statusLabel(t)}: “${t.title}” (${t.kind}) — full copy in the attached ${f.name}.`}}).then(()=>{},()=>{});
+    showToast(`“${t.title}” is on the Trello card`, false, true);
+  }catch(e){ showToast('Not sent to Trello — '+String(e&&e.message||e),true); }
+}
+// Minimal ZIP (stored, no compression) — enough to hand over a folder of .txt
+// files without pulling in a library.
+function zipFiles(files){
+  const enc=new TextEncoder(), T=new Uint32Array(256);
+  for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; T[n]=c>>>0; }
+  const crc=b=>{ let c=0xFFFFFFFF; for(let i=0;i<b.length;i++) c=T[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; };
+  const parts=[], central=[]; let off=0;
+  const d=new Date(), dt=((d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1))&0xFFFF, dd=(((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate())&0xFFFF;
+  files.forEach(f=>{
+    const name=enc.encode(f.name), data=enc.encode(f.text), c=crc(data);
+    const h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true); h.setUint16(4,20,true); h.setUint16(6,0x0800,true); h.setUint16(8,0,true);
+    h.setUint16(10,dt,true); h.setUint16(12,dd,true); h.setUint32(14,c,true); h.setUint32(18,data.length,true); h.setUint32(22,data.length,true);
+    h.setUint16(26,name.length,true); h.setUint16(28,0,true);
+    parts.push(new Uint8Array(h.buffer), name, data);
+    const ch=new DataView(new ArrayBuffer(46));
+    ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true); ch.setUint16(10,0,true);
+    ch.setUint16(12,dt,true); ch.setUint16(14,dd,true); ch.setUint32(16,c,true); ch.setUint32(20,data.length,true); ch.setUint32(24,data.length,true);
+    ch.setUint16(28,name.length,true); ch.setUint32(42,off,true);
+    central.push(new Uint8Array(ch.buffer), name);
+    off+=30+name.length+data.length;
+  });
+  const csize=central.reduce((a,b)=>a+b.length,0), e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true); e.setUint16(8,files.length,true); e.setUint16(10,files.length,true); e.setUint32(12,csize,true); e.setUint32(16,off,true);
+  return new Blob([...parts,...central,new Uint8Array(e.buffer)],{type:'application/zip'});
+}
+function downloadGbpPosts(){
+  const sch=gbpSchedule();
+  const list=(PK.topics||[]).filter(t=>t.kind==='gbp_post'&&t.body);
+  if(!list.length){ showToast('No written GBP posts yet — generate drafts first',true); return; }
+  const files=list.map(t=>gbpPostFile(t, sch[t._id||t.title]));
+  const site=String((activeClient&&activeClient.url)||'site').replace(/^https?:\/\//,'').replace(/[^a-z0-9.-]/gi,'_').replace(/_+$/,'');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(files.length===1?new Blob([files[0].text],{type:'text/plain'}):zipFiles(files));
+  a.download=files.length===1?files[0].name:`gbp-posts-${site}-${new Date().toISOString().slice(0,10)}.zip`;
+  document.body.appendChild(a); a.click(); a.remove();
+  const unapproved=list.filter(t=>t.status!=='approved').length;
+  showToast(`${files.length} GBP post${files.length===1?'':'s'} downloaded${unapproved?` · ${unapproved} not approved yet (marked in the file)`:''}`, false, true);
+}
 function buildDeployPackage(){
   const c=activeClient||{};
   const site='https://'+String(c.url||'').replace(/^https?:\/\//,'').replace(/\/+$/,'');
@@ -6535,26 +6651,7 @@ function buildDeployPackage(){
   // blogs auto-publish in month 3, not the week of generation. Pieces with
   // no campaign month spread over the next 4 weeks. GBP posts are manual.
   const deployable=(PK.topics||[]).filter(t=>t.body&&t.kind!=='gbp_post'&&t.status==='approved');
-  const DAY=24*3600*1000, NOW=Date.now();
-  const monthOfT={}; (PK.campaign||[]).forEach(d=>{ if(d.topic_id) monthOfT[d.topic_id]=d.month_offset||1; });
-  const engS=activeClient&&activeClient.engagement_start_date
-    ? new Date(activeClient.engagement_start_date+'T00:00:00Z') : new Date();
-  const schedFor={};
-  {
-    const byM={}; deployable.forEach(t=>{ const m=monthOfT[t._id]||0; (byM[m]=byM[m]||[]).push(t); });
-    Object.keys(byM).map(Number).sort((a,b)=>a-b).forEach(m=>{
-      const list=byM[m];
-      let ws, we;
-      if(m>0){
-        ws=Date.UTC(engS.getUTCFullYear(), engS.getUTCMonth()+m-1, 2, 15, 0, 0);   // ~9-10am US, 2nd of the month
-        we=Date.UTC(engS.getUTCFullYear(), engS.getUTCMonth()+m, 0, 15, 0, 0);     // last day of that month
-      } else { ws=NOW+DAY; we=NOW+28*DAY; }
-      const s0=Math.max(ws, NOW+DAY);                 // never schedule in the past
-      const e0=Math.max(we, s0+2*DAY);
-      const step=list.length>1?Math.max(2*DAY, Math.floor((e0-s0)/(list.length-1))):0;
-      list.forEach((t,i)=>{ schedFor[t._id||t.title]=new Date(Math.min(s0+i*step, e0)).toISOString(); });
-    });
-  }
+  const schedFor=contentSchedule();
   // Auto internal link: the focus keyword's first natural mention links back
   // to the strategist-editable target (queue row "links to").
   const linkify=(html,kw,href)=>{
