@@ -99,6 +99,92 @@ const PLATFORM_DENYLIST = [
   "maps.google.com","g.co","goo.gl",
 ];
 const EXPECT_SCHEMA = ["Organization","LocalBusiness","FAQPage","BreadcrumbList","AggregateRating"];
+// schema.org LocalBusiness subtypes. A site that marks itself up as the more
+// precise type (ProfessionalService, Dentist, RoofingContractor, Store …) IS a
+// LocalBusiness — and every LocalBusiness is an Organization. Google
+// recommends the most specific type, so the audit must not fail it.
+const LOCAL_BUSINESS_TYPES = new Set((
+  "LocalBusiness AnimalShelter ArchiveOrganization AutomotiveBusiness AutoBodyShop AutoDealer AutoPartsStore AutoRental AutoRepair AutoWash GasStation MotorcycleDealer MotorcycleRepair " +
+  "ChildCare Dentist DryCleaningOrLaundry EmergencyService FireStation Hospital PoliceStation EmploymentAgency EntertainmentBusiness AdultEntertainment AmusementPark ArtGallery Casino ComedyClub MovieTheater NightClub " +
+  "FinancialService AccountingService AutomatedTeller BankOrCreditUnion InsuranceAgency FoodEstablishment Bakery BarOrPub Brewery CafeOrCoffeeShop Distillery FastFoodRestaurant IceCreamShop Restaurant Winery " +
+  "GovernmentOffice PostOffice HealthAndBeautyBusiness BeautySalon DaySpa HairSalon HealthClub NailSalon TattooParlor HomeAndConstructionBusiness Electrician GeneralContractor HVACBusiness HousePainter Locksmith MovingCompany Plumber RoofingContractor " +
+  "InternetCafe LegalService Attorney Notary Library LodgingBusiness BedAndBreakfast Campground Hostel Hotel Motel Resort VacationRental " +
+  "MedicalBusiness CommunityHealth Dermatology DietNutrition Emergency Geriatric Gynecologic MedicalClinic Midwifery Nursing Obstetric Oncologic Optician Optometric Otolaryngologic Pediatric Pharmacy Physician Physiotherapy PlasticSurgery Podiatric PrimaryCare Psychiatric PublicHealth " +
+  "ProfessionalService RadioStation RealEstateAgent RecyclingCenter SelfStorage ShoppingCenter SportsActivityLocation BowlingAlley ExerciseGym GolfCourse PublicSwimmingPool SkiResort SportsClub StadiumOrArena TennisComplex " +
+  "Store BikeStore BookStore ClothingStore ComputerStore ConvenienceStore DepartmentStore ElectronicsStore Florist FurnitureStore GardenStore GroceryStore HardwareStore HobbyShop HomeGoodsStore JewelryStore LiquorStore MensClothingStore MobilePhoneStore MovieRentalStore MusicStore OfficeEquipmentStore OutletStore PawnShop PetStore ShoeStore SportingGoodsStore TireShop ToyStore WholesaleStore " +
+  "TelevisionStation TouristInformationCenter TravelAgency"
+).split(/\s+/));
+const ORGANIZATION_TYPES = new Set(["Organization", "Corporation", "EducationalOrganization", "CollegeOrUniversity", "HighSchool", "MiddleSchool", "ElementarySchool", "Preschool", "School",
+  "NGO", "NewsMediaOrganization", "MedicalOrganization", "SportsOrganization", "PerformingGroup", "MusicGroup", "TheaterGroup", "GovernmentOrganization", "LibrarySystem", "Airline", "Consortium", "FundingScheme", "OnlineBusiness", "OnlineStore", "WorkersUnion", "ResearchOrganization", "Project", "PoliticalParty"]);
+// Expand a page's schema types with their parents, so checks that look for
+// "LocalBusiness" / "Organization" accept the specific subtypes.
+// ── GBP link → listing. The intake's Business Profile link already identifies
+// the listing: Maps URLs carry the place id (ChIJ…) or the CID
+// (…!1s0x…:0x<CID hex>, ?cid=, ludocid=), and short links (maps.app.goo.gl,
+// g.page, goo.gl/maps, share.google) redirect to one. Places API (New) has no
+// CID lookup, but every result's googleMapsUri is "…?cid=<CID>", so a text
+// search near the link's coordinates plus an exact CID match pins the right
+// listing with certainty — no guessing from the business name + market.
+async function gbpPlaceFromLink(link: string, fallbackName: string, apiKey: string): Promise<{ placeId: string; how: string } | null> {
+  let u = String(link || "").trim(); if (!u) return null;
+  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+  const dec = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
+  const direct = (s: string) => (s.match(/(?:place_id[:=]|query_place_id=|placeid=|!1s|!19s)(ChIJ[0-9A-Za-z_-]{10,})/) || s.match(/\b(ChIJ[0-9A-Za-z_-]{20,})/) || [])[1] || "";
+  let full = dec(u);
+  let pid = direct(full); if (pid) return { placeId: pid, how: "place id in the GBP link" };
+  if (!/google\.[a-z.]+\/maps|maps\.google\./i.test(full)) {
+    try {
+      let cur = u;
+      for (let i = 0; i < 6; i++) {
+        const r = await fetch(cur, { redirect: "manual", headers: { "User-Agent": "Mozilla/5.0 (compatible; 44i-audit/1.0)" }, signal: AbortSignal.timeout(8000) });
+        const loc = r.headers.get("location");
+        if (r.status >= 300 && r.status < 400 && loc) { cur = new URL(loc, cur).toString(); continue; }
+        if (r.ok) {   // some share pages redirect in HTML/JS — take the Maps URL out of the page
+          const html = await r.text();
+          const m = html.match(/https:\/\/(?:www\.)?google\.[a-z.]+\/maps[^"'\s<>\\]+/i) || html.match(/https:\/\/maps\.google\.[a-z.]+\/[^"'\s<>\\]*cid=\d+[^"'\s<>\\]*/i);
+          if (m) cur = m[0].replace(/&amp;/g, "&");
+        }
+        break;
+      }
+      full = dec(cur);
+    } catch { /* link unreachable — fall through */ }
+    pid = direct(full); if (pid) return { placeId: pid, how: "place id in the GBP link" };
+  }
+  const hex = (full.match(/!1s0x[0-9a-f]+:0x([0-9a-f]+)/i) || full.match(/[?&]ftid=0x[0-9a-f]+:0x([0-9a-f]+)/i) || [])[1];
+  const cid = hex ? BigInt("0x" + hex).toString() : ((full.match(/[?&](?:cid|ludocid)=(\d{6,})/) || [])[1] || "");
+  if (!cid) return null;
+  const name = dec(((full.match(/\/maps\/place\/([^/@?]+)/) || [])[1] || "").replace(/\+/g, " ")).trim() || fallbackName;
+  if (!name) return null;
+  const ll = full.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || full.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  const body: any = { textQuery: name, pageSize: 10 };
+  if (ll) body.locationBias = { circle: { center: { latitude: Number(ll[1]), longitude: Number(ll[2]) }, radius: 5000 } };
+  const r = await fetch("https://places.googleapis.com/v1/places:searchText", { method: "POST",
+    headers: { "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "places.id,places.googleMapsUri", "Content-Type": "application/json" },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+  if (!r.ok) return null;
+  const cands: any[] = (await r.json())?.places || [];
+  const hit = cands.find((p: any) => (String(p.googleMapsUri || "").match(/[?&]cid=(\d+)/) || [])[1] === cid);
+  return hit?.id ? { placeId: String(hit.id), how: "listing ID (CID) in the GBP link" } : null;
+}
+// A market can be a list of cities ("Nashville / Murfreesboro / Chicago …");
+// a Places text search wants one place.
+const firstMarket = (m: unknown) => String(m || "").split(/\s*(?:\/|;|\||·)\s*/)[0].trim();
+
+// Not pages: CMS revision snapshots / backups / editor leftovers that crawlers
+// (Ahrefs, sitemaps) sometimes find — e.g. Fourge's data/rev_rev_<ts>.html.
+// Scoring them as pages failed title/meta/duplicate checks on the real site.
+const JUNK_URL = /(\.(bak|old|orig|backup|bk|tmp|temp|swp|save|sav|sql|log|dist|php~|html?~)(\?|#|$))|~(\?|#|$)|\/(rev_rev_\d+|rev_\d+)\.html?(\?|#|$)|\/(data|bak|backups?|_backup|old|tmp|cache)\/[^?#]*\.(html?|php|json)(\?|#|$)|[-_.](copy|backup|bak|old)(-\d+)?\.html?(\?|#|$)|\/(wp-admin|cgi-bin|admin)\//i;
+const withParents = (types: Iterable<string>): string[] => {
+  const out = new Set<string>();
+  for (const raw of types) {
+    const t = String(raw || "").replace(/^https?:\/\/schema\.org\//i, "");
+    if (!t) continue;
+    out.add(t);
+    if (LOCAL_BUSINESS_TYPES.has(t)) { out.add("LocalBusiness"); out.add("Organization"); }
+    if (ORGANIZATION_TYPES.has(t)) out.add("Organization");
+  }
+  return [...out];
+};
 
 const AHREFS = "https://api.ahrefs.com/v3";
 const CORS = {
@@ -225,15 +311,15 @@ function jsonLdTypes(html: string){ const types=new Set<string>(); const re=/<sc
   const collect=(o:any)=>{ if(!o||typeof o!=="object")return; if(Array.isArray(o))return o.forEach(collect); if(o["@type"])([] as any[]).concat(o["@type"]).forEach(t=>types.add(String(t))); if(o["@graph"])collect(o["@graph"]); for(const k of Object.keys(o)) if(typeof o[k]==="object")collect(o[k]); };
   while((m=re.exec(html))){ try{ collect(JSON.parse(m[1].trim())); }catch{ /* skip */ } } return [...types]; }
 function getOrgName(html: string){ const re=/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi; let m:RegExpExecArray|null; let found="";
-  const scan=(o:any)=>{ if(!o||typeof o!=="object"||found)return; if(Array.isArray(o))return o.forEach(scan); const t=([] as any[]).concat(o["@type"]||[]).map(String); if((t.includes("Organization")||t.includes("LocalBusiness"))&&o.name){found=String(o.name);return;} if(o["@graph"])scan(o["@graph"]); for(const k of Object.keys(o)) if(typeof o[k]==="object")scan(o[k]); };
+  const scan=(o:any)=>{ if(!o||typeof o!=="object"||found)return; if(Array.isArray(o))return o.forEach(scan); const t=([] as any[]).concat(o["@type"]||[]).map(String); if(withParents(t).includes("Organization")&&o.name){found=String(o.name);return;} if(o["@graph"])scan(o["@graph"]); for(const k of Object.keys(o)) if(typeof o[k]==="object")scan(o[k]); };
   while((m=re.exec(html))&&!found){ try{ scan(JSON.parse(m[1].trim())); }catch{ /* skip */ } } return found; }
 function answerSignals(html: string, types: string[]){ return { hasFAQSchema: types.includes("FAQPage"), questionHeadings: countMatches(html, /<h[2-4][^>]*>[^<]*\?\s*<\/h[2-4]>/gi) }; }
-function napSignals(html: string, types: string[]){ const text=html.replace(/<[^>]+>/g," "); const hasPhone=/(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(text); const hasAddressSchema=types.includes("PostalAddress")||types.includes("LocalBusiness"); const hasZip=/\b\d{5}(?:-\d{4})?\b/.test(html.replace(/<script[\s\S]*?<\/script>/gi," ")); return { hasPhone, hasAddress: hasAddressSchema||hasZip }; }
+function napSignals(html: string, types: string[]){ const text=html.replace(/<[^>]+>/g," "); const hasPhone=/(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(text); const hasAddressSchema=types.includes("PostalAddress")||withParents(types).includes("LocalBusiness"); const hasZip=/\b\d{5}(?:-\d{4})?\b/.test(html.replace(/<script[\s\S]*?<\/script>/gi," ")); return { hasPhone, hasAddress: hasAddressSchema||hasZip }; }
 function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase(); return { hasPerson: types.includes("Person"), hasReviews: types.includes("Review")||types.includes("AggregateRating"), hasAbout: /about (us|our)|our team|meet the|our story|founded/.test(text), hasCredentials: /certified|licensed|award|years of experience|accredited|board[- ]certified/.test(text) }; }
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.13.1";
+const ENGINE_VERSION = "5.14.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -299,9 +385,14 @@ async function runAuditPipeline(body: any): Promise<Response> {
       const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 8000);
       try {
         const r = await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 (compatible; 44i-audit/1.0)" } });
-        const html = r.ok ? await r.text() : ""; const types = html ? jsonLdTypes(html) : [];
+        // Keep the address the request ENDED at: auditing a redirected URL
+        // under its old address made it look like a duplicate of its target.
+        const finalUrl = (r.redirected && r.url) ? r.url : url;
+        const ctype = String(r.headers.get("content-type") || "").toLowerCase();
+        const notHtml = !!ctype && !/html|xml/.test(ctype);
+        const html = r.ok && !notHtml ? await r.text() : ""; const types = html ? jsonLdTypes(html) : [];
         const title = getTitle(html), meta = getMeta(html, "description");
-        return { url, status: r.status, ok: r.ok, https: url.startsWith("https://"), title, titleLen: title.length,
+        return { url: finalUrl, requestedUrl: url, redirected: finalUrl !== url, notHtml, status: r.status, ok: r.ok, https: finalUrl.startsWith("https://"), title, titleLen: title.length,
           metaDesc: meta, metaLen: meta.length, h1: countMatches(html, /<h1[\s>]/gi), words: wordCount(html),
           imgs: countMatches(html, /<img\b/gi), imgsNoAlt: countMatches(html, /<img\b(?![^>]*\balt\s*=)[^>]*>/gi),
           orgName: getOrgName(html), canonical: /<link[^>]+rel=["']canonical["']/i.test(html),
@@ -380,13 +471,14 @@ async function runAuditPipeline(body: any): Promise<Response> {
     const ownerDesc = (client.intake && (client.intake as any).description) || "";
     if (ownerDesc) bizText = `${bizText ? bizText + "\n" : ""}OWNER DESCRIPTION (authoritative — provided by the business): ${ownerDesc}`;
     const cityHint = client.market || "";
-    let businessType = "", services: string[] = [], seedKeywords: string[] = [], primaryCity = cityHint, secondaryTowns: string[] = [];
+    let businessType = "", services: string[] = [], seedKeywords: string[] = [], primaryCity = cityHint, secondaryTowns: string[] = [], offering = "";
     if (bizText) {
       const raw = await writeAI(
         "You are a local SEO analyst. Identify a local trade/service business from its homepage and return ONLY compact JSON, no prose.",
-        `Homepage:\n${bizText}\n\nKnown market (may be blank): "${cityHint}"\n\nReturn JSON exactly: {"business_type":"<3-5 word trade category>","primary_city":"<city, ST>","secondary_towns":["<nearby town in the same trade area, ST>", ...3-6],"services":["<core service>", ...up to 6],"seed_keywords":["<buyer-intent local keyword>", ...8-12]}. secondary_towns are real towns within ~30 miles this business would also serve. services are the actual trades offered. No brand name, no questions.`, 650);
+        `Homepage:\n${bizText}\n\nKnown market (may be blank): "${cityHint}"\n\nReturn JSON exactly: {"business_type":"<3-5 word trade category>","offering":"<services|products|both>","primary_city":"<city, ST>","secondary_towns":["<nearby town in the same trade area, ST>", ...3-6],"services":["<core service OR core product line>", ...up to 6],"seed_keywords":["<buyer-intent local keyword>", ...8-12]}. offering: "products" when the business mainly SELLS goods (a store, supplier, dealer, retailer), "services" when it mainly does work for customers, "both" when it does both. secondary_towns are real towns within ~30 miles this business would also serve. services are the actual trades offered — or, for a product seller, the main product lines. No brand name, no questions.`, 650);
       try { const j = JSON.parse(raw.replace(/```json|```/g, "").trim());
         businessType = String(j.business_type || ""); services = (j.services || []).map(String).slice(0, 6); seedKeywords = (j.seed_keywords || []).map(String).slice(0, 12);
+        offering = /^(services|products|both)$/.test(String(j.offering || "")) ? String(j.offering) : "";
         if (j.primary_city) primaryCity = String(j.primary_city); secondaryTowns = (j.secondary_towns || []).map(String).slice(0, 6);
       } catch { errors.push("classify parse failed"); }
       note.push(`Business: ${businessType || "unknown"} · primary ${primaryCity || "?"} · ${secondaryTowns.length} secondary towns · ${services.length} services.`);
@@ -570,7 +662,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
       const ASSET = /\.(css|js|mjs|map|svg|png|jpe?g|webp|avif|gif|ico|bmp|woff2?|ttf|otf|eot|pdf|xml|json|txt|csv|mp3|mp4|webm|mov|zip|gz)(\?|#|$)/i;
       pages = rows
         .filter((r: any) => r && (r.http_code === undefined || (r.http_code >= 200 && r.http_code < 300)))
-        .filter((r: any) => !ASSET.test(String(r.url || "")) && !/\/wp-(content|includes|json)\//i.test(String(r.url || "")))
+        .filter((r: any) => !ASSET.test(String(r.url || "")) && !JUNK_URL.test(String(r.url || "")) && !/\/wp-(content|includes|json)\//i.test(String(r.url || "")))
         .filter((r: any) => String(one(r.title) ?? "").trim() || Number(one(r.content_nr_word)) > 0)   // HTML pages only
         .map((r: any) => {
           const st = Array.isArray(r.jsonld_schema_types) ? r.jsonld_schema_types : String(r.jsonld_schema_types || "").split(/[,\s]+/).filter(Boolean);
@@ -611,7 +703,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
             if (parts.some(Boolean)) xml = parts.join("\n");
           }
           smList = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)].map((m) => m[1].trim())
-            .filter((u) => rootOf(u) === root && !/\.(jpg|jpeg|png|gif|webp|svg|pdf|xml)(\?|$)/i.test(u));
+            .filter((u) => rootOf(u) === root && !/\.(jpg|jpeg|png|gif|webp|svg|pdf|xml)(\?|$)/i.test(u) && !JUNK_URL.test(u));
         }
       } catch { /* ignore */ }
       // One entry per page: Ahrefs/sitemap URLs differ from `home` by www., a
@@ -620,10 +712,19 @@ async function runAuditPipeline(body: any): Promise<Response> {
       const pageKey = (u: string) => String(u || "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
       const seenPages = new Set<string>();
       const targets = [home, ...clientTopPages.map((p: any) => p.url), ...smList]
-        .filter((u) => { if (!u) return false; const k = pageKey(u); if (seenPages.has(k)) return false; seenPages.add(k); return true; })
+        .filter((u) => { if (!u || JUNK_URL.test(u)) return false; const k = pageKey(u); if (seenPages.has(k)) return false; seenPages.add(k); return true; })
         .slice(0, smList.length ? SITEMAP_CRAWL : FETCH_PAGES);
       const fetched = await Promise.all(targets.map((u) => u === home ? Promise.resolve(homePage) : fetchPage(u)));
-      pages = fetched.filter(Boolean);
+      // Identity is where a URL ENDS UP: an old address that 301s to a page we
+      // already audited is that page, not a duplicate of it; a redirect into
+      // junk / a non-HTML file isn't a page at all.
+      const seenFinal = new Set<string>();
+      pages = fetched.filter(Boolean).filter((p: any) => {
+        if (p.ok && p.notHtml) return false;
+        const fin = String(p.url || "");
+        if (p.ok && JUNK_URL.test(fin)) return false;
+        const k = pageKey(fin); if (seenFinal.has(k)) return false; seenFinal.add(k); return true;
+      });
       const okN = pages.filter((p: any) => p.ok).length;
       sitemapCrawled = smList.length > 0 && okN >= 10;
       note.push(sitemapCrawled
@@ -634,8 +735,8 @@ async function runAuditPipeline(body: any): Promise<Response> {
 
     // Schema coverage (aggregate across audited pages + the fetched home/about).
     const allSchema = new Set<string>();
-    pages.forEach((p: any) => (p.schemaTypes || []).forEach((t: string) => allSchema.add(t)));
-    [homePage, aboutPage].forEach((p: any) => p && (p.schemaTypes || []).forEach((t: string) => allSchema.add(t)));
+    pages.forEach((p: any) => withParents(p.schemaTypes || []).forEach((t: string) => allSchema.add(t)));
+    [homePage, aboutPage].forEach((p: any) => p && withParents(p.schemaTypes || []).forEach((t: string) => allSchema.add(t)));
     const schemaPresent = EXPECT_SCHEMA.filter((t) => allSchema.has(t) || (t === "Organization" && allSchema.has("LocalBusiness")));
     let hasFAQ = allSchema.has("FAQPage");
     // Question headings live on BLOG/FAQ pages, not the homepage — count every
@@ -777,6 +878,16 @@ async function runAuditPipeline(body: any): Promise<Response> {
           const FIELDS = "id,displayName,formattedAddress,nationalPhoneNumber,regularOpeningHours,rating,userRatingCount,googleMapsUri,types,websiteUri";
           const gh = (mask: string) => ({ "X-Goog-Api-Key": GKEY, "X-Goog-FieldMask": mask, "Content-Type": "application/json" });
           let r: any = null, matchedBySite = false;
+          // No pinned listing yet: the intake's GBP link identifies it exactly.
+          if (!client.gbp_place_id && (client.intake as any)?.gbp) {
+            const nm = homePage?.orgName || client.name || "";
+            const viaLink = await gbpPlaceFromLink(String((client.intake as any).gbp), nm, GKEY).catch(() => null);
+            if (viaLink) {
+              client.gbp_place_id = viaLink.placeId;
+              await supa.from("clients").update({ gbp_place_id: viaLink.placeId }).eq("id", client.id);
+              note.push(`GBP listing pinned from the ${viaLink.how}.`);
+            }
+          }
           if (client.gbp_place_id) {
             const dr = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(String(client.gbp_place_id))}`, { headers: gh(FIELDS) });
             if (dr.ok) r = await dr.json(); else errors.push(`places ${dr.status}: ${(await dr.text()).slice(0, 160)}`);
@@ -784,7 +895,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
             const bizName = homePage?.orgName || (homePage?.title ? String(homePage.title).split(/[|\-–—:]/)[0].trim() : "") || root;
             const sr = await fetch("https://places.googleapis.com/v1/places:searchText", {
               method: "POST", headers: gh(FIELDS.split(",").map((f) => "places." + f).join(",")),
-              body: JSON.stringify({ textQuery: `${bizName} ${client.market || ""}`.trim() }),
+              body: JSON.stringify({ textQuery: `${bizName} ${firstMarket(client.market)}`.trim() }),
             });
             if (sr.ok) {
               const cands: any[] = (await sr.json())?.places || [];
@@ -940,7 +1051,7 @@ async function runAuditPipeline(body: any): Promise<Response> {
     // signals — crawl data carries no heading counts, and a sampled FAQ page
     // is FAQ coverage whether or not the crawl listed its types.
     for (const x of inspected) {
-      x.nodes.forEach((n) => typesOf(n).forEach((t) => allSchema.add(t)));
+      x.nodes.forEach((n) => withParents(typesOf(n)).forEach((t) => allSchema.add(t)));
       const k = sKey(x.url);
       if (!qhCounted.get(k)) { questionHeads += x.qh; qhCounted.set(k, x.qh); }
     }
@@ -1525,15 +1636,26 @@ async function runAuditPipeline(body: any): Promise<Response> {
         .map((k: any) => String(k.keyword)).filter((k) => k && !junkKw(k)).slice(0, 40);
       const svcBase: string[] = services.length ? services.slice(0, 6)
         : ownKw.filter((k: any) => !k.is_branded).sort((a: any, b: any) => (b.volume || 0) - (a.volume || 0)).map((k: any) => String(k.keyword)).filter((k) => k && !junkKw(k)).slice(0, 4);
+      // Product seller or service business? The classifier says so when the
+      // homepage could be read; otherwise the site's own signals decide
+      // (Product/Offer/Store schema, or buyer keywords like "for sale",
+      // "price", "supplier" among what it ranks for). "Hiring" angles make no
+      // sense for a twine supplier; "buying guide" angles none for a roofer.
+      const PRODUCT_KW = /\b(for sale|buy|prices?|wholesale|suppliers?|supply|store|shop|in stock|bulk|dealer)\b/i;
+      const productSignals = [...allSchema].some((t) => /^(Product|Offer|AggregateOffer|OnlineStore)$/.test(t) || /Store$/.test(t))
+        || ownKw.filter((k: any) => PRODUCT_KW.test(String(k.keyword || ""))).length >= 2;
+      const sells = offering === "products" || offering === "both" || (!offering && productSignals);
+      const serves = offering === "services" || offering === "both" || (!offering && !productSignals);
       const seedPool: string[] = [...seedKeywords];
       svcBase.forEach((svc: any) => {
-        if (primaryCity) seedPool.push(`${svc} ${primaryCity}`);
+        if (primaryCity) seedPool.push(sells && !serves ? `${svc} for sale in ${primaryCity}` : `${svc} ${primaryCity}`);
         secondaryTowns.slice(0, 3).forEach((t: any) => seedPool.push(`${svc} ${t}`));
       });
       const infoPool: string[] = [];
       svcBase.forEach((svc: any) => {
         const s0 = String(svc).toLowerCase();
-        infoPool.push(`how much does ${s0} cost`, `signs you need ${s0}`, `how to choose a ${s0} company`, `questions to ask before hiring for ${s0}`);
+        if (sells) infoPool.push(`${s0} buying guide`, `how to choose the right ${s0}`, `${s0} price guide`, `${s0} sizes and specs explained`, `how long does ${s0} last`);
+        if (serves) infoPool.push(`how much does ${s0} cost`, `signs you need ${s0}`, `how to choose a ${s0} company`, `questions to ask before hiring for ${s0}`);
       });
 
       // ── RECONCILIATION (rule 6.1): regeneration replaces, never appends.
@@ -1985,7 +2107,7 @@ const normTxt = (s: unknown) => String(s || "").toLowerCase()
 const visibleText = (html: string) => normTxt(String(html || "").replace(/<head[\s\S]*?<\/head>/i, " ")
   .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " "));
 const typesOf = (n: any): string[] => ([] as any[]).concat(n?.["@type"] || []).map(String);
-const LOCAL_TYPES = /LocalBusiness$|^(HomeAndConstructionBusiness|GeneralContractor|RoofingContractor|Plumber|Electrician|HVACBusiness|HousePainter|Locksmith|MovingCompany|Dentist|Physician|MedicalBusiness|MedicalClinic|Attorney|LegalService|AutoRepair|AutomotiveBusiness|Restaurant|FoodEstablishment|Store|ProfessionalService|FinancialService|InsuranceAgency|RealEstateAgent|HealthAndBeautyBusiness|LodgingBusiness|SportsActivityLocation|EntertainmentBusiness|ChildCare|EmergencyService)$/;
+const LOCAL_TYPES = { test: (t: string) => /LocalBusiness$/.test(t) || LOCAL_BUSINESS_TYPES.has(t) };
 
 function inspectSchemaHtml(html: string) {
   const nodes: any[] = []; let blocks = 0, parseErrors = 0, badContext = 0;

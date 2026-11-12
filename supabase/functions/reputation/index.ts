@@ -65,7 +65,7 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const PLACES = "https://places.googleapis.com/v1";
 const DETAIL_FIELDS = "id,displayName,formattedAddress,rating,userRatingCount,reviews,googleMapsUri,websiteUri,businessStatus";
 const SEARCH_FIELDS = "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.websiteUri,places.googleMapsUri";
@@ -111,6 +111,58 @@ async function places(path: string, mask: string, body?: unknown) {
   }
   return j;
 }
+
+// ── GBP link → listing. The intake's Business Profile link already identifies
+// the listing: Maps URLs carry the place id (ChIJ…) or the CID
+// (…!1s0x…:0x<CID hex>, ?cid=, ludocid=), and short links (maps.app.goo.gl,
+// g.page, goo.gl/maps, share.google) redirect to one. Places API (New) has no
+// CID lookup, but every result's googleMapsUri is "…?cid=<CID>", so a text
+// search near the link's coordinates plus an exact CID match pins the right
+// listing with certainty — no guessing from the business name + market.
+async function gbpPlaceFromLink(link: string, fallbackName: string, apiKey: string): Promise<{ placeId: string; how: string } | null> {
+  let u = String(link || "").trim(); if (!u) return null;
+  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+  const dec = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
+  const direct = (s: string) => (s.match(/(?:place_id[:=]|query_place_id=|placeid=|!1s|!19s)(ChIJ[0-9A-Za-z_-]{10,})/) || s.match(/\b(ChIJ[0-9A-Za-z_-]{20,})/) || [])[1] || "";
+  let full = dec(u);
+  let pid = direct(full); if (pid) return { placeId: pid, how: "place id in the GBP link" };
+  if (!/google\.[a-z.]+\/maps|maps\.google\./i.test(full)) {
+    try {
+      let cur = u;
+      for (let i = 0; i < 6; i++) {
+        const r = await fetch(cur, { redirect: "manual", headers: { "User-Agent": "Mozilla/5.0 (compatible; 44i-audit/1.0)" }, signal: AbortSignal.timeout(8000) });
+        const loc = r.headers.get("location");
+        if (r.status >= 300 && r.status < 400 && loc) { cur = new URL(loc, cur).toString(); continue; }
+        if (r.ok) {   // some share pages redirect in HTML/JS — take the Maps URL out of the page
+          const html = await r.text();
+          const m = html.match(/https:\/\/(?:www\.)?google\.[a-z.]+\/maps[^"'\s<>\\]+/i) || html.match(/https:\/\/maps\.google\.[a-z.]+\/[^"'\s<>\\]*cid=\d+[^"'\s<>\\]*/i);
+          if (m) cur = m[0].replace(/&amp;/g, "&");
+        }
+        break;
+      }
+      full = dec(cur);
+    } catch { /* link unreachable — fall through */ }
+    pid = direct(full); if (pid) return { placeId: pid, how: "place id in the GBP link" };
+  }
+  const hex = (full.match(/!1s0x[0-9a-f]+:0x([0-9a-f]+)/i) || full.match(/[?&]ftid=0x[0-9a-f]+:0x([0-9a-f]+)/i) || [])[1];
+  const cid = hex ? BigInt("0x" + hex).toString() : ((full.match(/[?&](?:cid|ludocid)=(\d{6,})/) || [])[1] || "");
+  if (!cid) return null;
+  const name = dec(((full.match(/\/maps\/place\/([^/@?]+)/) || [])[1] || "").replace(/\+/g, " ")).trim() || fallbackName;
+  if (!name) return null;
+  const ll = full.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || full.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  const body: any = { textQuery: name, pageSize: 10 };
+  if (ll) body.locationBias = { circle: { center: { latitude: Number(ll[1]), longitude: Number(ll[2]) }, radius: 5000 } };
+  const r = await fetch("https://places.googleapis.com/v1/places:searchText", { method: "POST",
+    headers: { "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "places.id,places.googleMapsUri", "Content-Type": "application/json" },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+  if (!r.ok) return null;
+  const cands: any[] = (await r.json())?.places || [];
+  const hit = cands.find((p: any) => (String(p.googleMapsUri || "").match(/[?&]cid=(\d+)/) || [])[1] === cid);
+  return hit?.id ? { placeId: String(hit.id), how: "listing ID (CID) in the GBP link" } : null;
+}
+// A market can be a list of cities ("Nashville / Murfreesboro / Chicago …");
+// a Places text search wants one place.
+const firstMarket = (m: unknown) => String(m || "").split(/\s*(?:\/|;|\||·)\s*/)[0].trim();
 
 async function searchListings(query: string) {
   const res = await places("places:searchText", SEARCH_FIELDS, { textQuery: query, pageSize: 8 });
@@ -300,14 +352,20 @@ async function collectLocalIncite(supa: any, c: any, ctx: LiCtx = {}) {
 }
 
 async function collectClient(supa: any, clientId: string) {
-  const { data: c } = await supa.from("clients").select("id, name, url, market, gbp_place_id").eq("id", clientId).maybeSingle();
+  const { data: c } = await supa.from("clients").select("id, name, url, market, gbp_place_id, intake").eq("id", clientId).maybeSingle();
   if (!c) throw new Error("client not found");
   const root = rootOf(c.url);
   const row: any = { client_id: clientId, source: "google" };
   try {
     let placeId = String(c.gbp_place_id || "");
+    // The intake's GBP link identifies the listing exactly — pin from it first.
+    if (!placeId && c.intake?.gbp) {
+      const key = await platformKey("GOOGLE_PLACES_API_KEY");
+      const viaLink = key ? await gbpPlaceFromLink(String(c.intake.gbp), c.name || "", key).catch(() => null) : null;
+      if (viaLink) { placeId = viaLink.placeId; await supa.from("clients").update({ gbp_place_id: placeId }).eq("id", clientId); }
+    }
     if (!placeId) {
-      const cands = await searchListings(`${c.name || root} ${c.market || ""}`.trim());
+      const cands = await searchListings(`${c.name || root} ${firstMarket(c.market)}`.trim());
       const bySite = cands.find((p: any) => root && rootOf(p.website || "") === root);
       const byName = cands.find((p: any) => norm(p.name) && (norm(p.name) === norm(c.name) || norm(p.name).includes(norm(c.name)) || norm(c.name).includes(norm(p.name))));
       const pick = bySite || byName;
@@ -502,7 +560,7 @@ Deno.serve(async (req) => {
     if (action === "search") {
       const { data: c } = await supa.from("clients").select("name, url, market").eq("id", clientId).maybeSingle();
       if (!c) return json({ error: "client not found" }, 404);
-      const q = String(body.query || "").trim() || `${c.name || rootOf(c.url)} ${c.market || ""}`.trim();
+      const q = String(body.query || "").trim() || `${c.name || rootOf(c.url)} ${firstMarket(c.market)}`.trim();
       const root = rootOf(c.url);
       const cands = (await searchListings(q)).map((p: any) => ({ ...p, website_matches: !!root && rootOf(p.website || "") === root }));
       return json({ ok: true, query: q, candidates: cands });
