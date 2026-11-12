@@ -233,7 +233,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.12.2";
+const ENGINE_VERSION = "5.13.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -1505,6 +1505,24 @@ async function runAuditPipeline(body: any): Promise<Response> {
       const townPages: string[] = [];
       services.slice(0, 3).forEach((svc: any) => secondaryTowns.slice(0, 3).forEach((t: any) => townPages.push(`${svc} ${t}`)));
       const localServices = services.slice(0, 4).map((svc: any) => primaryCity ? `${svc} ${primaryCity}` : svc);
+      // LAST-RESORT pools — no search-volume data needed. When Ahrefs is
+      // unavailable (units exhausted, new site with no rankings) the gap /
+      // opportunity / core pools come back empty and planned pieces went
+      // unwritten (e.g. a Pro client with 0 of 6 month-1 pieces). These keep
+      // every funded deliverable writable: the classifier's seed keywords,
+      // each service across the trade area, and buyer-question angles for
+      // blogs and pillars. They still pass the validation gate and intent
+      // dedupe, and only kick in after the data-driven pools run dry.
+      const seedPool: string[] = [...seedKeywords];
+      services.slice(0, 6).forEach((svc: any) => {
+        if (primaryCity) seedPool.push(`${svc} ${primaryCity}`);
+        secondaryTowns.slice(0, 3).forEach((t: any) => seedPool.push(`${svc} ${t}`));
+      });
+      const infoPool: string[] = [];
+      services.slice(0, 6).forEach((svc: any) => {
+        const s0 = String(svc).toLowerCase();
+        infoPool.push(`how much does ${s0} cost`, `signs you need ${s0}`, `how to choose a ${s0} company`, `questions to ask before hiring for ${s0}`);
+      });
 
       // ── RECONCILIATION (rule 6.1): regeneration replaces, never appends.
       // Every prior topic for this CLIENT (all cycles) claims its keyword so
@@ -1641,11 +1659,11 @@ async function runAuditPipeline(body: any): Promise<Response> {
         return best || home;
       };
       const pickFor = (kind: string): string | null => {
-        if (kind === "gbp_post") return nextFrom(intakeKw, localServices, oppKwPool, coreUnowned);
-        if (kind === "blog") return nextFrom(intakeKw, gapPool, coreUnowned, oppKwPool);
-        if (kind === "pillar") return nextFrom(intakeKw, oppKwPool, gapPool, coreUnowned);
-        if (kind === "landing") return nextFrom(intakeLanding, townPages, coreUnowned);
-        return nextFrom(intakeKw, coreUnowned, oppKwPool, gapPool);
+        if (kind === "gbp_post") return nextFrom(intakeKw, localServices, oppKwPool, coreUnowned, seedPool, infoPool);
+        if (kind === "blog") return nextFrom(intakeKw, gapPool, coreUnowned, oppKwPool, infoPool, seedPool);
+        if (kind === "pillar") return nextFrom(intakeKw, oppKwPool, gapPool, coreUnowned, seedPool, infoPool);
+        if (kind === "landing") return nextFrom(intakeLanding, townPages, coreUnowned, seedPool);
+        return nextFrom(intakeKw, coreUnowned, oppKwPool, gapPool, seedPool, infoPool);
       };
       // current engagement cycle from the client's start date, clamped to the
       // contract length (contract_length_months / contract_is_evergreen on clients;

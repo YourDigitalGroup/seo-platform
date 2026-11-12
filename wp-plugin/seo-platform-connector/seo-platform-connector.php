@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Your Digital Group SEO Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from your agency's SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.11.0
+ * Version: 1.12.0
  * Author: Your Digital Group
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -19,7 +19,7 @@ if (defined('SEOP_VERSION')) {
     add_action('admin_init', function () {
         if (!function_exists('deactivate_plugins') || !current_user_can('activate_plugins')) return;
         $mine = plugin_basename(__FILE__);
-        if (version_compare(SEOP_VERSION, '1.11.0', '<')) {
+        if (version_compare(SEOP_VERSION, '1.12.0', '<')) {
             // the copy that loaded first is older — retire it, keep this one
             foreach ((array) get_option('active_plugins', []) as $p) {
                 if ($p !== $mine && basename($p) === basename(__FILE__)) deactivate_plugins($p, true);
@@ -38,7 +38,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.11.0');
+define('SEOP_VERSION', '1.12.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -50,6 +50,9 @@ define('SEOP_OPT_AI_WORKSPACE', 'seoplatform_anthropic_workspace');
 // A host who wants to bill their own Anthropic account can still define
 // SEOP_ANTHROPIC_API_KEY (+ SEOP_ANTHROPIC_WORKSPACE_ID) in wp-config.php.
 if (!defined('SEOP_PLATFORM_AI_URL')) define('SEOP_PLATFORM_AI_URL', 'https://qjmwsxwoefixuuqvkqmz.supabase.co/functions/v1/wp-ai');
+// v1.12: the platform hears about content going live (scheduled posts
+// publishing) so it can notify the account manager on the client's Trello card.
+if (!defined('SEOP_PLATFORM_EVENTS_URL')) define('SEOP_PLATFORM_EVENTS_URL', 'https://qjmwsxwoefixuuqvkqmz.supabase.co/functions/v1/wp-events');
 function seop_ai_key() {
     return (defined('SEOP_ANTHROPIC_API_KEY') && SEOP_ANTHROPIC_API_KEY) ? (string) SEOP_ANTHROPIC_API_KEY : '';
 }
@@ -812,6 +815,22 @@ function seop_apply_package($pkg) {
     $ok = function ($what) use (&$r) { $r['applied'][] = $what; };
     $skip = function ($what, $why) use (&$r) { $r['skipped'][] = $what . ' — ' . $why; };
 
+    // v1.12: the file carries this site's connector API key from the
+    // platform — adopt it, so nobody copies the key into the console by hand.
+    // Only when the file was built for THIS site (a file for another client
+    // must never re-key this one).
+    $ck = isset($pkg['connector']['api_key']) ? (string) $pkg['connector']['api_key'] : '';
+    if ($ck !== '') {
+        if (!preg_match('/^[A-Za-z0-9]{32,128}$/', $ck)) {
+            $skip('Connector API key', 'malformed key in the file');
+        } elseif (!seop_same_site((string) ($pkg['site'] ?? ''))) {
+            $skip('Connector API key', 'this file was built for ' . esc_html((string) ($pkg['site'] ?? 'another site')) . ', not ' . esc_html(home_url('/')));
+        } elseif (!hash_equals((string) get_option(SEOP_KEY_OPT), $ck)) {
+            update_option(SEOP_KEY_OPT, $ck);
+            $ok('Connector API key set from the platform (this site is now connected — no key to copy)');
+        }
+    }
+
     foreach ((array) ($pkg['seo_meta'] ?? []) as $m) {
         $id = seop_resolve_target($m['target'] ?? '');
         if ($id > 0) { seop_write_meta($id, $m['seo_title'] ?? null, $m['seo_description'] ?? null, $m['canonical'] ?? null); $ok('SEO meta → ' . ($m['target'] ?? '')); }
@@ -1258,6 +1277,35 @@ function seop_ai_autofix($meta_cap = 20, $alt_cap = 8, $media_cap = 20) {
     return $report;
 }
 
+/* v1.12: does a URL name this WordPress site? Host compared without "www.". */
+function seop_same_site($url) {
+    $h = strtolower((string) wp_parse_url($url, PHP_URL_HOST));
+    $mine = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
+    if ($h === '' || $mine === '') return false;
+    return preg_replace('/^www\./', '', $h) === preg_replace('/^www\./', '', $mine);
+}
+
+/* v1.12: tell the platform when a piece it sent goes live. Fires when a
+ * scheduled ("future") post publishes — WordPress's own cron does that — so
+ * the account manager is tagged on the client's Trello card. Non-blocking:
+ * a slow or unreachable platform never delays publishing. */
+add_action('transition_post_status', function ($new, $old, $post) {
+    if ($new !== 'publish' || $old !== 'future' || !($post instanceof WP_Post)) return;
+    $external = (string) get_post_meta($post->ID, '_seoplatform_external_id', true);
+    $key = (string) get_option(SEOP_KEY_OPT);
+    if ($external === '' || $key === '') return;   // not platform content, or not connected
+    wp_remote_post(SEOP_PLATFORM_EVENTS_URL, [
+        'timeout' => 5, 'blocking' => false,
+        'headers' => ['Authorization' => 'Bearer ' . $key, 'Content-Type' => 'application/json'],
+        'body' => wp_json_encode([
+            'event' => 'published', 'external_id' => $external, 'post_id' => $post->ID,
+            'title' => get_the_title($post), 'url' => get_permalink($post), 'post_type' => $post->post_type,
+            'published_at' => get_post_time('c', true, $post), 'site' => home_url('/'),
+            'plugin_version' => SEOP_VERSION,
+        ]),
+    ]);
+}, 10, 3);
+
 /* Settings screen: REST base + API key + the package file importer. */
 add_action('admin_menu', function () {
     add_options_page('SEO Platform Connector', 'SEO Platform', 'manage_options', 'seo-platform', 'seop_settings_page');
@@ -1330,7 +1378,7 @@ function seop_settings_page() {
     if (seop_ai_key() !== '') {
         echo '<tr><th>AI</th><td><em>Using this host\'s own Anthropic key (set in wp-config.php).</em></td></tr>';
     } else {
-        echo '<tr><th>AI</th><td><em>Provided by the SEO Platform — no key to enter. Make sure this site\'s API key (below, under Connection) is saved in the client\'s Platform Access.</em></td></tr>';
+        echo '<tr><th>AI</th><td><em>Provided by the SEO Platform — no key to enter. Importing a deploy file connects the site automatically.</em></td></tr>';
     }
     echo '<tr><th>Weekly auto-fix</th><td><label><input type="checkbox" name="seop_ai_cron" value="1"' . (get_option(SEOP_OPT_AI_CRON) ? ' checked' : '') . '> Run automatically every week (keeps new pages covered)</label></td></tr>';
     echo '</table><p><button class="button" name="seop_ai_save" value="1">Save AI settings</button></p></form>';
@@ -1353,7 +1401,7 @@ function seop_settings_page() {
 
     echo '<h2>Connection</h2><table class="form-table">';
     echo '<tr><th>REST base URL</th><td><code>' . esc_html($base) . '</code></td></tr>';
-    echo '<tr><th>API key</th><td><code>' . esc_html($key) . '</code></td></tr>';
+    echo '<tr><th>API key</th><td><code>' . esc_html($key) . '</code><p class="description">Set automatically when you import a deploy file from the SEO platform — nothing to copy. Regenerating it disconnects the site until the next import.</p></td></tr>';
     echo '<tr><th>Active SEO plugin</th><td><code>' . esc_html(seop_seo_plugin()) . '</code></td></tr>';
     echo '<tr><th>Connector version</th><td><code>' . esc_html(SEOP_VERSION) . '</code></td></tr>';
     $biz = seop_business();
