@@ -192,12 +192,27 @@ Deno.serve(async (req) => {
 
         } else {
           // ── AI copy kinds ─────────────────────────────────────────────────────
-          const model = MODEL_FOR[kind] || MODEL_FOR._default; usedModel = model;
+          const model = MODEL_FOR[kind] || MODEL_FOR._default; if (kind !== "faq_schema") usedModel = model;
           // a rewrite revises the CURRENT copy rather than starting over
           const before = instruction && fix.after_text ? `${fix.before_text || ""}\n\nCURRENT DRAFT (revise this):\n${fix.after_text}` : (fix.before_text || "");
-          const { system, user, max } = promptFor(kind, { name, city, kw, page, before, instruction });
-          after_text = await writeAI(model, PROVENANCE + system, user, max);
-          if (kind === "faq_schema") schema_jsonld = faqToJsonLd(after_text);
+          // FAQPage markup is only valid for Q&As the visitor can read on the
+          // page (Google's rule, and the audit's schema_mirror check). When the
+          // page already shows questions + answers, mark up THOSE word for word
+          // — no AI. Otherwise the written FAQ ships with its visible section
+          // (faq_source "written": the deploy file carries faq_html, WordPress
+          // prints it, other CMSs get a manual task to add it).
+          const absPage = /^\//.test(page) ? `https://${String(client?.url || "").replace(/^https?:\/\//, "").replace(/\/+$/, "")}${page}` : page;
+          const onPage = kind === "faq_schema" && !instruction ? await pageFaqs(absPage) : [];
+          if (onPage.length >= 3) {
+            after_text = onPage.map((x) => `Q: ${x.q}\nA: ${x.a}`).join("\n\n");
+            schema_jsonld = faqToJsonLd(after_text);
+            fix.context = { ...(fix.context || {}), faq_source: "page", faq_count: onPage.length };
+          } else {
+            usedModel = model;
+            const { system, user, max } = promptFor(kind, { name, city, kw, page, before, instruction });
+            after_text = await writeAI(model, PROVENANCE + system, user, max);
+            if (kind === "faq_schema") { schema_jsonld = faqToJsonLd(after_text); fix.context = { ...(fix.context || {}), faq_source: "written" }; }
+          }
         }
 
         // A fix already live on the site keeps its pushed/verified status (the
@@ -208,6 +223,7 @@ Deno.serve(async (req) => {
           revision: (fix.revision || 1) + (instruction ? 1 : 0),
         };
         if (usedModel) update.model = MODEL_ENUM[usedModel] ?? null;
+        if (kind === "faq_schema" && fix.context) update.context = fix.context;
         if (instruction) update.last_instruction = instruction;
         if (editor_id) update.edited_by = editor_id;
         const { error: upErr } = await supa.from("fixes").update(update).eq("id", id);
@@ -264,6 +280,33 @@ function promptFor(kind: string, a: { name: string; city: string; kw: string; pa
       return { max: 400, system: "You are an expert SEO/AEO copywriter. Produce the requested fix as clean, deployable text.",
         user: `Kind: ${kind}. Business: ${a.name}${loc}. Keyword: "${a.kw}". Current: "${a.before}".${tail}` };
   }
+}
+
+// ── The page's own Q&As: a question heading (h2–h5, <summary>, <dt>) ending in
+// "?" plus the paragraph(s) after it, text exactly as rendered. Used to mark
+// up an existing FAQ word for word instead of inventing questions.
+async function pageFaqs(url: string): Promise<{ q: string; a: string }[]> {
+  try {
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+    const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; 44i-fixes/1.0)" }, signal: AbortSignal.timeout(10_000) });
+    if (!r.ok) return [];
+    const html = (await r.text()).replace(/<(script|style|noscript|svg|template)\b[\s\S]*?<\/\1>/gi, " ");
+    const txt = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&")
+      .replace(/&#0?39;|&rsquo;|&lsquo;/g, "'").replace(/&quot;|&ldquo;|&rdquo;/g, '"').replace(/&ndash;/g, "–").replace(/&mdash;/g, "—")
+      .replace(/\s+/g, " ").trim();
+    const out: { q: string; a: string }[] = []; const seen = new Set<string>();
+    const re = /<(h[2-5]|summary|dt)\b[^>]*>([\s\S]*?)<\/\1>([\s\S]*?)(?=<(?:h[1-5]|summary|dt)\b|<\/(?:main|article|body)>|$)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) && out.length < 8) {
+      const q = txt(m[2]);
+      if (!/\?$/.test(q) || q.length > 200 || seen.has(q.toLowerCase())) continue;
+      const paras = [...m[3].matchAll(/<(p|dd|div)\b[^>]*>([\s\S]*?)<\/\1>/gi)].map((x) => txt(x[2])).filter((t) => t.split(" ").length >= 6);
+      const a = (paras.length ? paras.slice(0, 2).join(" ") : txt(m[3])).split(" ").slice(0, 120).join(" ");
+      if (a.split(" ").length < 8) continue;
+      seen.add(q.toLowerCase()); out.push({ q, a });
+    }
+    return out;
+  } catch { return []; }
 }
 
 // ── Deterministic JSON-LD scaffolds (filled from context) ─────────────────────

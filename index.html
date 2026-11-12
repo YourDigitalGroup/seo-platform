@@ -1029,7 +1029,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.34.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.35.0</div>
   </div>
   </div>
 </div>
@@ -1117,7 +1117,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.34.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.35.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1165,7 +1165,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.34.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.35.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1328,7 +1328,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.34.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.35.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1346,7 +1346,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.34.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.35.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1409,7 +1409,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.34.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.35.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3439,7 +3439,7 @@ async function dmLink(){
 // blockquote, br. Unknown wrappers fall through to their text.
 function html2md(html){
   const tmp=document.createElement('div'); tmp.innerHTML=String(html||'');
-  const BLOCK=/^(h[1-6]|p|div|ul|ol|blockquote)$/;
+  const BLOCK=/^(h[1-6]|p|div|ul|ol|blockquote|table)$/;
   const inline=(node)=>{
     let s='';
     node.childNodes.forEach(n=>{
@@ -3451,7 +3451,7 @@ function html2md(html){
       if(tag==='strong'||tag==='b'){ const t=inner.trim(); s+=t?'**'+t+'**':''; }
       else if(tag==='em'||tag==='i'){ const t=inner.trim(); s+=t?'*'+t+'*':''; }
       else if(tag==='a'){ const href=n.getAttribute('href')||''; const t=inner.trim()||href;
-        s+=/^https?:\/\//i.test(href)?'['+t+']('+href+')':t; }
+        s+=/^(https?:\/\/|\/(?!\/)|#|mailto:|tel:)/i.test(href)?'['+t+']('+href+')':t; }
       else s+=inner;
     });
     return s;
@@ -3461,8 +3461,14 @@ function html2md(html){
     if(n.nodeType===3){ const t=n.nodeValue.trim(); if(t) blocks.push(t); return; }
     if(n.nodeType!==1) return;
     const tag=n.tagName.toLowerCase(); let m;
-    // inverse of md2html's mapping (#→h2, ##→h3, ###→h4): hN → N-1 hashes
-    if((m=tag.match(/^h([1-6])$/))){ const t=inline(n).trim(); if(t) blocks.push('#'.repeat(Math.min(4,Math.max(1,+m[1]-1)))+' '+t); return; }
+    // inverse of md2html: hN → N hashes (h2 → ##); a stray h1 → ## (the page title is the H1)
+    if((m=tag.match(/^h([1-6])$/))){ const t=inline(n).trim(); if(t) blocks.push('#'.repeat(Math.min(6,Math.max(2,+m[1])))+' '+t); return; }
+    if(tag==='table'){
+      const rows=[...n.querySelectorAll('tr')].map(tr=>[...tr.children].map(c=>inline(c).trim().replace(/\|/g,'/').replace(/\n+/g,' ')));
+      if(rows.length){ const w=Math.max(...rows.map(r=>r.length)); const line=r=>'| '+Array.from({length:w},(_,i)=>r[i]||'').join(' | ')+' |';
+        blocks.push([line(rows[0]), '|'+Array.from({length:w},()=>' --- ').join('|')+'|', ...rows.slice(1).map(line)].join('\n')); }
+      return;
+    }
     if(tag==='ul'||tag==='ol'){
       const items=[]; let i=1;
       [...n.children].forEach(li=>{ if(li.tagName&&li.tagName.toLowerCase()==='li'){ const t=inline(li).trim().replace(/\n+/g,' '); if(t) items.push((tag==='ul'?'- ':(i++)+'. ')+t); } });
@@ -5302,7 +5308,7 @@ const FIX_STATUS={ suggested:'Suggested', generating:'Writing…', ready:'Ready 
   edited:'Edited', pushed:'Pushed', verified:'Verified ✓', dismissed:'Dismissed' };
 function mapFix(r){
   return { id:r.id, kind:r.kind, label:FIX_LABEL[r.kind]||r.kind, target:(r.target_page||'').replace(/^https?:\/\/[^/]+/,'')||'/',
-    before:r.before_text||'', after:r.after_text||'', schema:r.schema_jsonld||null, status:r.status||'suggested' };
+    before:r.before_text||'', after:r.after_text||'', schema:r.schema_jsonld||null, status:r.status||'suggested', context:r.context||{} };
 }
 // ── SERP snippet preview (Rank-Math-style): Google result mock + pixel-width meters ──
 let _pageSEO={};
@@ -6290,7 +6296,7 @@ function buildCampaignDoc(){
   // State sync (rule 6.7): drop "manual" directive items already fulfilled by
   // this cycle's content so completed work never shows as open elsewhere.
   const hasGeoPages=cTopics.some(t=>t.kind==='landing'||t.kind==='service');
-  const hasFaqBody=(PK.topics||[]).some(t=>t.body&&/^#{2,4}\s[^\n]*\?/m.test(t.body));
+  const hasFaqBody=(PK.topics||[]).some(t=>t.body&&/^(#{2,4}\s[^\n]*\?|\*\*[^\n]*\?\*\*:?\s*$|Q[:.]\s[^\n]*\?)/m.test(t.body));
   const manualItems=items.filter(i=>i.in_plan&&i.status==='todo'&&!i.fix_kind)
     .filter(i=>!((hasGeoPages&&(i.check_id==='local_geo_pages'||i.check_id==='local_intent'))||(hasFaqBody&&i.check_id==='aeo_qheads')));
   const manual=(manualItems.length||gbp.length)?`<ul>${manualItems.map(i=>`<li><b>${esc(i.title)}</b> — ${esc(i.action||'')}</li>`).join('')}${gbp.filter(t=>t.body).map(t=>`<li><b>GBP post: ${esc(t.title)}</b><div class="body">${md2html(t.body)}</div></li>`).join('')}</ul>`:'<p>None this cycle.</p>';
@@ -6392,26 +6398,51 @@ function _legacyDownloadCampaignDoc(){
 // ydg-deploy-package). Upload it in WP Admin → Settings → SEO Platform →
 // Import package, or feed it to any CMS importer that speaks the format.
 // GBP posts and non-file tasks land in manual_tasks.
+// Draft Markdown → the HTML that ships to the site (Deploy file, WordPress,
+// Fourge) and the visual editor. Heading levels are kept as written (## is
+// an H2 — the page title is the only H1, so a body "# …" becomes an H2 too),
+// numbered lists stay lists, internal (/path) links survive, Markdown tables
+// render, and FAQ questions written as a bold line ending in "?" (or
+// "Q: …?") become H3s so the FAQ has real question headings.
 function md2html(md){
   const esc2=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const safeHref=u=>{ u=String(u||'').trim(); return /^(https?:\/\/|\/(?!\/)|#|mailto:|tel:)/i.test(u)?u.replace(/["'<>\s]/g,''):''; };
   const inline=s=>esc2(s)
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,(w,txt,url)=>/^https?:\/\//i.test(url)?'<a href="'+url.replace(/"/g,'')+'">'+txt+'</a>':txt)
-    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+&quot;[^)]*&quot;|\s+"[^"]*")?\)/g,(w,txt,url)=>{ const h=safeHref(url.replace(/&amp;/g,'&')); return h?'<a href="'+esc2(h).replace(/"/g,'')+'">'+txt+'</a>':txt; })
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g,'$1<em>$2</em>')
     .replace(/`+/g,''); // stray backticks (model code fences) never belong in client copy
-  const out=[]; let para=[], list=null;
+  const out=[]; let para=[], list=null, table=null;
   const flush=()=>{ if(para.length){ out.push('<p>'+inline(para.join(' '))+'</p>'); para=[]; } };
-  const flushList=()=>{ if(list){ out.push('<ul>'+list.map(li=>'<li>'+inline(li)+'</li>').join('')+'</ul>'); list=null; } };
+  const flushList=()=>{ if(list){ out.push(`<${list.type}>`+list.items.map(li=>'<li>'+inline(li)+'</li>').join('')+`</${list.type}>`); list=null; } };
+  const cells=r=>r.replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());
+  const flushTable=()=>{
+    if(!table) return;
+    const rows=table.filter(r=>!/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/.test(r));   // drop the |---|---| separator
+    if(rows.length){
+      const [head,...body]=rows;
+      out.push('<table><thead><tr>'+cells(head).map(c=>'<th>'+inline(c)+'</th>').join('')+'</tr></thead><tbody>'+
+        body.map(r=>'<tr>'+cells(r).map(c=>'<td>'+inline(c)+'</td>').join('')+'</tr>').join('')+'</tbody></table>');
+    }
+    table=null;
+  };
+  const flushAll=()=>{ flush(); flushList(); flushTable(); };
+  const heading=(lvl,txt)=>{ flushAll(); const h=Math.min(6,Math.max(2,lvl)); out.push(`<h${h}>`+inline(txt.replace(/\s+#+\s*$/,''))+`</h${h}>`); };
   for(const ln of String(md||'').split(/\r?\n/)){
     const t=ln.trim(); let m;
-    if(!t){ flush(); flushList(); continue; }
-    if(/^[-*_]{3,}$/.test(t)){ flush(); flushList(); continue; }  // '---' separators: headings already delineate sections
-    if(/^```/.test(t)){ flush(); flushList(); continue; }         // code-fence lines: never part of the copy
-    if((m=t.match(/^(#{1,4})\s+(.*)/))){ const h=Math.min(4,m[1].length+1); flush(); flushList(); out.push(`<h${h}>`+inline(m[2])+`</h${h}>`); }
-    else if((m=t.match(/^H([2-4]):\s*(.*)/i))){ flush(); flushList(); out.push(`<h${m[1]}>`+inline(m[2])+`</h${m[1]}>`); }
-    else if((m=t.match(/^[-*•]\s+(.*)/))){ flush(); (list=list||[]).push(m[1]); }
-    else para.push(t);
+    if(!t){ flushAll(); continue; }
+    if(/^[-*_]{3,}$/.test(t)){ flushAll(); continue; }   // '---' separators: headings already delineate sections
+    if(/^```/.test(t)){ flushAll(); continue; }          // code-fence lines: never part of the copy
+    if(/^\|.*\|$/.test(t)){ flush(); flushList(); (table=table||[]).push(t); continue; }
+    flushTable();
+    if((m=t.match(/^(#{1,6})\s+(.*)/))) heading(m[1].length, m[2]);
+    else if((m=t.match(/^H([1-6]):\s*(.*)/i))) heading(+m[1], m[2]);
+    else if((m=t.match(/^\*\*(?:Q[:.]\s*)?(.+?\?)\*\*:?$/i))||(m=t.match(/^Q[:.]\s*(.+\?)$/i))) heading(3, m[1].replace(/^\*\*|\*\*$/g,''));
+    else if((m=t.match(/^\d+[.)]\s+(.*)/))){ flush(); if(list&&list.type!=='ol') flushList(); (list=list||{type:'ol',items:[]}).items.push(m[1]); }
+    else if((m=t.match(/^[-*•+]\s+(.*)/))){ flush(); if(list&&list.type!=='ul') flushList(); (list=list||{type:'ul',items:[]}).items.push(m[1]); }
+    else if((m=t.match(/^>\s?(.*)/))){ flushAll(); out.push('<blockquote><p>'+inline(m[1])+'</p></blockquote>'); }
+    else { flushList(); para.push(t.replace(/^A[:.]\s+/i,'')); }
   }
-  flush(); flushList(); return out.join('\n');
+  flushAll(); return out.join('\n');
 }
 function parseRedirects(raw){
   if(!raw) return [];
@@ -6640,6 +6671,19 @@ function buildDeployPackage(){
     else if(f.kind==='sitemap_xml') sitemap=f.after;
     else if(f.kind==='og_tags') og_tags.push({ target, html:f.after });
     else if(f.kind==='gbp_post') manual.push({ title:'Google Business Profile post', action:f.after, kind:'gbp_post' });
+    else if(f.kind==='faq_schema'&&f.schema){
+      // FAQPage markup is only valid for Q&As visible on the page. A FAQ built
+      // from the page's own questions (faq_source "page") already is; a
+      // written one ships WITH its visible section (faq_html): connector 1.11+
+      // prints it, any other CMS must add it — so it's also a manual task.
+      const fromPage=(f.context||{}).faq_source==='page';
+      const qa=String(f.after||'').split(/\n\s*\n/).map(b=>{ const q=(b.match(/^Q:\s*(.+)$/m)||[])[1], a=(b.match(/^A:\s*([\s\S]+)$/m)||[])[1]; return q&&a?{q:q.trim(),a:a.trim().replace(/\s+/g,' ')}:null; }).filter(Boolean);
+      const h=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const faq_html=fromPage||!qa.length?null:'<section class="faq"><h2>Frequently Asked Questions</h2>'+qa.map(x=>'<h3>'+h(x.q)+'</h3><p>'+h(x.a)+'</p>').join('')+'</section>';
+      schema.push({ target, jsonld:f.schema, ...(faq_html?{ faq_html, requires_visible:true }:{}) });
+      if(faq_html&&!(c.wp_api_key||c.wp)) manual.push({ title:'Add the FAQ section to '+(f.target||'/'), kind:'faq_visible',
+        action:'This page gets FAQPage markup — Google only accepts it when the same questions and answers are visible on the page. Add this section word for word (HTML is in the schema entry\'s faq_html):\n\n'+qa.map(x=>'Q: '+x.q+'\nA: '+x.a).join('\n\n') });
+    }
     else if(f.schema) schema.push({ target, jsonld:f.schema });
     else manual.push({ title:(f.label||f.kind)+' — '+(f.target||'/'), action:f.after, kind:f.kind });
   });
@@ -6663,7 +6707,10 @@ function buildDeployPackage(){
     const approved=t.status==='approved';
     const when=approved?(schedFor[t._id||t.title]||null):null;
     const d=splitDraft(t.body);
-    return { external_id:t._id||null, title:d.h1||t.title, body_html:linkify(md2html(d.body), t.keyword, t.link),
+    // The CMS prints the title as the page's H1 — drop a body "# Title" line
+    // so it isn't repeated as an H2 under it.
+    const bodyMd=String(d.body||'').replace(/^\s*#\s+[^\n]*\n+/,'');
+    return { external_id:t._id||null, title:d.h1||t.title, body_html:linkify(md2html(bodyMd), t.keyword, t.link),
       slug:d.slug, seo_title:d.seo_title, seo_description:d.seo_desc,
       post_type:(t.kind==='landing'||t.kind==='service'||t.kind==='pillar')?'page':'post',
       kind:t.kind, focus_keyword:t.keyword||'', location:t.town||null,

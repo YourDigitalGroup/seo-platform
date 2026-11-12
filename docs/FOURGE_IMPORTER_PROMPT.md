@@ -54,8 +54,14 @@ the agency uploads ONE file regardless of which CMS the client runs.
 
   // 2) JSON-LD blocks. Multiple blocks per target are normal (Organization +
   //    LocalBusiness + FAQPage + WebSite on the homepage). jsonld is an object.
+  //    FAQPage entries may carry faq_html + requires_visible: true. Then the
+  //    FAQ section MUST be rendered visibly on that page (append faq_html after
+  //    the content, sanitized) — FAQ markup for questions a visitor can't see
+  //    breaks Google's rules. If it can't be rendered, SKIP the jsonld too and
+  //    report why.
   "schema": [
-    { "target": "https://site.com/", "jsonld": { "@context": "https://schema.org", "@type": "LocalBusiness" } }
+    { "target": "https://site.com/", "jsonld": { "@context": "https://schema.org", "@type": "LocalBusiness" } },
+    { "target": "https://site.com/services/", "jsonld": { "@type": "FAQPage" }, "faq_html": "<section class=\"faq\"><h2>…</h2><h3>Q?</h3><p>A</p></section>", "requires_visible": true }
   ],
 
   // 3) Social/OG tag blocks: raw HTML that MUST be sanitized to <meta> tags
@@ -120,6 +126,14 @@ the agency uploads ONE file regardless of which CMS the client runs.
   doesn't already manage one (if it does, set Fourge's field instead).
 - **Safety**: sanitize all HTML; OG blocks reduce to `<meta>` tags only;
   redirect targets URL-validated; never execute anything from the file.
+- **Scheduled pages must go live for search engines too**: when a scheduled
+  page's publish time arrives, flip its robots meta from `noindex` to
+  `index` and add it to `sitemap.xml` in the same step (the pdateam.com copy
+  does this in `admin/api.php` → `fourgePdaOnPagePublished()`). Otherwise the
+  page is "live" but hidden from Google.
+- **Secrets never in public files**: API secrets (e.g. the reCAPTCHA secret
+  key) must be stored server-side, never in a web-readable file like
+  `data/site.json`; only public site keys may be there.
 - **Scheduling**: use the CMS's native scheduled-publishing if it exists;
   otherwise a cron/queue that flips status at `schedule` time. Timezone: the
   dates are UTC ISO-8601.
