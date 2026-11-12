@@ -23,6 +23,9 @@
 //   · attach  — attaches the campaign document to the client's card (the
 //       console calls it after Generate package, or from "Attach campaign doc").
 //   · comment — approval-trail comments on the client's card.
+//   · attach_files — plain-text files on the client's card, one per item
+//       (GBP posts: publish date + full post). A file with the same name is
+//       replaced, so re-sending an edited post never leaves a stale copy.
 //   · lists   — board columns (id + name) for the settings dashboard.
 //
 //  Secrets: TRELLO_KEY, TRELLO_TOKEN (trello.com/power-ups/admin).
@@ -253,6 +256,37 @@ Deno.serve(async (req) => {
       if (typeof body.doc_html !== "string" || !body.doc_html.length) return json({ error: "doc_html required" }, 400);
       await attachDoc(cardId, docName(body.doc_name), body.doc_html);
       return json({ ok: true });
+    }
+
+    if (action === "attach_files") {
+      const cardId = String(client.trello_card_id || "").trim();
+      if (!/^[A-Za-z0-9]{6,32}$/.test(cardId)) return json({ error: "no Trello card on this client — submit to a specialist first" }, 400);
+      const files = (Array.isArray(body.files) ? body.files : []).slice(0, 60)
+        .map((f: any) => ({ name: String(f?.name || "").replace(/[^\w.\-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 120), text: String(f?.text || ""),
+          key: /^[A-Za-z0-9]{4,16}$/.test(String(f?.key || "")) ? String(f.key) : "" }))
+        .filter((f: any) => f.name && f.text && f.text.length <= 200_000)
+        .map((f: any) => ({ ...f, name: /\.txt$/i.test(f.name) ? f.name : f.name + ".txt" }));
+      if (!files.length) return json({ error: "files required ([{name, text}])" }, 400);
+      const existing: any[] = await trello("GET", `/cards/${cardId}/attachments`, { fields: "id,name" }).catch(() => []);
+      let attached = 0, replaced = 0; const failed: string[] = [];
+      for (const f of files) {
+        try {
+          // Same item = same name, or (when the caller passes a stable key)
+          // any earlier file of this item even if its date/title changed.
+          const mine = (a: any) => a?.name === f.name || (f.key && String(a?.name || "").includes(`_${f.key}`));
+          for (const old of (existing || []).filter(mine)) {
+            await trello("DELETE", `/cards/${cardId}/attachments/${old.id}`).catch(() => {}); replaced++;
+          }
+          const fd = new FormData();
+          fd.append("file", new Blob([f.text], { type: "text/plain" }), f.name);
+          fd.append("name", f.name);
+          fd.append("mimeType", "text/plain");
+          const r = await fetch(`https://api.trello.com/1/cards/${encodeURIComponent(cardId)}/attachments?${auth}`, { method: "POST", body: fd });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          attached++;
+        } catch (e) { failed.push(`${f.name} (${String((e as any)?.message || e).slice(0, 60)})`); }
+      }
+      return json({ ok: failed.length === 0, attached, replaced, ...(failed.length ? { failed } : {}) });
     }
 
     if (action === "comment") {

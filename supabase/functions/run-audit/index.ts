@@ -233,7 +233,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.13.0";
+const ENGINE_VERSION = "5.13.1";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -1513,13 +1513,25 @@ async function runAuditPipeline(body: any): Promise<Response> {
       // each service across the trade area, and buyer-question angles for
       // blogs and pillars. They still pass the validation gate and intent
       // dedupe, and only kick in after the data-driven pools run dry.
+      // Keywords the site already ranks for, page-1 near misses (4–20) first:
+      // real demand, and the fastest wins. Also the stand-in for "services"
+      // when the homepage couldn't be read (no classifier output).
+      const strikingPool: string[] = [...ownKw]
+        .filter((k: any) => !k.is_branded && (k.best_position == null || k.best_position > 3))
+        .sort((a: any, b: any) => {
+          const near = (k: any) => (k.best_position >= 4 && k.best_position <= 20) ? 0 : 1;
+          return (near(a) - near(b)) || ((b.volume || 0) - (a.volume || 0));
+        })
+        .map((k: any) => String(k.keyword)).filter((k) => k && !junkKw(k)).slice(0, 40);
+      const svcBase: string[] = services.length ? services.slice(0, 6)
+        : ownKw.filter((k: any) => !k.is_branded).sort((a: any, b: any) => (b.volume || 0) - (a.volume || 0)).map((k: any) => String(k.keyword)).filter((k) => k && !junkKw(k)).slice(0, 4);
       const seedPool: string[] = [...seedKeywords];
-      services.slice(0, 6).forEach((svc: any) => {
+      svcBase.forEach((svc: any) => {
         if (primaryCity) seedPool.push(`${svc} ${primaryCity}`);
         secondaryTowns.slice(0, 3).forEach((t: any) => seedPool.push(`${svc} ${t}`));
       });
       const infoPool: string[] = [];
-      services.slice(0, 6).forEach((svc: any) => {
+      svcBase.forEach((svc: any) => {
         const s0 = String(svc).toLowerCase();
         infoPool.push(`how much does ${s0} cost`, `signs you need ${s0}`, `how to choose a ${s0} company`, `questions to ask before hiring for ${s0}`);
       });
@@ -1659,11 +1671,11 @@ async function runAuditPipeline(body: any): Promise<Response> {
         return best || home;
       };
       const pickFor = (kind: string): string | null => {
-        if (kind === "gbp_post") return nextFrom(intakeKw, localServices, oppKwPool, coreUnowned, seedPool, infoPool);
-        if (kind === "blog") return nextFrom(intakeKw, gapPool, coreUnowned, oppKwPool, infoPool, seedPool);
-        if (kind === "pillar") return nextFrom(intakeKw, oppKwPool, gapPool, coreUnowned, seedPool, infoPool);
-        if (kind === "landing") return nextFrom(intakeLanding, townPages, coreUnowned, seedPool);
-        return nextFrom(intakeKw, coreUnowned, oppKwPool, gapPool, seedPool, infoPool);
+        if (kind === "gbp_post") return nextFrom(intakeKw, localServices, oppKwPool, coreUnowned, strikingPool, seedPool, infoPool);
+        if (kind === "blog") return nextFrom(intakeKw, gapPool, coreUnowned, oppKwPool, strikingPool, infoPool, seedPool);
+        if (kind === "pillar") return nextFrom(intakeKw, oppKwPool, gapPool, coreUnowned, strikingPool, seedPool, infoPool);
+        if (kind === "landing") return nextFrom(intakeLanding, townPages, coreUnowned, strikingPool, seedPool);
+        return nextFrom(intakeKw, coreUnowned, oppKwPool, gapPool, strikingPool, seedPool, infoPool);
       };
       // current engagement cycle from the client's start date, clamped to the
       // contract length (contract_length_months / contract_is_evergreen on clients;
