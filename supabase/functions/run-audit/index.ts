@@ -132,7 +132,9 @@ async function gbpPlaceFromLink(link: string, fallbackName: string, apiKey: stri
   const direct = (s: string) => (s.match(/(?:place_id[:=]|query_place_id=|placeid=|!1s|!19s)(ChIJ[0-9A-Za-z_-]{10,})/) || s.match(/\b(ChIJ[0-9A-Za-z_-]{20,})/) || [])[1] || "";
   let full = dec(u);
   let pid = direct(full); if (pid) return { placeId: pid, how: "place id in the GBP link" };
-  if (!/google\.[a-z.]+\/maps|maps\.google\./i.test(full)) {
+  // Follow only SHORT links (they redirect to the Maps URL). Never scrape a
+  // Google search page: it lists other businesses' Maps links too.
+  if (/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl|g\.page|share\.google|g\.co)\//i.test(u)) {
     try {
       let cur = u;
       for (let i = 0; i < 6; i++) {
@@ -150,10 +152,24 @@ async function gbpPlaceFromLink(link: string, fallbackName: string, apiKey: stri
     } catch { /* link unreachable — fall through */ }
     pid = direct(full); if (pid) return { placeId: pid, how: "place id in the GBP link" };
   }
-  const hex = (full.match(/!1s0x[0-9a-f]+:0x([0-9a-f]+)/i) || full.match(/[?&]ftid=0x[0-9a-f]+:0x([0-9a-f]+)/i) || [])[1];
+  // Google SEARCH links to a Business Profile (google.com/search?q=…&stick=…)
+  // carry the listing in `stick`: base64url → gzip → a small protobuf whose
+  // text includes "0x<feature>:0x<CID hex>" and the business name.
+  let stickHex = "";
+  const stick = (full.match(/[?&]stick=([A-Za-z0-9_-]+)/) || [])[1];
+  if (stick) {
+    try {
+      const b64 = stick.replace(/-/g, "+").replace(/_/g, "/");
+      const bin = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
+      const gz = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+      const raw = new Uint8Array(await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+      stickHex = (new TextDecoder("latin1").decode(raw).match(/0x[0-9a-f]+:0x([0-9a-f]+)/i) || [])[1] || "";
+    } catch { /* not a listing stick */ }
+  }
+  const hex = (full.match(/!1s0x[0-9a-f]+:0x([0-9a-f]+)/i) || full.match(/[?&]ftid=0x[0-9a-f]+:0x([0-9a-f]+)/i) || [])[1] || stickHex;
   const cid = hex ? BigInt("0x" + hex).toString() : ((full.match(/[?&](?:cid|ludocid)=(\d{6,})/) || [])[1] || "");
   if (!cid) return null;
-  const name = dec(((full.match(/\/maps\/place\/([^/@?]+)/) || [])[1] || "").replace(/\+/g, " ")).trim() || fallbackName;
+  const name = dec(((full.match(/\/maps\/place\/([^/@?]+)/) || full.match(/\/search\?(?:[^#]*&)?q=([^&#]+)/) || [])[1] || "").replace(/\+/g, " ")).trim() || fallbackName;
   if (!name) return null;
   const ll = full.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || full.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   const body: any = { textQuery: name, pageSize: 10 };
@@ -319,7 +335,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.14.0";
+const ENGINE_VERSION = "5.14.1";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
