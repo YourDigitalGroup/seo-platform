@@ -1027,7 +1027,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.30.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.31.0</div>
   </div>
   </div>
 </div>
@@ -1115,7 +1115,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.30.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.31.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1163,7 +1163,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.30.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.31.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1326,7 +1326,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.30.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.31.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1344,7 +1344,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.30.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.31.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1402,7 +1402,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.30.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.31.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3473,6 +3473,7 @@ function approveDraft(){
     sb.functions.invoke('trello',{body:{action:'comment', client_id:activeClient.id,
       text:`${APPROVAL_LABEL[t.approval]} by ${me.name}: “${t.title}” (${t.kind}) — ships with this month's package.`}}).then(()=>{},()=>{});
   }
+  if(t.kind==='gbp_post'&&!OFFLINE&&activeClient&&activeClient.trello_card_id) sendGbpPostsToTrello([t], true);
   renderQueue(); closeDraft(); showToast(`${APPROVAL_LABEL[t.approval]} ✓`, false, true);
 }
 function requestRewrite(){
@@ -4718,10 +4719,12 @@ function renderQueue(){
   const showMonths=ordered.some(x=>x.m);
   const gbpIn={}; ordered.forEach(x=>{ if(x.t.kind==='gbp_post') gbpIn[x.m]=(gbpIn[x.m]||0)+1; });
   let lastM=-1, gbpHead=-1;
+  const gSch=gbpSchedule();
   const rowFor=(t,i)=>{
     const openable=(t.status==='drafted'||t.status==='approved');
+    const gw=t.kind==='gbp_post'&&gSch[t._id||t.title];
     return `<div class="qrow qedit">
-      <span><input class="qtitle" value="${esc(t.title)}" oninput="editTopicTitle(${i},this.value)"><span class="qkw" style="font-size:11px;color:var(--muted);padding-left:10px">↳ ${esc(t.keyword)}${t.source==='manual'?' · manual':''}</span>
+      <span><input class="qtitle" value="${esc(t.title)}" oninput="editTopicTitle(${i},this.value)"><span class="qkw" style="font-size:11px;color:var(--muted);padding-left:10px">↳ ${esc(t.keyword)}${t.source==='manual'?' · manual':''}${gw?` · posts ${gw.when.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/Chicago'})}`:''}</span>
         ${(t.kind==='blog'||t.kind==='gbp_post'||t.kind==='pillar')?`<span class="qlink">links to <input value="${esc(t.link||'')}" placeholder="/page-to-link-back-to" onchange="setLinkTarget(${i},this.value)" title="The piece links its focus keyword back to this page — auto-picked, change it if the engine guessed wrong">${t.image?`<i class="fa-solid fa-image" title="image attached"></i>`:''}</span>`:''}</span>
       <span><select class="qsel" onchange="changeKind(${i},this.value)">${kindOpts(t.kind)}</select></span>
       <span><select class="qsel" onchange="changeModel(${i},this.value)">${modelOpts(t.model)}</select></span>
@@ -4746,7 +4749,7 @@ function renderQueue(){
     `<div class="qbar"><span class="qsum">${PK.topics.length} piece${PK.topics.length===1?'':'s'} · ${summary}</span>
       ${(()=>{const n=PK.topics.filter(t=>t.body&&qaScan(t.body).blocking.length).length;
         return n?`<button class="qgen" style="background:#C0392B;margin-right:8px" onclick="autoFixFlagged()" title="Rewrite every flagged draft with its violations as explicit removal instructions"><i class="fa-solid fa-triangle-exclamation"></i> Auto-fix ${n} flagged →</button>`:'';})()}
-      <button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="downloadClientDoc()" title="Download a clean, partner-branded summary of the approved pieces to send to the client"><i class="fa-solid fa-file-export"></i> Client doc</button><button class="qgen" id="sugbtn" style="background:var(--navy);margin-right:8px" onclick="suggestTopics()" title="Claude combines the owner's business description with the audit data and proposes topics — you pick what to queue"><i class="fa-solid fa-lightbulb"></i> Suggest topics</button>
+      ${PK.topics.some(t=>t.kind==='gbp_post'&&t.status==='approved')?`<button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="sendGbpPostsToTrello()" title="Put every approved GBP post on the client's Trello card — one .txt file each, with its publish date and the full post"><i class="fa-brands fa-trello"></i> GBP posts → Trello</button>`:''}<button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="downloadClientDoc()" title="Download a clean, partner-branded summary of the approved pieces to send to the client"><i class="fa-solid fa-file-export"></i> Client doc</button><button class="qgen" id="sugbtn" style="background:var(--navy);margin-right:8px" onclick="suggestTopics()" title="Claude combines the owner's business description with the audit data and proposes topics — you pick what to queue"><i class="fa-solid fa-lightbulb"></i> Suggest topics</button>
       <button class="qgen" onclick="generateDrafts()">Generate drafts →</button></div>`;
   document.getElementById('queue-tag').textContent=`${campaignMonthLabel(activeClient)} · ${PK.topics.length} queued · Engine 2`;
 }
@@ -6340,6 +6343,71 @@ function splitDraft(md){
   }
   return out;
 }
+// ── GBP POSTS: publish dates + one .txt per post on the client's Trello card.
+// Each post publishes inside ITS campaign month, spread evenly across the
+// month (3 posts → ~6th, 16th, 26th), never in the past and at least 2 days
+// apart. The account manager / strategist posts them to the Business Profile
+// from the files on the card.
+function gbpSchedule(){
+  const out={}; const DAY=864e5, now=Date.now(), tomorrow=Math.ceil((now+DAY)/DAY)*DAY+15*3600e3;
+  const monthOfT={}; (PK.campaign||[]).forEach(d=>{ if(d.topic_id) monthOfT[d.topic_id]=d.month_offset||1; });
+  const engS=activeClient&&activeClient.engagement_start_date ? new Date(activeClient.engagement_start_date+'T00:00:00Z') : new Date();
+  const byM={}; (PK.topics||[]).filter(t=>t.kind==='gbp_post').forEach(t=>{ const m=monthOfT[t._id]||0; (byM[m]=byM[m]||[]).push(t); });
+  Object.keys(byM).map(Number).sort((a,b)=>a-b).forEach(m=>{
+    const list=byM[m]; let prev=0;
+    const y=engS.getUTCFullYear(), mo=engS.getUTCMonth()+m-1;
+    const days=m>0?new Date(Date.UTC(y,mo+1,0)).getUTCDate():28;
+    list.forEach((t,i)=>{
+      const day=1+Math.floor((i+0.5)*days/list.length);
+      let when=m>0?Date.UTC(y,mo,day,15,0,0):tomorrow+Math.floor((i+0.5)*28/list.length)*DAY;
+      when=Math.max(when, tomorrow, prev?prev+2*DAY:0); prev=when;
+      out[t._id||t.title]={ when:new Date(when), month:m||null };
+    });
+  });
+  return out;
+}
+function fmtPostDate(d){ return d.toLocaleDateString('en-US',{weekday:'long', month:'long', day:'numeric', year:'numeric', timeZone:'America/Chicago'}); }
+function mdToPlain(md){
+  return String(md||'').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'$1 ($2)').replace(/\*\*([^*]+)\*\*/g,'$1').replace(/\*([^*]+)\*/g,'$1')
+    .replace(/^#{1,6}\s+/gm,'').replace(/^>\s?/gm,'').replace(/\n{3,}/g,'\n\n').trim();
+}
+function gbpPostFile(t, sch){
+  const c=activeClient||{}, when=sch&&sch.when;
+  const slug=String(t.title||'post').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'post';
+  const key=String(t._id||'').replace(/[^a-z0-9]/gi,'').slice(0,8);
+  const date=when?when.toISOString().slice(0,10):'unscheduled';
+  const lines=[
+    'GOOGLE BUSINESS PROFILE POST',
+    `Client: ${c.name||c.url||''}`,
+    `Publish date: ${when?fmtPostDate(when):'not scheduled'}`,
+    sch&&sch.month?`Campaign month: ${sch.month}`:null,
+    `Title: ${t.title||''}`,
+    t.keyword&&t.keyword!=='(manual)'?`Focus keyword: ${t.keyword}`:null,
+    t.link?`Button link (Learn more): ${t.link}`:null,
+    t.image?`Photo (download & attach): ${t.image}`:null,
+    t.status==='approved'?`Status: ${statusLabel(t)}`:`Status: ${cap(t.status)} (not approved yet)`,
+    '', '----- POST TEXT (copy everything below) -----', '',
+    mdToPlain(splitDraft(t.body).body),
+  ].filter(x=>x!==null);
+  return { name:`GBP_post_${date}_${slug}${key?'_'+key:''}.txt`, key, text:lines.join('\n')+'\n' };
+}
+// Send GBP posts to the client's Trello card (one file each). `only` limits
+// it to specific topics (approval sends just the one approved).
+async function sendGbpPostsToTrello(only, quiet){
+  if(OFFLINE||!activeClient) return;
+  if(!activeClient.trello_card_id){ if(!quiet) showToast('No Trello card on this client yet — submit it to a specialist first',true); return; }
+  const sch=gbpSchedule();
+  const list=(PK.topics||[]).filter(t=>t.kind==='gbp_post'&&t.body&&t.status==='approved'&&(!only||only.includes(t)));
+  if(!list.length){ if(!quiet) showToast('No approved GBP posts to send — approve them first',true); return; }
+  const files=list.map(t=>gbpPostFile(t, sch[t._id||t.title]));
+  try{
+    const {data,error}=await sb.functions.invoke('trello',{body:{action:'attach_files', client_id:activeClient.id, files}});
+    let msg=error?error.message:(data&&data.error)||'';
+    if(error){ try{ const b=await error.context.json(); msg=b.error||msg; }catch(_){} }
+    if(msg||!(data&&data.ok)){ showToast('GBP posts not sent to Trello — '+(msg||(data&&data.failed||[]).join('; ')),true); return; }
+    if(!quiet) showToast(`${data.attached} GBP post file${data.attached===1?'':'s'} on the Trello card`, false, true);
+  }catch(e){ showToast('GBP posts not sent to Trello — '+String(e&&e.message||e),true); }
+}
 function buildDeployPackage(){
   const c=activeClient||{};
   const site='https://'+String(c.url||'').replace(/^https?:\/\//,'').replace(/\/+$/,'');
@@ -6409,8 +6477,9 @@ function buildDeployPackage(){
       approved, status:approved?'schedule':'draft', schedule:when,
       qa:(q=>[...q.blocking,...q.warnings])(qaScan(t.body)) };
   });
+  const gbpSch=gbpSchedule();
   (PK.topics||[]).filter(t=>t.kind==='gbp_post'&&t.body&&t.status==='approved').forEach(t=>manual.push({
-    title:'GBP post: '+t.title,
+    title:'GBP post: '+t.title+(gbpSch[t._id||t.title]?' — publish '+fmtPostDate(gbpSch[t._id||t.title].when):''),
     action:t.body+(t.link?'\n\nLink the post button to: '+t.link:'')+(t.image?'\nPhoto (download & attach): '+t.image:''),
     kind:'gbp_post' }));
   const manualCheckIds=new Set();
