@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Your Digital Group SEO Connector
- * Description: Securely receives SEO metadata, JSON-LD schema, and content from your agency's SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-ONLY — it never changes your site's appearance, theme, layout, menus, or visual settings. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.12.0
+ * Description: Securely receives SEO metadata, JSON-LD schema, and content from your agency's SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-focused — it never changes your theme, layout, menus or visual settings; its only visible additions are optional (footer business address, an About box under platform-written posts) and switchable under Settings → SEO Platform. Unapproved content arrives as drafts; approved content publishes on its schedule.
+ * Version: 1.13.0
  * Author: Your Digital Group
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -19,7 +19,7 @@ if (defined('SEOP_VERSION')) {
     add_action('admin_init', function () {
         if (!function_exists('deactivate_plugins') || !current_user_can('activate_plugins')) return;
         $mine = plugin_basename(__FILE__);
-        if (version_compare(SEOP_VERSION, '1.12.0', '<')) {
+        if (version_compare(SEOP_VERSION, '1.13.0', '<')) {
             // the copy that loaded first is older — retire it, keep this one
             foreach ((array) get_option('active_plugins', []) as $p) {
                 if ($p !== $mine && basename($p) === basename(__FILE__)) deactivate_plugins($p, true);
@@ -38,7 +38,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.12.0');
+define('SEOP_VERSION', '1.13.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -76,6 +76,7 @@ define('SEOP_AI_MODEL', 'claude-haiku-4-5');
 // Site-wide artifacts from a deploy package live in options:
 define('SEOP_OPT_ROBOTS',    'seoplatform_robots_txt');
 define('SEOP_OPT_LLMS',      'seoplatform_llms_txt');
+define('SEOP_OPT_LLMS_FULL', 'seoplatform_llms_full_txt');   // v1.13
 define('SEOP_OPT_REDIRECTS', 'seoplatform_redirects');      // [{from,to,code}]
 define('SEOP_OPT_HEADERS',   'seoplatform_sec_headers');    // {Header-Name: value}
 define('SEOP_OPT_SITE_SCHEMA','seoplatform_site_schema');   // JSON-LD strings for the front page
@@ -272,6 +273,18 @@ function seop_upsert_content($p) {
     if (!empty($p['seo_title']) || !empty($p['seo_description'])) {
         seop_write_meta($id, $p['seo_title'] ?? null, $p['seo_description'] ?? null, null);
     }
+    // v1.13: the piece's own JSON-LD from the platform (Article/BlogPosting,
+    // Service, HowTo, FAQPage built from the visible copy) — printed in its
+    // <head>; the site-wide engine skips any type already present.
+    if (!empty($p['schema']) && is_array($p['schema'])) {
+        $list = get_post_meta($id, '_seoplatform_schema_list', true);
+        $list = is_array($list) ? $list : [];
+        foreach (array_slice($p['schema'], 0, 6) as $node) {
+            $j = seop_jsonld_safe($node);
+            if ($j !== '') $list[md5($j)] = wp_slash($j);
+        }
+        update_post_meta($id, '_seoplatform_schema_list', $list);
+    }
     return ['ok' => true, 'post_id' => $id, 'status' => $kept_live ? get_post_status($id) : $status,
         'kept_live_copy' => $kept_live,
         'scheduled_for' => get_post_status($id) === 'future' ? get_post_time('Y-m-d H:i', false, $id) : null,
@@ -360,6 +373,12 @@ add_action('wp_head', function () {
         if ($safe !== '') echo "\n<script type=\"application/ld+json\">" . $safe . "</script>\n";
     }
     $og = get_post_meta($pid, '_seoplatform_og_tags', true);
+    if ($og && strpos($og, '[IMAGE_URL]') !== false) {
+        // v1.13: OG blocks written with an image placeholder get the real one
+        // (featured image, else the branded share image) — or lose that tag.
+        $img = has_post_thumbnail($pid) ? (string) get_the_post_thumbnail_url($pid, 'full') : (function_exists('seop_og_image_url') ? seop_og_image_url($pid) : '');
+        $og = $img ? str_replace('[IMAGE_URL]', esc_url($img), $og) : preg_replace('#<meta[^>]+\[IMAGE_URL\][^>]*>\s*#', '', $og);
+    }
     if ($og) echo "\n" . $og . "\n"; // sanitized to <meta> tags only at import time
 }, 20);
 
@@ -403,6 +422,43 @@ function seop_llms_fallback() {
     set_transient('seop_llms_fallback', $out, DAY_IN_SECONDS);
     return $out;
 }
+
+/* v1.13: llms-full.txt — the whole site's readable text as one Markdown file
+ * for AI tools (the llms.txt companion). The package's copy wins; otherwise it
+ * is built from published pages + recent posts, cached for 12 hours and
+ * rebuilt when content changes. */
+function seop_html_to_md($html) {
+    $html = preg_replace('#<(script|style|noscript|svg|template|form|iframe|nav)\b[\s\S]*?</\1>#i', ' ', (string) $html);
+    $html = preg_replace_callback('#<h([1-6])[^>]*>([\s\S]*?)</h\1>#i', function ($m) {
+        return "\n\n" . str_repeat('#', max(3, min(6, (int) $m[1] + 1))) . ' ' . seop_clean_text($m[2]) . "\n\n"; }, $html);
+    $html = preg_replace_callback('#<li[^>]*>([\s\S]*?)</li>#i', function ($m) { return "\n- " . seop_clean_text($m[1]); }, $html);
+    $html = preg_replace('#<(p|div|section|article|br|tr|table|ul|ol)\b[^>]*>#i', "\n", $html);
+    $txt = html_entity_decode(wp_strip_all_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $lines = array_map(function ($l) { return trim(preg_replace('/[ \t]+/u', ' ', $l)); }, explode("\n", $txt));
+    return trim(preg_replace("/\n{3,}/", "\n\n", implode("\n", $lines)));
+}
+function seop_llms_full() {
+    $pkg = (string) get_option(SEOP_OPT_LLMS_FULL);
+    if ($pkg !== '') return $pkg;
+    $cached = get_transient('seop_llms_full');
+    if ($cached !== false) return $cached;
+    $head = (string) get_option(SEOP_OPT_LLMS);
+    if ($head === '') $head = seop_llms_fallback();
+    $head = trim(preg_replace('/\n## Optional[\s\S]*$/', '', $head));
+    $parts = [];
+    $items = array_merge(
+        get_posts(['post_type' => 'page', 'post_status' => 'publish', 'numberposts' => 30, 'orderby' => 'menu_order', 'order' => 'ASC']),
+        get_posts(['post_type' => 'post', 'post_status' => 'publish', 'numberposts' => 15]));
+    foreach ($items as $p) {
+        $md = seop_html_to_md(seop_rendered_html($p->ID));
+        if (str_word_count($md) < 40) continue;
+        $parts[] = '## ' . get_the_title($p) . "\n\nURL: " . get_permalink($p) . "\n\n" . mb_substr($md, 0, 12000);
+    }
+    $out = $head . "\n\n---\n\n" . implode("\n\n---\n\n", $parts) . "\n";
+    set_transient('seop_llms_full', $out, 12 * HOUR_IN_SECONDS);
+    return $out;
+}
+add_action('save_post', function () { delete_transient('seop_llms_full'); delete_transient('seop_llms_fallback'); });
 
 /* v1.11: the page body as visitors see it. Page builders (Elementor) keep
  * their content outside post_content, so schema built from post_content alone
@@ -740,6 +796,10 @@ add_filter('robots_txt', function ($output) {
 // /llms.txt + 301 redirects
 add_action('template_redirect', function () {
     $uri = isset($_SERVER['REQUEST_URI']) ? wp_parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) : '';
+    if ($uri === '/llms-full.txt') {
+        $body = seop_llms_full();
+        if ($body) { status_header(200); header('Content-Type: text/plain; charset=utf-8'); header('X-Robots-Tag: noindex'); echo $body; exit; }
+    }
     if ($uri === '/llms.txt') {
         $body = get_option(SEOP_OPT_LLMS);
         if (!$body) $body = seop_llms_fallback(); // v1.4: auto-generate from real site data
@@ -853,6 +913,8 @@ function seop_apply_package($pkg) {
         else { update_option(SEOP_OPT_ROBOTS, sanitize_textarea_field($files['robots_txt'])); $ok('robots.txt (served by WordPress)'); }
     }
     if (!empty($files['llms_txt'])) { update_option(SEOP_OPT_LLMS, sanitize_textarea_field($files['llms_txt'])); $ok('llms.txt (served at /llms.txt)'); }
+    if (!empty($files['llms_full_txt'])) { update_option(SEOP_OPT_LLMS_FULL, sanitize_textarea_field($files['llms_full_txt']), false); delete_transient('seop_llms_full'); $ok('llms-full.txt (served at /llms-full.txt)'); }
+    elseif (!empty($files['llms_txt'])) { delete_option(SEOP_OPT_LLMS_FULL); delete_transient('seop_llms_full'); $ok('llms-full.txt built from the site\'s own pages (served at /llms-full.txt)'); }
     if (!empty($files['sitemap_xml'])) $r['manual'][] = 'Sitemap: prefer your SEO plugin\'s sitemap (Yoast/Rank Math serve one automatically); the package includes a fallback file if you need it.';
     $rules = (array) (($pkg['redirects']['rules'] ?? []) ?: []);
     if ($rules) {
@@ -903,7 +965,18 @@ function seop_apply_package($pkg) {
             $biz[$k] = is_scalar($v) ? sanitize_text_field((string) $v) : '';
         }
         update_option(SEOP_OPT_BUSINESS, $biz);
+        delete_transient('seop_llms_fallback'); delete_transient('seop_llms_full');
         $ok('Business profile (name, NAP, hours, service area — powers site-wide schema)');
+    }
+    // v1.13: site-experience switches chosen in the platform.
+    if (!empty($pkg['features']) && is_array($pkg['features'])) {
+        $cur = get_option(SEOP_OPT_FEATURES); $cur = is_array($cur) ? $cur : [];
+        foreach (['delay_scripts', 'gzip', 'webp', 'og_images', 'footer_nap', 'eeat_box'] as $k)
+            if (array_key_exists($k, $pkg['features'])) $cur[$k] = !empty($pkg['features'][$k]) ? 1 : 0;
+        if (!empty($pkg['features']['brand_color']) && preg_match('/^#[0-9a-f]{6}$/i', (string) $pkg['features']['brand_color'])) $cur['brand_color'] = (string) $pkg['features']['brand_color'];
+        update_option(SEOP_OPT_FEATURES, $cur);
+        $on = array_keys(array_filter($cur, function ($v, $k) { return $k !== 'brand_color' && $v; }, ARRAY_FILTER_USE_BOTH));
+        $ok('Site features: ' . ($on ? implode(', ', $on) : 'all off'));
     }
     $scheduled = 0; $drafted = 0;
     foreach ((array) ($pkg['content'] ?? []) as $cItem) {
@@ -915,6 +988,7 @@ function seop_apply_package($pkg) {
             'focus_keyword' => $cItem['focus_keyword'] ?? '', 'slug' => $cItem['slug'] ?? '',
             'seo_title' => $cItem['seo_title'] ?? '', 'seo_description' => $cItem['seo_description'] ?? '',
             'image_url' => $cItem['image_url'] ?? '', 'image_alt' => $cItem['image_alt'] ?? '',
+            'schema' => (isset($cItem['schema']) && is_array($cItem['schema'])) ? $cItem['schema'] : [],
         ]);
         if (is_wp_error($res)) $skip('Content "' . ($cItem['title'] ?? '?') . '"', $res->get_error_message());
         elseif (($res['status'] ?? '') === 'future') { $scheduled++; $ok('Scheduled "' . ($cItem['title'] ?? '?') . '" → publishes ' . ($res['scheduled_for'] ?: 'per campaign')); }
@@ -1306,6 +1380,192 @@ add_action('transition_post_status', function ($new, $old, $post) {
     ]);
 }, 10, 3);
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * v1.13 — SITE EXPERIENCE FEATURES (each one switchable; the deploy package's
+ * `features` block or Settings → SEO Platform sets them)
+ *   · Performance: third-party chat widgets and reCAPTCHA load on the
+ *     visitor's first interaction (scroll / tap / key / mouse), HTML is
+ *     gzip-compressed when the server doesn't already, and new uploads get
+ *     WebP sub-sizes so WordPress' responsive srcset serves WebP.
+ *   · Branded share image for every page without one (1200×630 PNG: page
+ *     title + business name, cached in uploads/seop-og/).
+ *   · Business name, address and phone in the footer — only when the page
+ *     doesn't already show that street address.
+ *   · An "About <business>" E-E-A-T box under platform-written posts, written
+ *     from the approved intake facts (owner, years, credentials, licenses).
+ * ════════════════════════════════════════════════════════════════════════════ */
+define('SEOP_OPT_FEATURES', 'seoplatform_features');
+function seop_feature($k) {
+    $defaults = ['delay_scripts' => 1, 'gzip' => 1, 'webp' => 1, 'og_images' => 1, 'footer_nap' => 1, 'eeat_box' => 1, 'brand_color' => '#1F2A44'];
+    $f = get_option(SEOP_OPT_FEATURES);
+    $f = is_array($f) ? array_merge($defaults, $f) : $defaults;
+    return $f[$k] ?? null;
+}
+function seop_is_public_html_request() {
+    return !is_admin() && !wp_doing_ajax() && !wp_doing_cron() && !(defined('REST_REQUEST') && REST_REQUEST)
+        && !(defined('XMLRPC_REQUEST') && XMLRPC_REQUEST) && !is_feed() && !is_robots() && !is_customize_preview()
+        && empty($_GET['elementor-preview']) && empty($_GET['fl_builder']) && empty($_GET['et_fb']);
+}
+
+// ── WebP sub-sizes for new uploads (WordPress 6.1+ image_editor_output_format)
+add_filter('image_editor_output_format', function ($formats) {
+    if (!seop_feature('webp') || !function_exists('wp_image_editor_supports') || !wp_image_editor_supports(['mime_type' => 'image/webp'])) return $formats;
+    $formats['image/jpeg'] = 'image/webp';
+    $formats['image/png'] = 'image/webp';
+    return $formats;
+});
+
+// ── One output buffer for the HTML-level features (delay scripts, footer NAP)
+// plus gzip underneath it when the server isn't compressing.
+add_action('template_redirect', function () {
+    if (!seop_is_public_html_request() || is_user_logged_in()) return;
+    $gzip = seop_feature('gzip') && !ini_get('zlib.output_compression') && !headers_sent()
+        && function_exists('ob_gzhandler') && extension_loaded('zlib')
+        && stripos((string) ($_SERVER['HTTP_ACCEPT_ENCODING'] ?? ''), 'gzip') !== false
+        // caching / optimization plugins compress (or cache) the page themselves
+        && !defined('WP_ROCKET_VERSION') && !defined('W3TC') && !defined('LSCWP_V') && !defined('WPFC_WP_CONTENT_BASENAME')
+        && !defined('AUTOPTIMIZE_PLUGIN_VERSION') && !class_exists('SiteGround_Optimizer\\Loader\\Loader') && !defined('BREEZE_VERSION');
+    if ($gzip) ob_start('ob_gzhandler');
+    if (seop_feature('delay_scripts') || seop_feature('footer_nap')) ob_start('seop_html_buffer');
+}, 1);
+
+// Scripts that never need to run before the visitor does something.
+function seop_delay_patterns() {
+    return apply_filters('seop_delay_script_patterns', [
+        'google.com/recaptcha', 'gstatic.com/recaptcha', 'recaptcha.net/recaptcha',
+        'leadconnectorhq.com', 'msgsndr.com', 'widgets.leadconnectorhq', 'link.msgsndr',
+        'tawk.to', 'intercom', 'driftt.com', 'js.driftt', 'crisp.chat', 'livechatinc.com', 'static.zdassets.com',
+        'js.hs-scripts.com', 'js.hsforms.net', 'usemessages.com', 'tidio', 'olark', 'birdeye', 'podium.com', 'smartsupp',
+    ]);
+}
+function seop_html_buffer($html) {
+    if (!is_string($html) || stripos($html, '</body>') === false || stripos($html, '<html') === false) return $html;
+    if (seop_feature('delay_scripts')) {
+        $pats = seop_delay_patterns(); $hit = 0;
+        $html = preg_replace_callback('#<script\b([^>]*)\bsrc=(["\'])([^"\']+)\2([^>]*)>\s*</script>#i', function ($m) use ($pats, &$hit) {
+            foreach ($pats as $p) {
+                if (stripos($m[3], $p) !== false) {
+                    $hit++;
+                    $attrs = preg_replace('#\btype=(["\'])[^"\']*\1#i', '', $m[1] . ' ' . $m[4]);
+                    return '<script type="text/seop-delay" data-seop-src="' . esc_attr($m[3]) . '"' . rtrim($attrs) . '></script>';
+                }
+            }
+            return $m[0];
+        }, $html);
+        if ($hit) {
+            $loader = "<script>(function(){var d=false;function go(){if(d)return;d=true;['scroll','touchstart','keydown','mousemove','click'].forEach(function(e){window.removeEventListener(e,go,{passive:true})});"
+                . "document.querySelectorAll('script[type=\"text/seop-delay\"]').forEach(function(o){var s=document.createElement('script');for(var i=0;i<o.attributes.length;i++){var a=o.attributes[i];if(a.name!=='type'&&a.name!=='data-seop-src')s.setAttribute(a.name,a.value)}s.src=o.getAttribute('data-seop-src');o.parentNode.replaceChild(s,o)})}"
+                . "['scroll','touchstart','keydown','mousemove','click'].forEach(function(e){window.addEventListener(e,go,{passive:true})});"
+                . "document.addEventListener('focusin',function(e){if(e.target&&e.target.form)go()});setTimeout(go,15000)})();</script>";
+            $html = preg_replace('#</body>#i', $loader . "\n</body>", $html, 1);
+        }
+    }
+    if (seop_feature('footer_nap')) {
+        $b = seop_business();
+        $street = trim((string) ($b['street'] ?? ''));
+        if ($street !== '' && ($b['name'] ?? '')) {
+            $plain = seop_norm(preg_replace('#<script\b[\s\S]*?</script>#i', ' ', $html));
+            if (strpos($plain, seop_norm($street)) === false) {
+                $line2 = trim(implode(', ', array_filter([$street, $b['city'] ?? '', trim(($b['state'] ?? '') . ' ' . ($b['zip'] ?? ''))])));
+                $tel = preg_replace('/[^0-9+]/', '', (string) ($b['phone'] ?? ''));
+                $nap = '<address class="seop-nap" style="text-align:center;font-size:13px;font-style:normal;line-height:1.5;margin:16px auto;opacity:.85">'
+                    . '<strong>' . esc_html($b['name']) . '</strong><br>' . esc_html($line2)
+                    . ($tel ? '<br><a href="tel:' . esc_attr($tel) . '">' . esc_html($b['phone']) . '</a>' : '') . '</address>';
+                $html = preg_replace('#</body>#i', $nap . "\n</body>", $html, 1);
+            }
+        }
+    }
+    return $html;
+}
+
+// ── Branded share images ────────────────────────────────────────────────────
+function seop_og_image_url($pid) {
+    if (!seop_feature('og_images') || !function_exists('imagecreatetruecolor') || !function_exists('imagettftext')) return '';
+    $font = __DIR__ . '/assets/DejaVuSans-Bold.ttf';
+    if (!is_readable($font)) return '';
+    $b = seop_business();
+    $biz = ($b['name'] ?? '') ?: get_bloginfo('name');
+    $title = $pid ? html_entity_decode(get_the_title($pid), ENT_QUOTES, 'UTF-8') : (($b['description'] ?? '') ? $biz : get_bloginfo('description'));
+    if ($pid && (int) get_option('page_on_front') === (int) $pid) $title = $biz;
+    $title = trim($title) ?: $biz;
+    $sub = trim(implode(' · ', array_filter([$pid && $title !== $biz ? $biz : '', trim(($b['city'] ?? '') . (($b['state'] ?? '') ? ', ' . $b['state'] : '')), wp_parse_url(home_url(), PHP_URL_HOST)])));
+    $color = (string) seop_feature('brand_color');
+    if (!preg_match('/^#[0-9a-f]{6}$/i', $color)) $color = '#1F2A44';
+    $up = wp_upload_dir();
+    if (!empty($up['error'])) return '';
+    $dir = trailingslashit($up['basedir']) . 'seop-og'; $url = trailingslashit($up['baseurl']) . 'seop-og';
+    $key = ($pid ?: 'home') . '-' . substr(md5($title . '|' . $sub . '|' . $color . '|v1'), 0, 10);
+    $file = "$dir/$key.png";
+    if (file_exists($file)) return "$url/$key.png";
+    if (!wp_mkdir_p($dir)) return '';
+    foreach ((array) glob("$dir/" . ($pid ?: 'home') . '-*.png') as $old) @unlink($old);   // title changed → replace
+    $W = 1200; $H = 630; $im = imagecreatetruecolor($W, $H);
+    $rgb = sscanf($color, '#%02x%02x%02x');
+    imagefilledrectangle($im, 0, 0, $W, $H, imagecolorallocate($im, $rgb[0], $rgb[1], $rgb[2]));
+    $white = imagecolorallocate($im, 255, 255, 255); $soft = imagecolorallocatealpha($im, 255, 255, 255, 40);
+    imagefilledrectangle($im, 80, 96, 200, 104, $white);   // small rule above the title
+    // wrap + fit the title: largest size (64→36) that fits in 3 lines
+    $wrap = function ($text, $size) use ($font) {
+        $lines = []; $line = '';
+        foreach (preg_split('/\s+/u', $text) as $w) {
+            $try = $line === '' ? $w : "$line $w";
+            $bb = imagettfbbox($size, 0, $font, $try);
+            if ($bb[2] - $bb[0] > 1040 && $line !== '') { $lines[] = $line; $line = $w; } else $line = $try;
+        }
+        if ($line !== '') $lines[] = $line;
+        return $lines;
+    };
+    for ($size = 64; $size >= 36; $size -= 4) { $lines = $wrap($title, $size); if (count($lines) <= 3) break; }
+    $lines = array_slice($lines, 0, 3);
+    $y = 150 + $size;
+    foreach ($lines as $ln) { imagettftext($im, $size, 0, 80, $y, $white, $font, $ln); $y += (int) ($size * 1.35); }
+    if ($sub !== '') {
+        $sub = mb_substr($sub, 0, 90);
+        for ($ss = 26; $ss > 16; $ss -= 2) { $bb = imagettfbbox($ss, 0, $font, $sub); if ($bb[2] - $bb[0] <= 1040) break; }
+        imagettftext($im, $ss, 0, 80, $H - 80, $soft, $font, $sub);
+    }
+    $ok = imagepng($im, $file, 6);
+    imagedestroy($im);
+    return $ok ? "$url/$key.png" : '';
+}
+function seop_og_target_id() {
+    if (is_front_page()) return (int) get_option('page_on_front');
+    return is_singular() ? (int) get_queried_object_id() : -1;
+}
+// Yoast: add ours only when the page has no image of its own.
+add_action('wpseo_add_opengraph_images', function ($container) {
+    $pid = seop_og_target_id(); if ($pid < 0 || !is_object($container) || $container->has_images()) return;
+    $u = seop_og_image_url($pid); if ($u) $container->add_image(['url' => $u, 'width' => 1200, 'height' => 630]);
+});
+// Rank Math
+add_filter('rank_math/opengraph/facebook/image', function ($img) {
+    if ($img) return $img; $pid = seop_og_target_id(); return $pid < 0 ? $img : (seop_og_image_url($pid) ?: $img);
+});
+add_filter('rank_math/opengraph/twitter/image', function ($img) {
+    if ($img) return $img; $pid = seop_og_target_id(); return $pid < 0 ? $img : (seop_og_image_url($pid) ?: $img);
+});
+// No SEO plugin: print og:image / twitter:image ourselves (featured image wins).
+add_action('wp_head', function () {
+    if (seop_seo_plugin() !== 'none' || !seop_feature('og_images')) return;
+    $pid = seop_og_target_id(); if ($pid < 0) return;
+    $og = $pid ? (string) get_post_meta($pid, '_seoplatform_og_tags', true) : '';
+    if ($og && stripos($og, 'og:image') !== false && strpos($og, '[IMAGE_URL]') === false) return;   // imported tags carry a real image
+    $img = $pid && has_post_thumbnail($pid) ? (string) get_the_post_thumbnail_url($pid, 'full') : seop_og_image_url($pid);
+    if (!$img) return;
+    echo "\n<meta property=\"og:image\" content=\"" . esc_url($img) . "\">\n<meta property=\"og:image:width\" content=\"1200\">\n<meta property=\"og:image:height\" content=\"630\">\n<meta name=\"twitter:card\" content=\"summary_large_image\">\n<meta name=\"twitter:image\" content=\"" . esc_url($img) . "\">\n";
+}, 21);
+// ── E-E-A-T box under platform-written posts ────────────────────────────────
+add_filter('the_content', function ($content) {
+    if (!seop_feature('eeat_box') || !is_singular('post') || !in_the_loop() || !is_main_query()) return $content;
+    $pid = get_the_ID();
+    if (!get_post_meta($pid, '_seoplatform_external_id', true)) return $content;   // only pieces the platform wrote
+    $b = seop_business();
+    $about = trim((string) ($b['about_text'] ?? ''));
+    if ($about === '' || !($b['name'] ?? '')) return $content;
+    return $content . '<aside class="seop-about" style="margin:32px 0 8px;padding:18px 20px;border:1px solid rgba(0,0,0,.12);border-radius:10px;font-size:.95em">'
+        . '<strong>About ' . esc_html($b['name']) . '</strong><p style="margin:.5em 0 0">' . esc_html($about) . '</p></aside>';
+}, 98);
+
 /* Settings screen: REST base + API key + the package file importer. */
 add_action('admin_menu', function () {
     add_options_page('SEO Platform Connector', 'SEO Platform', 'manage_options', 'seo-platform', 'seop_settings_page');
@@ -1328,6 +1588,14 @@ function seop_settings_page() {
     }
     // v1.2: AI auto-fix settings + run-now
     $aiReport = null;
+    if (isset($_POST['seop_feat_save']) && check_admin_referer('seop_feat')) {
+        $cur = [];
+        foreach (['delay_scripts', 'gzip', 'webp', 'og_images', 'footer_nap', 'eeat_box'] as $k) $cur[$k] = empty($_POST['seop_f_' . $k]) ? 0 : 1;
+        $c = sanitize_text_field(wp_unslash($_POST['seop_f_brand_color'] ?? ''));
+        $cur['brand_color'] = preg_match('/^#[0-9a-f]{6}$/i', $c) ? $c : '#1F2A44';
+        update_option(SEOP_OPT_FEATURES, $cur);
+        echo '<div class="notice notice-success"><p>Site features saved.</p></div>';
+    }
     if (isset($_POST['seop_ai_save']) && check_admin_referer('seop_ai')) {
         $cron = !empty($_POST['seop_ai_cron']);
         update_option(SEOP_OPT_AI_CRON, $cron ? 1 : 0);
@@ -1398,6 +1666,20 @@ function seop_settings_page() {
             echo '</ul>';
         }
     }
+
+    // v1.13: site-experience switches
+    $labels = [
+        'delay_scripts' => 'Load chat widgets and reCAPTCHA on the visitor\'s first interaction (faster first paint)',
+        'gzip' => 'Compress pages (gzip) when the server doesn\'t already',
+        'webp' => 'Create WebP versions of new uploads (served automatically via srcset)',
+        'og_images' => 'Branded share image for pages without one',
+        'footer_nap' => 'Business name, address and phone in the footer (only when the page doesn\'t show the address)',
+        'eeat_box' => '"About the business" box under platform-written posts',
+    ];
+    echo '<h2>Site features</h2><form method="post">' . wp_nonce_field('seop_feat', '_wpnonce', true, false) . '<table class="form-table">';
+    foreach ($labels as $k => $l) echo '<tr><th>' . esc_html(ucwords(str_replace('_', ' ', $k))) . '</th><td><label><input type="checkbox" name="seop_f_' . $k . '" value="1"' . checked((bool) seop_feature($k), true, false) . '> ' . esc_html($l) . '</label></td></tr>';
+    echo '<tr><th>Share image color</th><td><input type="text" name="seop_f_brand_color" value="' . esc_attr(seop_feature('brand_color')) . '" pattern="#[0-9a-fA-F]{6}" style="width:110px"> <span class="description">background of the branded share images</span></td></tr>';
+    echo '</table><p><button class="button" name="seop_feat_save" value="1">Save site features</button></p></form>';
 
     echo '<h2>Connection</h2><table class="form-table">';
     echo '<tr><th>REST base URL</th><td><code>' . esc_html($base) . '</code></td></tr>';

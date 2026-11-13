@@ -85,6 +85,26 @@ WordPress site automatically — without ever touching the site's appearance.
     strategists: per client, else per partner group; falls back to the
     group's account manager).
 
+- **v1.13 — Site experience + richer data** (each switchable under
+  Settings → SEO Platform → Site features, or from the deploy file's
+  `features` block; all on by default):
+  - **Faster pages**: chat widgets and reCAPTCHA load on the visitor's first
+    interaction; HTML is gzip-compressed when the server doesn't already
+    (skipped when a caching plugin is active); new uploads get WebP
+    sub-sizes, served through WordPress' responsive srcset.
+  - **Branded share images**: a 1200×630 card (page title, business name,
+    city) for every page without an image — wired into Yoast, Rank Math, or
+    printed directly; `[IMAGE_URL]` placeholders in imported OG tags are
+    replaced with it. Font: DejaVu Sans Bold (license in `assets/`).
+  - **Footer NAP**: business name, address and click-to-call phone, only
+    when the page doesn't already show the street address.
+  - **E-E-A-T box** under platform-written posts, from the approved intake
+    (owner, years in business, credentials, license, associations).
+  - **llms-full.txt**: the whole site as Markdown at `/llms-full.txt` (the
+    package's copy, else built from published pages; 12-hour cache).
+  - **Per-piece schema**: each imported piece's own JSON-LD (Article /
+    BlogPosting, Service, HowTo, FAQPage) is printed in its `<head>`.
+
 ## What it cannot do (by design)
 - No theme, template, CSS, layout, menu, widget, or settings changes.
 - Unapproved content is never published — it arrives as drafts; only content

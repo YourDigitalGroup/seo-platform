@@ -14,8 +14,10 @@
 --                    quantity_per_interval each time
 --                    (GBP posts 1–3×/mo, Monthly Reporting, AEO Pillar Pages 1×/mo)
 --    fixed_quantity  quantity_total across the WHOLE contract, not per month
---                    (Branded Blog Writing 1/2/3 total — per-contract total
---                     confirmed with the business owner 2026-07-02;
+--                    (Branded Blog Writing 1/2/4 total — per-contract total
+--                     over the 6-month program, confirmed with the business
+--                     owner 2026-07-02 and again 2026-11-13: SEO Starter 1,
+--                     SEO Pro 2, AEO Pro 4;
 --                     Radio to Video Ad 1/2 total; Targeted Landing Pages ≤5 total)
 --    one_time        a single setup / as-needed task
 --                    (Schema Implementation,
@@ -89,7 +91,7 @@ values
   ('pro',    'GBP Management & Posting',              'content','gbp_post','recurring',      1, 3, null, true,  10),
   ('starter','Branded Blog Writing',                  'content','blog',    'fixed_quantity', 1, null, 1, true,  20),
   ('builder','Branded Blog Writing',                  'content','blog',    'fixed_quantity', 1, null, 2, true,  20),
-  ('pro',    'Branded Blog Writing',                  'content','blog',    'fixed_quantity', 1, null, 3, true,  20),
+  ('pro',    'Branded Blog Writing',                  'content','blog',    'fixed_quantity', 1, null, 4, true,  20),
   ('starter','Local Listing Optimization',            'fix',    null,      'continuous',     1, null, null, true, 40),
   ('builder','Local Listing Optimization',            'fix',    null,      'continuous',     1, null, null, true, 40),
   ('pro',    'Local Listing Optimization',            'fix',    null,      'continuous',     1, null, null, true, 40),

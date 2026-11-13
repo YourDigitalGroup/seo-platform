@@ -72,7 +72,11 @@ the agency uploads ONE file regardless of which CMS the client runs.
   //    — then skip with a reason) and llms_txt at /llms.txt (text/plain).
   //    sitemap_xml is a FALLBACK: if Fourge generates its own sitemap, skip it
   //    and note that in the report.
-  "site_files": { "robots_txt": "…", "llms_txt": "…", "sitemap_xml": "…" },
+  //    llms_full_txt (when present): serve at /llms-full.txt (text/plain,
+  //    X-Robots-Tag: noindex) — the whole site as Markdown for AI tools. If it
+  //    is absent, BUILD it: the llms.txt header + every published page's
+  //    readable text as Markdown, cached and rebuilt when content changes.
+  "site_files": { "robots_txt": "…", "llms_txt": "…", "llms_full_txt": "…", "sitemap_xml": "…" },
 
   // 5) Redirects. rules[] is what you apply (301 path → URL, exact path match,
   //    trailing-slash-insensitive). raw is the .htaccess/nginx text for
@@ -101,9 +105,27 @@ the agency uploads ONE file regardless of which CMS the client runs.
       "post_type": "post", "kind": "blog|landing|service|pillar|faq",
       "focus_keyword": "…", "location": "Town, ST", "approved": true,
       "status": "schedule", "schedule": "2026-08-11T09:00:00.000Z",
-      "qa": ["unresolved [CLIENT TO CONFIRM] …"]     // non-empty = needs human review; refuse to publish (create as draft) until empty
+      "qa": ["unresolved [CLIENT TO CONFIRM] …"],    // non-empty = needs human review; refuse to publish (create as draft) until empty
+      "schema": [ { "@type": "BlogPosting" }, { "@type": "FAQPage" } ]  // this piece's own JSON-LD (Article/BlogPosting, Service, HowTo, FAQPage from its visible copy): print in that page's <head>
     }
   ],
+
+  // 7b) Site-experience switches (all default on). Implement each in the
+  //     Fourge template:
+  //     · delay_scripts — chat widgets (LeadConnector/msgsndr, Tawk, Intercom,
+  //       HubSpot …) and reCAPTCHA load on the visitor's first scroll / tap /
+  //       key / mouse move (15 s fallback), not at page load.
+  //     · gzip — compress HTML/CSS/JS/SVG/JSON responses (gzip or brotli).
+  //     · webp — serve responsive WebP images (srcset with 2–3 widths, explicit
+  //       width/height, lazy-load below the fold, eager + fetchpriority=high
+  //       for the LCP image).
+  //     · og_images — a branded 1200×630 share image for every page without
+  //       one (page title + business name + city, brand colour background).
+  //     · footer_nap — business name, address, click-to-call phone in the
+  //       footer when the page doesn't already show the street address.
+  //     · eeat_box — "About <business>" box under blog posts, text =
+  //       business.about_text (written from approved intake facts only).
+  "features": { "delay_scripts": true, "gzip": true, "webp": true, "og_images": true, "footer_nap": true, "eeat_box": true },
 
   // 8) Things a human must do (GBP posts, server-level items, directive
   //    tasks). Display them in the report — do not attempt to automate.
