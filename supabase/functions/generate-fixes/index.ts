@@ -336,7 +336,9 @@ async function businessFacts(client: any, ctx: any): Promise<Facts> {
   const url = (v: unknown) => /^https?:\/\/\S+$/i.test(String(v || "").trim()) ? String(v).trim() : "";
   const origin = "https://" + String(client?.url || "").replace(/^https?:\/\//i, "").replace(/\/+$/, "").split("/")[0];
   const f: Facts = {
-    origin, name: String(iv.business_name || ctx?.business_name || client?.name || "").trim(),
+    // The client's real name beats the audit context, which falls back to the
+    // bare domain when the homepage couldn't be read.
+    origin, name: String(iv.business_name || client?.name || ctx?.business_name || "").trim(),
     phone: String(iv.phone || "").trim(), email: String(iv.email || "").trim(),
     street: String(iv.street || "").trim(), city: String(iv.city || "").trim(), state: String(iv.state || "").trim(), zip: String(iv.zip || "").trim(),
     hours: String(iv.hours || "").trim(), description: String(iv.description || "").trim(),
@@ -357,7 +359,7 @@ async function businessFacts(client: any, ctx: any): Promise<Facts> {
       let p: any = null;
       if (client?.gbp_place_id) {
         const r = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(client.gbp_place_id)}`,
-          { headers: H("location,regularOpeningHours,rating,userRatingCount,googleMapsUri,nationalPhoneNumber"), signal: AbortSignal.timeout(12_000) });
+          { headers: H("location,regularOpeningHours,rating,userRatingCount,googleMapsUri,nationalPhoneNumber,addressComponents,displayName"), signal: AbortSignal.timeout(12_000) });
         if (r.ok) p = await r.json();
       } else if (f.street && f.city) {
         const r = await fetch("https://places.googleapis.com/v1/places:searchText", { method: "POST", headers: H("places.location"),
@@ -381,6 +383,13 @@ async function businessFacts(client: any, ctx: any): Promise<Facts> {
       if (!f.rating && p?.rating != null) f.rating = String(p.rating);
       if (!f.reviews && p?.userRatingCount != null) f.reviews = String(p.userRatingCount);
       if (!f.phone && p?.nationalPhoneNumber) f.phone = p.nationalPhoneNumber;
+      // Address from the listing when the intake has none.
+      const comp = (t: string, short = false) => { const c = (p?.addressComponents || []).find((x: any) => (x.types || []).includes(t)); return c ? String(short ? c.shortText : c.longText) : ""; };
+      if (!f.street && comp("route")) f.street = [comp("street_number"), comp("route")].filter(Boolean).join(" ");
+      if (!f.city && comp("locality")) f.city = comp("locality");
+      if (!f.state && comp("administrative_area_level_1")) f.state = comp("administrative_area_level_1", true);
+      if (!f.zip && comp("postal_code")) f.zip = comp("postal_code");
+      if (!f.name && p?.displayName?.text) f.name = String(p.displayName.text);
       if (p?.googleMapsUri && !f.sameAs.some((u: string) => /google\.[a-z.]+\/(maps|search)|maps\.google|g\.page|goo\.gl/i.test(u))) f.sameAs.push(p.googleMapsUri);
     } catch { /* Places unavailable — facts from intake only */ }
   }
