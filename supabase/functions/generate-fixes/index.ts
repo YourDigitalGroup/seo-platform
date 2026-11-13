@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
       if (fErr || !fix) { results.push({ id, error: "fix not found" }); continue; }
       const { data: audit } = await supa.from("audits").select("client_id").eq("id", fix.audit_id).single();
       const { data: client } = audit
-        ? await supa.from("clients").select("url, market").eq("id", audit.client_id).single()
+        ? await supa.from("clients").select("id, name, url, market, intake, gbp_place_id").eq("id", audit.client_id).single()
         : { data: null };
 
       const ctx = fix.context || {};
@@ -169,13 +169,29 @@ Deno.serve(async (req) => {
 
         if (SCHEMA_KINDS.has(kind)) {
           // ── Deterministic JSON-LD scaffolds (no AI; reliable + free) ──────────
-          schema_jsonld = buildSchema(kind, { name, city, page, kw });
-          after_text = "<script type=\"application/ld+json\">\n" +
-            JSON.stringify(schema_jsonld, null, 2) + "\n</script>";
+          // Real data only: intake facts + the pinned Business Profile
+          // (coordinates, structured hours, rating). A field we don't have is
+          // left out — never a "[STREET]" placeholder that ships to a site.
+          const facts = await businessFacts(client, ctx);
+          const built = buildSchema(kind, { name, city, page, kw, facts });
+          schema_jsonld = built.jsonld;
+          fix.context = { ...(fix.context || {}), schema_missing: built.missing };
+          after_text = schema_jsonld
+            ? "<script type=\"application/ld+json\">\n" + JSON.stringify(schema_jsonld, null, 2) + "\n</script>"
+            : `Not generated — ${built.missing.join(", ")} missing. Fill it in on the client's intake (or pin the Business Profile) and regenerate.`;
 
         } else if (FILE_KINDS.has(kind)) {
           // ── Deterministic deployable files/snippets (v4; no AI) ───────────────
           after_text = buildFileArtifact(kind, { name, city, page, ctx });
+
+        } else if (kind === "llms_txt") {
+          // Built from facts, not invented: intake + the audited pages. Also
+          // assembles llms-full.txt (every key page as Markdown) for AI tools
+          // that read a whole site in one file.
+          const facts = await businessFacts(client, ctx);
+          const out = await buildLlms(facts, fix.audit_id, supa);
+          after_text = out.llms;
+          fix.context = { ...(fix.context || {}), llms_full: out.full, llms_pages: out.pages };
 
         } else if (kind === "image_alt") {
           // Fetch the page, read <img> tags missing alt, write alt text for each.
@@ -223,7 +239,7 @@ Deno.serve(async (req) => {
           revision: (fix.revision || 1) + (instruction ? 1 : 0),
         };
         if (usedModel) update.model = MODEL_ENUM[usedModel] ?? null;
-        if (kind === "faq_schema" && fix.context) update.context = fix.context;
+        if ((kind === "faq_schema" || kind === "llms_txt" || SCHEMA_KINDS.has(kind)) && fix.context) update.context = fix.context;
         if (instruction) update.last_instruction = instruction;
         if (editor_id) update.edited_by = editor_id;
         const { error: upErr } = await supa.from("fixes").update(update).eq("id", id);
@@ -310,39 +326,219 @@ async function pageFaqs(url: string): Promise<{ q: string; a: string }[]> {
 }
 
 // ── Deterministic JSON-LD scaffolds (filled from context) ─────────────────────
-function buildSchema(kind: string, a: { name: string; city: string; page: string; kw: string }) {
-  const origin = (() => { try { return new URL(a.page).origin; } catch { return a.page; } })();
-  switch (kind) {
-    case "local_business_schema":
-      // Stable @id so Service/blog schema on other pages can reference this
-      // entity instead of re-declaring it.
-      return { "@context": "https://schema.org", "@type": "LocalBusiness", "@id": `${origin}/#business`, name: a.name, url: origin,
-        address: { "@type": "PostalAddress", addressLocality: a.city || "[CITY]", addressRegion: "[STATE]", postalCode: "[ZIP]", streetAddress: "[STREET]" },
-        geo: { "@type": "GeoCoordinates", latitude: "[LAT]", longitude: "[LNG]" },
-        openingHours: "[e.g. Mo-Fr 08:00-17:00]",
-        telephone: "[PHONE]", areaServed: a.city || "[CITY]", image: `${origin}/[IMAGE]`,
-        sameAs: ["[GBP_URL]", "[FACEBOOK_URL]", "[LINKEDIN_URL]"] };
-    case "org_schema":
-      return { "@context": "https://schema.org", "@type": "Organization", name: a.name, url: origin,
-        logo: `${origin}/[LOGO]`, sameAs: ["[FACEBOOK_URL]", "[INSTAGRAM_URL]", "[LINKEDIN_URL]"] };
-    case "person_schema":
-      return { "@context": "https://schema.org", "@type": "Person", name: "[FULL NAME]", jobTitle: "[TITLE]",
-        worksFor: { "@type": "Organization", name: a.name }, url: a.page,
-        sameAs: ["[PROFILE_URL_1]", "[PROFILE_URL_2]"], knowsAbout: a.kw ? [a.kw] : ["[EXPERTISE]"] };
-    case "breadcrumb_schema":
-      return { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
-        { "@type": "ListItem", position: 1, name: "Home", item: origin },
-        { "@type": "ListItem", position: 2, name: "[SECTION]", item: `${origin}/[section]` },
-        { "@type": "ListItem", position: 3, name: "[PAGE]", item: a.page } ] };
-    case "aggregate_rating_schema":
-      return { "@context": "https://schema.org", "@type": "LocalBusiness", name: a.name, url: origin,
-        aggregateRating: { "@type": "AggregateRating", ratingValue: "[AVG e.g. 4.9]", reviewCount: "[COUNT]", bestRating: "5" } };
-    case "website_schema":
-      return { "@context": "https://schema.org", "@type": "WebSite", name: a.name, url: origin,
-        potentialAction: { "@type": "SearchAction", target: { "@type": "EntryPoint", urlTemplate: `${origin}/?s={search_term_string}` }, "query-input": "required name=search_term_string" } };
-    default:
-      return { "@context": "https://schema.org", "@type": "Thing", name: a.name };
+// ── Business facts: the client's approved intake + the pinned Google Business
+// Profile (Places API New) for coordinates, structured hours and rating.
+// Without a pinned listing the street address is geocoded through Places.
+type Facts = Record<string, any>;
+async function businessFacts(client: any, ctx: any): Promise<Facts> {
+  const iv: any = client?.intake || {};
+  const list = (v: unknown) => String(v || "").split(/\s*[,\n;]\s*/).map((x) => x.trim()).filter(Boolean);
+  const url = (v: unknown) => /^https?:\/\/\S+$/i.test(String(v || "").trim()) ? String(v).trim() : "";
+  const origin = "https://" + String(client?.url || "").replace(/^https?:\/\//i, "").replace(/\/+$/, "").split("/")[0];
+  const f: Facts = {
+    origin, name: String(iv.business_name || ctx?.business_name || client?.name || "").trim(),
+    phone: String(iv.phone || "").trim(), email: String(iv.email || "").trim(),
+    street: String(iv.street || "").trim(), city: String(iv.city || "").trim(), state: String(iv.state || "").trim(), zip: String(iv.zip || "").trim(),
+    hours: String(iv.hours || "").trim(), description: String(iv.description || "").trim(),
+    category: String(iv.category_primary || iv.categories || ctx?.business_type || "").trim(),
+    services: list(iv.services).length ? list(iv.services) : (Array.isArray(ctx?.services) ? ctx.services.map(String) : []),
+    products: list(iv.products), areas: list(iv.service_areas), languages: list(iv.languages),
+    year: String(iv.year_established || "").trim(), payment: list(iv.payment_types),
+    owner: String(iv.owner || "").trim(), credentials: String(iv.credentials || "").trim(),
+    rating: String(iv.gbp_rating || "").trim(), reviews: String(iv.gbp_reviews || "").trim(),
+    logo: url(iv.logo_url), image: url(iv.cover_image_url),
+    sameAs: [iv.gbp, iv.facebook, iv.instagram, iv.linkedin, iv.x].map(url).filter(Boolean),
+    market: String(client?.market || "").trim(),
+  };
+  const key = await platformKey("GOOGLE_PLACES_API_KEY").catch(() => "");
+  if (key) {
+    const H = (mask: string) => ({ "X-Goog-Api-Key": key, "X-Goog-FieldMask": mask, "Content-Type": "application/json" });
+    try {
+      let p: any = null;
+      if (client?.gbp_place_id) {
+        const r = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(client.gbp_place_id)}`,
+          { headers: H("location,regularOpeningHours,rating,userRatingCount,googleMapsUri,nationalPhoneNumber"), signal: AbortSignal.timeout(12_000) });
+        if (r.ok) p = await r.json();
+      } else if (f.street && f.city) {
+        const r = await fetch("https://places.googleapis.com/v1/places:searchText", { method: "POST", headers: H("places.location"),
+          body: JSON.stringify({ textQuery: `${f.street}, ${f.city}, ${f.state} ${f.zip}`.trim(), pageSize: 1 }), signal: AbortSignal.timeout(12_000) });
+        if (r.ok) p = ((await r.json())?.places || [])[0] || null;
+      }
+      if (p?.location?.latitude != null) { f.lat = Number(Number(p.location.latitude).toFixed(6)); f.lng = Number(Number(p.location.longitude).toFixed(6)); }
+      const DAY = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const pad = (n: number) => String(n ?? 0).padStart(2, "0");
+      const periods: any[] = p?.regularOpeningHours?.periods || [];
+      if (periods.length) {
+        const by = new Map<string, string[]>();
+        periods.forEach((x: any) => {
+          if (!x?.open || !x?.close) return;
+          const k = `${pad(x.open.hour)}:${pad(x.open.minute)}-${pad(x.close.hour)}:${pad(x.close.minute)}`;
+          if (!by.has(k)) by.set(k, []);
+          by.get(k)!.push(DAY[x.open.day]);
+        });
+        f.hoursSpec = [...by.entries()].map(([k, days]) => ({ "@type": "OpeningHoursSpecification", dayOfWeek: days, opens: k.split("-")[0], closes: k.split("-")[1] }));
+      }
+      if (!f.rating && p?.rating != null) f.rating = String(p.rating);
+      if (!f.reviews && p?.userRatingCount != null) f.reviews = String(p.userRatingCount);
+      if (!f.phone && p?.nationalPhoneNumber) f.phone = p.nationalPhoneNumber;
+      if (p?.googleMapsUri && !f.sameAs.some((u: string) => /google\.[a-z.]+\/(maps|search)|maps\.google|g\.page|goo\.gl/i.test(u))) f.sameAs.push(p.googleMapsUri);
+    } catch { /* Places unavailable — facts from intake only */ }
   }
+  return f;
+}
+
+// The most specific schema.org type for the business (Google recommends it).
+function schemaTypeFor(cat: string): string {
+  const c = String(cat || "").toLowerCase();
+  const T: [RegExp, string][] = [
+    [/roof/, "RoofingContractor"], [/plumb/, "Plumber"], [/electric(al|ian)/, "Electrician"],
+    [/hvac|heating|air condition|furnace|cooling/, "HVACBusiness"], [/paint/, "HousePainter"], [/locksmith/, "Locksmith"],
+    [/moving|movers/, "MovingCompany"], [/general contractor|construction|remodel|builder|masonry|paving|concrete|exterior|siding|deck|fenc/, "GeneralContractor"],
+    [/landscap|lawn|tree|garage door|handyman|pest|clean/, "HomeAndConstructionBusiness"],
+    [/dentist|dental|orthodont/, "Dentist"], [/attorney|law firm|lawyer|legal/, "Attorney"],
+    [/dermatolog|aesthetic|med ?spa|medical|clinic|physician|doctor|surgery|sleep center|chiropract/, "MedicalClinic"],
+    [/auto repair|mechanic|collision|body shop/, "AutoRepair"], [/car dealer|auto dealer/, "AutoDealer"],
+    [/restaurant|grill|pizza|bbq|diner/, "Restaurant"], [/cafe|coffee/, "CafeOrCoffeeShop"], [/\bbar\b|pub|brewery/, "BarOrPub"],
+    [/liquor|wine shop/, "LiquorStore"], [/furniture/, "FurnitureStore"], [/bike|e-bike|scooter/, "BikeStore"], [/hardware/, "HardwareStore"],
+    [/floor|carpet|tile/, "HomeGoodsStore"], [/trailer|supply|store|shop|retail|dealer|supplier|nursery/, "Store"],
+    [/insurance/, "InsuranceAgency"], [/real estate|realtor/, "RealEstateAgent"], [/accountant|accounting|cpa|bookkeep|tax/, "AccountingService"],
+    [/salon|barber/, "HairSalon"], [/\bspa\b/, "DaySpa"], [/gym|fitness/, "ExerciseGym"], [/bowling/, "BowlingAlley"],
+    [/consult|marketing|agency|analytics|software|it services|computer|technology|staffing|data/, "ProfessionalService"],
+  ];
+  for (const [re, t] of T) if (re.test(c)) return t;
+  return "LocalBusiness";
+}
+
+function buildSchema(kind: string, a: { name: string; city: string; page: string; kw: string; facts: Facts }): { jsonld: any; missing: string[] } {
+  const f: Facts = a.facts || {};
+  const origin = f.origin || (() => { try { return new URL(a.page).origin; } catch { return a.page; } })();
+  const name = f.name || a.name;
+  const missing: string[] = [];
+  const bizId = `${origin}/#business`;
+  const services: string[] = f.services || [], products: string[] = f.products || [], areas: string[] = f.areas || [], sameAs: string[] = f.sameAs || [];
+  const addr = (f.street || f.city) ? { "@type": "PostalAddress", ...(f.street ? { streetAddress: f.street } : {}),
+    ...(f.city ? { addressLocality: f.city } : {}), ...(f.state ? { addressRegion: f.state } : {}), ...(f.zip ? { postalCode: f.zip } : {}), addressCountry: "US" } : null;
+  const founder = f.owner ? { "@type": "Person", "@id": `${origin}/#owner`, name: String(f.owner).replace(/\s*[,(–—].*$/, "").trim() || f.owner,
+    ...(f.credentials ? { description: f.credentials } : {}), worksFor: { "@id": bizId } } : null;
+  const areaServed = (areas.length ? areas : (f.city ? [f.city] : (a.city ? [a.city] : []))).slice(0, 12).map((x: string) => ({ "@type": "City", name: x }));
+  const offers = [
+    ...services.slice(0, 12).map((x: string) => ({ "@type": "Offer", itemOffered: { "@type": "Service", name: x, provider: { "@id": bizId }, ...(areaServed.length ? { areaServed } : {}) } })),
+    ...products.slice(0, 12).map((x: string) => ({ "@type": "Offer", itemOffered: { "@type": "Product", name: x } })),
+  ];
+  const rating = f.rating && f.reviews && Number(f.reviews) > 0
+    ? { "@type": "AggregateRating", ratingValue: String(f.rating), reviewCount: String(f.reviews), bestRating: "5" } : null;
+  switch (kind) {
+    case "local_business_schema": {
+      if (!name) missing.push("business name");
+      if (!addr) missing.push("address (street/city)");
+      if (!f.phone) missing.push("phone");
+      if (!name) return { jsonld: null, missing };
+      const j: any = { "@context": "https://schema.org", "@type": schemaTypeFor(f.category), "@id": bizId, name, url: origin };
+      if (f.description) j.description = String(f.description).slice(0, 500);
+      if (f.phone) j.telephone = f.phone;
+      if (f.email) j.email = f.email;
+      if (addr) j.address = addr;
+      if (f.lat != null) j.geo = { "@type": "GeoCoordinates", latitude: f.lat, longitude: f.lng }; else missing.push("coordinates (pin the Business Profile or add a street address)");
+      if (f.hoursSpec?.length) j.openingHoursSpecification = f.hoursSpec;
+      else if (/^(Mo|Tu|We|Th|Fr|Sa|Su)[a-z]?([-,](Mo|Tu|We|Th|Fr|Sa|Su)[a-z]?)*\s+\d{1,2}:\d{2}-\d{1,2}:\d{2}/.test(f.hours || "")) j.openingHours = String(f.hours).split(/\s*;\s*/);
+      else missing.push("hours");
+      if (areaServed.length) j.areaServed = areaServed;
+      if (f.logo) j.logo = f.logo;
+      if (f.image || f.logo) j.image = f.image || f.logo;
+      if (sameAs.length) j.sameAs = sameAs;
+      if (founder) j.founder = founder;
+      if (f.year && /^\d{4}$/.test(f.year)) j.foundingDate = f.year;
+      if (f.languages?.length) j.knowsLanguage = f.languages;
+      if (f.payment?.length) j.paymentAccepted = f.payment.join(", ");
+      if (offers.length) j.hasOfferCatalog = { "@type": "OfferCatalog", name: "Services", itemListElement: offers };
+      if (rating) j.aggregateRating = rating;
+      return { jsonld: j, missing };
+    }
+    case "org_schema": {
+      if (!name) return { jsonld: null, missing: ["business name"] };
+      const j: any = { "@context": "https://schema.org", "@type": "Organization", "@id": `${origin}/#organization`, name, url: origin };
+      if (f.logo) j.logo = f.logo; else missing.push("logo URL");
+      if (sameAs.length) j.sameAs = sameAs; else missing.push("social / GBP profile links");
+      if (founder) j.founder = founder;
+      if (f.phone) j.contactPoint = { "@type": "ContactPoint", telephone: f.phone, contactType: "customer service" };
+      return { jsonld: j, missing };
+    }
+    case "person_schema": {
+      if (!founder) return { jsonld: null, missing: ["owner / public contact"] };
+      const j: any = { "@context": "https://schema.org", ...founder, worksFor: { "@type": "Organization", "@id": bizId, name } };
+      const li = sameAs.find((u: string) => /linkedin\.com\/in\//i.test(u)); if (li) j.sameAs = [li];
+      const topics = [...services.slice(0, 6), ...(a.kw ? [a.kw] : [])]; if (topics.length) j.knowsAbout = topics;
+      return { jsonld: j, missing };
+    }
+    case "breadcrumb_schema": {
+      let path: string[] = [];
+      try { path = new URL(a.page).pathname.split("/").filter(Boolean); } catch { /* bad url */ }
+      const nice = (seg: string) => decodeURIComponent(seg).replace(/[-_]+/g, " ").replace(/\.\w+$/, "").replace(/\b\w/g, (c) => c.toUpperCase());
+      const items = [{ "@type": "ListItem", position: 1, name: "Home", item: origin + "/" },
+        ...path.map((seg, i) => ({ "@type": "ListItem", position: i + 2, name: nice(seg), item: `${origin}/${path.slice(0, i + 1).join("/")}/` }))];
+      return { jsonld: { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: items }, missing };
+    }
+    case "aggregate_rating_schema":
+      if (!rating) return { jsonld: null, missing: ["Google rating + review count"] };
+      return { jsonld: { "@context": "https://schema.org", "@type": schemaTypeFor(f.category), "@id": bizId, name, url: origin, aggregateRating: rating }, missing };
+    case "website_schema":
+      return { jsonld: { "@context": "https://schema.org", "@type": "WebSite", "@id": `${origin}/#website`, name, url: origin, publisher: { "@id": bizId },
+        potentialAction: { "@type": "SearchAction", target: { "@type": "EntryPoint", urlTemplate: `${origin}/?s={search_term_string}` }, "query-input": "required name=search_term_string" } }, missing };
+    default:
+      return { jsonld: { "@context": "https://schema.org", "@type": "Thing", name }, missing };
+  }
+}
+
+// ── llms.txt + llms-full.txt from facts and the audited pages ────────────────
+async function buildLlms(f: Facts, auditId: string, supa: any): Promise<{ llms: string; full: string; pages: number }> {
+  let pages: any[] = [];
+  try {
+    const { data } = await supa.from("audits").select("raw").eq("id", auditId).maybeSingle();
+    pages = ((data?.raw?.pages || []) as any[]).filter((p) => p && p.ok !== false && p.url && !/\.(xml|json|txt|pdf)(\?|$)/i.test(p.url));
+  } catch { /* no page list */ }
+  const seen = new Set<string>();
+  pages = pages.filter((p) => { const k = String(p.url).replace(/^https?:\/\/(www\.)?/i, "").replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 30);
+  if (!pages.length) pages = [{ url: f.origin + "/", title: f.name }];
+  const clean = (t: unknown) => String(t || "").replace(/\s+/g, " ").trim();
+  const title = (p: any) => clean(p.title).split(/\s[|–—-]\s/)[0] || clean(p.url).replace(/^https?:\/\/[^/]+/, "") || "Page";
+  const services: string[] = f.services || [], products: string[] = f.products || [], areas: string[] = f.areas || [], sameAs: string[] = f.sameAs || [];
+  const where = [f.city, f.state].filter(Boolean).join(", ") || f.market;
+  const L: string[] = [`# ${f.name || f.origin}`, ""];
+  L.push(`> ${f.description ? clean(f.description).slice(0, 400) : `${f.name} is a ${f.category || "local business"}${where ? ` serving ${where}` : ""}.`}`, "");
+  const factsList = [
+    f.category && `Business type: ${f.category}`, where && `Location: ${[f.street, where, f.zip].filter(Boolean).join(", ")}`,
+    areas.length && `Service area: ${areas.join(", ")}`, f.phone && `Phone: ${f.phone}`, f.email && `Email: ${f.email}`,
+    f.hours && `Hours: ${f.hours}`, f.year && `Established: ${f.year}`, f.owner && `Owner: ${f.owner}`,
+    f.credentials && `Credentials: ${clean(f.credentials)}`, f.rating && f.reviews && `Google rating: ${f.rating} (${f.reviews} reviews)`,
+  ].filter(Boolean) as string[];
+  if (factsList.length) L.push("## Key facts", "", ...factsList.map((x) => `- ${x}`), "");
+  if (services.length) L.push("## Services", "", ...services.map((x) => `- ${x}`), "");
+  if (products.length) L.push("## Products", "", ...products.map((x) => `- ${x}`), "");
+  L.push("## Key pages", "", ...pages.map((p) => `- [${title(p)}](${p.url})${clean(p.metaDesc) ? `: ${clean(p.metaDesc).slice(0, 160)}` : ""}`), "");
+  if (sameAs.length) L.push("## Profiles", "", ...sameAs.map((u) => `- ${u}`), "");
+  L.push("## Optional", "", `- [Full site text for AI tools](${f.origin}/llms-full.txt)`, "");
+  const llms = L.join("\n");
+  // llms-full.txt: the same header + every key page's readable text.
+  const toMd = (html: string) => html
+    .replace(/<(script|style|noscript|svg|template|nav|footer|header|form|iframe)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m: string, n: string, t: string) => `\n\n${"#".repeat(Math.min(6, Math.max(3, Number(n) + 1)))} ${clean(t.replace(/<[^>]+>/g, ""))}\n\n`)
+    .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_m: string, t: string) => `\n- ${clean(t.replace(/<[^>]+>/g, ""))}`)
+    .replace(/<(p|div|section|article|br|tr)\b[^>]*>/gi, "\n").replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&").replace(/&#0?39;|&rsquo;|&lsquo;/g, "'").replace(/&quot;|&ldquo;|&rdquo;/g, '"').replace(/&[a-z]+;/gi, " ")
+    .split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const bodies = await Promise.all(pages.slice(0, 25).map(async (p) => {
+    try {
+      const r = await fetch(p.url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; 44i-llms/1.0)" }, signal: AbortSignal.timeout(10_000) });
+      if (!r.ok || !/html/i.test(r.headers.get("content-type") || "")) return "";
+      const html = await r.text();
+      const main = (html.match(/<main\b[\s\S]*?<\/main>/i) || html.match(/<article\b[\s\S]*?<\/article>/i) || html.match(/<body\b[\s\S]*?<\/body>/i) || [html])[0];
+      const md = toMd(main).slice(0, 12_000);
+      return md.split(/\s+/).length > 40 ? `## ${title(p)}\n\nURL: ${p.url}\n\n${md}` : "";
+    } catch { return ""; }
+  }));
+  const kept = bodies.filter(Boolean);
+  const full = [llms.replace(/\n## Optional[\s\S]*$/, "").trim(), "", "---", "", kept.join("\n\n---\n\n")].join("\n").slice(0, 400_000);
+  return { llms, full, pages: kept.length };
 }
 
 // ── Deterministic deployable files/snippets (v4 directive engine) ─────────────
