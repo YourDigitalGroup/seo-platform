@@ -5,6 +5,12 @@
 //    · daily  → { "mode": "daily-audits" }   audit-only re-run per active
 //               client (scores + history + verification; no new fixes/topics/
 //               package — that stays the monthly campaign cycle).
+//    · { "mode": "full-packages", "client_ids"?: [...] } — a FULL package run
+//               (topics for every planned content deliverable + freshly
+//               written fixes) for each active client, or the listed ones.
+//    · { "mode": "draft-backlog", "limit"?: 4 } — writes drafts for topics
+//               that have none yet (oldest campaign month first), a few per
+//               run; pg_cron repeats it until the backlog is empty.
 //    · weekly → { "mode": "weekly-reports" } rebuilds the client progress
 //               report for every active client's latest package, so the
 //               white-label deliverable is never more than 7 days stale.
@@ -44,7 +50,7 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const FRESH_HOURS = 20;
-const SCHED_VERSION = "1.4.0";   // echoed in every response so a stale deploy is self-evident
+const SCHED_VERSION = "1.5.0";   // echoed in every response so a stale deploy is self-evident
 const STALE_JOB_MIN = 30;        // a background audit never legitimately runs this long
 const MAX_RATE_RETRIES = 4;
 
@@ -67,9 +73,9 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   if (!isServiceRole(req)) return json({ error: "service role only — fired by pg_cron (seop_invoke_scheduler)" }, 403);
   try {
-    const { mode, limit } = await req.json().catch(() => ({}));
-    if (mode !== "daily-audits" && mode !== "weekly-reports" && mode !== "daily-advice-local" && mode !== "daily-gsc") {
-      return json({ error: "mode must be daily-audits, weekly-reports, daily-advice-local or daily-gsc" }, 400);
+    const { mode, limit, client_ids } = await req.json().catch(() => ({}));
+    if (!["daily-audits", "weekly-reports", "daily-advice-local", "daily-gsc", "full-packages", "draft-backlog"].includes(mode)) {
+      return json({ error: "mode must be daily-audits, weekly-reports, daily-advice-local, daily-gsc, full-packages or draft-backlog" }, 400);
     }
     // Default cap covers the WHOLE roster (dispatches are fast 202s — the
     // audits run in their own background invocations), so "daily" really
@@ -161,6 +167,48 @@ Deno.serve(async (req) => {
         skipped_fresh:eligible.length-targets.length});
     }
 
+    if (mode === "draft-backlog") {
+      // Topics with no draft, for active clients, oldest campaign month first.
+      const n = Math.min(Math.max(1, Number(limit) || 4), 12);
+      const { data: act } = await supa.from("clients").select("id").eq("status", "active").limit(500);
+      const ids = (act || []).map((c: any) => c.id);
+      const { data: pks } = ids.length ? await supa.from("packages").select("id, client_id").in("client_id", ids) : { data: [] as any[] };
+      const pkIds = (pks || []).map((p: any) => p.id);
+      const { data: tops } = pkIds.length ? await supa.from("content_topics").select("id, package_id, created_at")
+        .in("package_id", pkIds).eq("status", "queued").order("created_at", { ascending: true }).limit(1000) : { data: [] as any[] };
+      const tIds = (tops || []).map((t: any) => t.id);
+      const have = new Set<string>();
+      for (let i = 0; i < tIds.length; i += 200) {
+        const { data: dr } = await supa.from("content_drafts").select("topic_id, body").in("topic_id", tIds.slice(i, i + 200));
+        (dr || []).forEach((d: any) => { if (String(d.body || "").trim()) have.add(d.topic_id); });
+      }
+      const monthOf: Record<string, number> = {};
+      for (let i = 0; i < tIds.length; i += 200) {
+        const { data: dl } = await supa.from("deliverables").select("topic_id, month_offset").in("topic_id", tIds.slice(i, i + 200));
+        (dl || []).forEach((d: any) => { monthOf[d.topic_id] = d.month_offset || 99; });
+      }
+      const todo = (tops || []).filter((t: any) => !have.has(t.id))
+        .sort((a: any, b: any) => (monthOf[a.id] ?? 99) - (monthOf[b.id] ?? 99));
+      const batch = todo.slice(0, n);
+      const res = { ok: 0, failed: 0 };
+      const work = (async () => {
+        for (let i = 0; i < batch.length; i += 2) {
+          await Promise.allSettled(batch.slice(i, i + 2).map(async (t: any) => {
+            try {
+              const r = await fetch(`${base}/functions/v1/generate-content`, { method: "POST",
+                headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ topic_id: t.id }), signal: AbortSignal.timeout(180_000) });
+              if (r.ok) res.ok++; else { res.failed++; console.error("draft-backlog", t.id, r.status, (await r.text()).slice(0, 200)); }
+            } catch (e) { res.failed++; console.error("draft-backlog", t.id, String(e).slice(0, 200)); }
+          }));
+        }
+        console.log(`draft-backlog: ${res.ok} drafted, ${res.failed} failed, ${todo.length - batch.length} still waiting`);
+      })();
+      const er0 = (globalThis as any).EdgeRuntime;
+      if (er0?.waitUntil) er0.waitUntil(work); else await work;
+      return json({ ok: true, mode, version: SCHED_VERSION, drafting: batch.length, backlog: todo.length });
+    }
+
     // Reap audit jobs whose worker was killed mid-run (no finally ever ran).
     let reaped = 0;
     try {
@@ -191,18 +239,22 @@ Deno.serve(async (req) => {
       .sort((a: any, b: any) => a.last - b.last);
     if (mode === "daily-audits") {
       targets = targets.filter((c: any) => now - c.last > FRESH_HOURS * 3600 * 1000);
+    } else if (mode === "full-packages") {
+      const only = Array.isArray(client_ids) ? new Set(client_ids.map(String)) : null;
+      if (only) targets = targets.filter((c: any) => only.has(c.id));
     } else {
       // weekly-reports: only clients that have ever been audited (a report needs a package)
       targets = targets.filter((c: any) => c.last > 0);
     }
     targets = targets.slice(0, cap);
 
-    const fn = mode === "daily-audits" ? "run-audit" : "generate-report";
+    const fn = (mode === "daily-audits" || mode === "full-packages") ? "run-audit" : "generate-report";
     // background:true → run-audit (5.5.0+) answers fast and finishes in its
     // own invocation, so a slow site can't 504 out of the nightly rotation.
     // Older deployed engines ignore the flag and run synchronously as before.
     const bodyFor = (c: any) => mode === "daily-audits"
       ? { client_id: c.id, audit_only: true, background: true }
+      : mode === "full-packages" ? { client_id: c.id, background: true }
       : { client_id: c.id };
 
     // Dispatch with modest concurrency; completion happens in the target
@@ -238,12 +290,14 @@ Deno.serve(async (req) => {
       }
     };
     const dispatch = (async () => {
-      const CONC = 5;
+      // Full package runs are heavier (AI topic + fix writing): smaller
+      // batches, longer gaps.
+      const CONC = mode === "full-packages" ? 3 : 5, GAP = mode === "full-packages" ? 10000 : 2000;
       for (let i = 0; i < targets.length; i += CONC) {
         await Promise.allSettled(targets.slice(i, i + CONC).map(send));
         // run-audit answers 202 in ~50ms, so back-to-back batches all land on
         // one worker; a short gap lets the platform spread them out
-        if (i + CONC < targets.length) await sleep(2000);
+        if (i + CONC < targets.length) await sleep(GAP);
       }
       console.log(`${mode}: dispatched ${targets.length} client(s) — ok ${stats.ok}, failed ${stats.failed}, rate-limit waits ${stats.rate_limited}`);
     })();
