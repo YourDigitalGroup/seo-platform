@@ -1038,7 +1038,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.36.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.37.0</div>
   </div>
   </div>
 </div>
@@ -1126,7 +1126,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.36.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.37.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1174,7 +1174,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.36.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.37.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1337,7 +1337,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.36.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.37.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1355,7 +1355,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.36.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.37.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1418,7 +1418,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.36.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.37.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -2626,13 +2626,20 @@ async function loadLiveAudit(){
   pk.topics=[];
   if(pk.package_id){
     const M2K={'sonnet-4-6':'sonnet','opus-4-8':'opus','haiku-4-5':'haiku'};
+    // The campaign's content spans every monthly package (each month's run
+    // adds topics for months still unwritten), so load all of this client's
+    // packages — otherwise earlier months' approved pieces vanish from the
+    // queue and the Deploy file as soon as a new month's package is built.
+    const { data: allPk } = await sb.from('packages').select('id').eq('client_id', forClient.id);
+    const pkIds=[...new Set([pk.package_id, ...((allPk||[]).map(x=>x.id))])];
     let [tr, drf] = await Promise.all([
-      sb.from('content_topics').select('*').eq('package_id', pk.package_id),
-      sb.from('content_drafts').select('id,topic_id,body,revision,approved,image_url,image_alt,generated_body,approval_type').eq('package_id', pk.package_id),
+      sb.from('content_topics').select('*').in('package_id', pkIds),
+      sb.from('content_drafts').select('id,topic_id,body,revision,approved,image_url,image_alt,generated_body,approval_type').in('package_id', pkIds),
     ]);
     // content_approval_type.sql / platform_extras.sql not run yet: older shapes
-    if(drf.error) drf = await sb.from('content_drafts').select('id,topic_id,body,revision,approved,image_url,image_alt').eq('package_id', pk.package_id);
-    if(drf.error) drf = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', pk.package_id);
+    if(drf.error) drf = await sb.from('content_drafts').select('id,topic_id,body,revision,approved,image_url,image_alt').in('package_id', pkIds);
+    if(drf.error) drf = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').in('package_id', pkIds);
+    pk.package_ids=pkIds;
     const byTopic={}; (drf.data||[]).forEach(d=>{ const c=byTopic[d.topic_id]; if(!c||(d.revision||1)>(c.revision||1)) byTopic[d.topic_id]=d; });
     pk.topics=(tr.data||[]).filter(t=>t.status!=='retired').map(t=>{ const d=byTopic[t.id];
       return { _id:t.id, title:t.title, keyword:t.target_keyword||'', kind:t.kind||'blog', model:M2K[t.model]||'sonnet',
@@ -5284,8 +5291,8 @@ function addTopic(){
 }
 async function reloadDrafts(){
   if(OFFLINE || !PK.package_id) return;
-  let { data:drf, error:drfErr } = await sb.from('content_drafts').select('id,topic_id,body,revision,approved,generated_body,approval_type').eq('package_id', PK.package_id);
-  if(drfErr) ({ data:drf } = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').eq('package_id', PK.package_id));
+  let { data:drf, error:drfErr } = await sb.from('content_drafts').select('id,topic_id,body,revision,approved,generated_body,approval_type').in('package_id', PK.package_ids||[PK.package_id]);
+  if(drfErr) ({ data:drf } = await sb.from('content_drafts').select('id,topic_id,body,revision,approved').in('package_id', PK.package_ids||[PK.package_id]));
   const byTopic={}; (drf||[]).forEach(d=>{ const c=byTopic[d.topic_id]; if(!c||(d.revision||1)>(c.revision||1)) byTopic[d.topic_id]=d; });
   PK.topics.forEach(t=>{ const d=byTopic[t._id]; if(d){ t.body=d.body; t.revision=d.revision;
     if('generated_body' in d){ t.generated=d.generated_body||null; t.approval=d.approval_type||null; }
