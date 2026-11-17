@@ -1038,7 +1038,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.37.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.38.0</div>
   </div>
   </div>
 </div>
@@ -1126,7 +1126,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.37.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.38.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1174,7 +1174,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.37.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.38.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1337,7 +1337,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.37.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.38.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1355,7 +1355,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.37.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.38.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1418,7 +1418,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.37.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.38.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -4936,6 +4936,7 @@ function renderQueue(){
     `<div class="qbar"><span class="qsum">${PK.topics.length} piece${PK.topics.length===1?'':'s'} · ${summary}</span>
       ${(()=>{const n=PK.topics.filter(t=>t.body&&qaScan(t.body).blocking.length).length;
         return n?`<button class="qgen" style="background:#C0392B;margin-right:8px" onclick="autoFixFlagged()" title="Rewrite every flagged draft with its violations as explicit removal instructions"><i class="fa-solid fa-triangle-exclamation"></i> Auto-fix ${n} flagged →</button>`:'';})()}
+      ${PK.topics.some(t=>t.body)?`<button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="downloadAllContent()" title="Download every written piece — website content and GBP posts — as separate .txt files (publish date, SEO fields, full text), zipped in one folder per campaign month"><i class="fa-solid fa-file-zipper"></i> All content</button>`:''}
       ${PK.topics.some(t=>t.kind==='gbp_post'&&t.body)?`<button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="downloadGbpPosts()" title="Download every written GBP post — one .txt file each (publish date + full post), zipped"><i class="fa-solid fa-download"></i> GBP posts</button>`:''}
       ${PK.topics.some(t=>t.kind==='gbp_post'&&t.status==='approved')?`<button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="sendGbpPostsToTrello()" title="Put every approved GBP post on the client's Trello card — one .txt file each, with its publish date and the full post"><i class="fa-brands fa-trello"></i> GBP posts → Trello</button>`:''}<button class="qgen" style="background:var(--s-card);color:var(--ink);border:1px solid var(--line);margin-right:8px" onclick="downloadClientDoc()" title="Download a clean, partner-branded summary of the approved pieces to send to the client"><i class="fa-solid fa-file-export"></i> Client doc</button><button class="qgen" id="sugbtn" style="background:var(--navy);margin-right:8px" onclick="suggestTopics()" title="Claude combines the owner's business description with the audit data and proposes topics — you pick what to queue"><i class="fa-solid fa-lightbulb"></i> Suggest topics</button>
       <button class="qgen" onclick="generateDrafts()">Generate drafts →</button></div>`;
@@ -6805,6 +6806,30 @@ function contentSchema(t, d, bodyMd, when){
   push();
   if(qa.length>=2) out.push({'@context':'https://schema.org','@type':'FAQPage',mainEntity:qa.slice(0,10).map(x=>({'@type':'Question',name:x.q,acceptedAnswer:{'@type':'Answer',text:x.a}}))});
   return out;
+}
+// Every written piece of the campaign — website content AND GBP posts — as
+// separate .txt files in one zip, one folder per campaign month (files carry
+// the publish date, SEO fields, approval status and the full text).
+function downloadAllContent(){
+  const list=(PK.topics||[]).filter(t=>t.body&&t.status!=='retired');
+  if(!list.length){ showToast('No written content yet — generate drafts first',true); return; }
+  const monthOf={}; (PK.campaign||[]).forEach(d=>{ if(d.topic_id) monthOf[d.topic_id]=d.month_offset||0; });
+  const gsch=gbpSchedule(), used=new Set();
+  const files=list.map(t=>{
+    const f=t.kind==='gbp_post'?gbpPostFile(t, gsch[t._id||t.title]):contentPieceFile(t);
+    const m=monthOf[t._id];
+    let name=(m?`Month ${String(m).padStart(2,'0')}`:'Unscheduled')+'/'+f.name;
+    while(used.has(name)) name=name.replace(/\.txt$/,'_2.txt');
+    used.add(name);
+    return { name, text:f.text };
+  });
+  const site=String((activeClient&&activeClient.url)||'site').replace(/^https?:\/\//,'').replace(/[^a-z0-9.-]/gi,'_').replace(/_+$/,'');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(zipFiles(files));
+  a.download=`content-${site}-${new Date().toISOString().slice(0,10)}.zip`;
+  document.body.appendChild(a); a.click(); a.remove();
+  const appr=list.filter(t=>t.status==='approved').length;
+  showToast(`${files.length} content file${files.length===1?'':'s'} downloaded · ${appr} approved, ${files.length-appr} awaiting approval (marked in each file)`, false, true);
 }
 function buildDeployPackage(){
   const c=activeClient||{};
