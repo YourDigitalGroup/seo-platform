@@ -335,7 +335,7 @@ function eeatSignals(html: string, types: string[]){ const text=html.toLowerCase
 
 // Bump on EVERY behavior change. Returned in the response + notes so a stale
 // Supabase deployment is diagnosable in seconds instead of by symptom.
-const ENGINE_VERSION = "5.14.2";
+const ENGINE_VERSION = "5.15.0";
 
 /* Google Places weekday_text → the intake's compact hours format:
  * ["Monday: 8:00 AM – 5:00 PM", …] → "Mo-Fr 8:00 AM – 5:00 PM; Sa-Su Closed" */
@@ -388,12 +388,42 @@ async function runAuditPipeline(body: any): Promise<Response> {
     const home = `https://${target}/`;
     const today = new Date().toISOString().slice(0, 10);
 
-    // Defensive GET against the search-intelligence API.
+    // Defensive GET against the search-intelligence API, pulled WEEKLY: a
+    // successful response is kept in ahrefs_cache and reused for 7 days (key =
+    // endpoint + params minus `date`), so the daily audits re-check the site
+    // itself every day but only spend Ahrefs units once a week per client.
+    // body.ahrefs_refresh: true forces a fresh pull. Failures are never cached.
+    const AH_TTL_MS = 7 * 24 * 3600 * 1000;
+    const ahFresh = body?.ahrefs_refresh === true;
+    const ahStat = { hit: 0, live: 0, oldest: "" };
+    const ahKey = async (path: string, params: Record<string, string>) => {
+      const stable = Object.keys(params).filter((k) => k !== "date").sort().map((k) => `${k}=${params[k]}`).join("&");
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${path}?${stable}`));
+      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    };
     const ah = async (path: string, params: Record<string, string>) => {
+      let key = "";
+      try {
+        key = await ahKey(path, params);
+        if (!ahFresh) {
+          const { data: c } = await supa.from("ahrefs_cache").select("response, fetched_at").eq("key", key).maybeSingle();
+          if (c && Date.now() - new Date(c.fetched_at).getTime() < AH_TTL_MS) {
+            ahStat.hit++;
+            if (!ahStat.oldest || c.fetched_at < ahStat.oldest) ahStat.oldest = c.fetched_at;
+            return c.response;
+          }
+        }
+      } catch { /* cache unavailable: pull live */ }
       try {
         const r = await fetch(`${AHREFS}/${path}?${new URLSearchParams(params)}`, { headers: { Authorization: `Bearer ${AHREFS_KEY}`, Accept: "application/json" } });
         if (!r.ok) { errors.push(`${path} ${r.status}: ${(await r.text()).slice(0,160)}`); return null; }
-        return await r.json();
+        const out = await r.json();
+        ahStat.live++;
+        if (key && out != null) {
+          await supa.from("ahrefs_cache").upsert({ key, path, target: String(params.target || params.project_url || params.project_id || params.keyword || "").slice(0, 300) || null,
+            response: out, fetched_at: new Date().toISOString() }).then(() => {}, () => {});
+        }
+        return out;
       } catch (e) { errors.push(`${path}: ${String(e)}`); return null; }
     };
     // Defensive page fetch with parsing.
@@ -987,6 +1017,9 @@ async function runAuditPipeline(body: any): Promise<Response> {
         psi = retake;
       }
     }
+    if (ahStat.hit || ahStat.live) note.push(ahStat.hit && !ahStat.live
+      ? `Ahrefs data reused from this week's pull (${ahStat.hit} calls, fetched ${ahStat.oldest.slice(0, 10)}; refreshes weekly).`
+      : `Ahrefs: ${ahStat.live} live call(s)${ahStat.hit ? `, ${ahStat.hit} reused from this week's pull` : ""}${ahFresh ? " (forced refresh)" : ""}.`);
     if (psi) note.push(`PageSpeed measured (mobile perf ${psi.score ?? "—"}, ${psi.field ? "field" : "lab"} data).`);
     if (!psi) { psi = { score: null, lcp_ms: null, cls: null, inp_ms: null, tbt_ms: null, ttfb_ms: ttfbMs, field: false, fixables: [] };
       note.push("PageSpeed unavailable — performance graded from response-time heuristics only."); }
