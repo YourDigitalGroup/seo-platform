@@ -96,6 +96,11 @@ the agency uploads ONE file regardless of which CMS the client runs.
   //    external_id → idempotency key: re-importing the same file UPDATES the
   //      same items instead of duplicating them. Store it on the record.
   //    body_html is sanitized HTML (allow standard content tags, strip scripts).
+  //    body_html may contain photos: <figure><img src alt loading="lazy"></figure>
+  //      (or an inline <img>) hosted on the platform's storage (*.supabase.co).
+  //      Allow img/figure, download each one into the site's own media store
+  //      once (key on the source URL) and rewrite src to the local copy; keep
+  //      the alt text. If a download fails, leave the original src.
   //    post_type "page" vs "post" → map to Fourge's equivalents.
   "content": [
     { "external_id": "uuid", "title": "…", "body_html": "<h2>…</h2><p>…</p>",
