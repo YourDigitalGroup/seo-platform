@@ -745,6 +745,15 @@ footer .fbadges{display:flex;gap:18px}
 .dm-visual li{margin:2px 0}
 .dm-visual a{color:var(--blue);text-decoration:underline}
 .dm-visual blockquote{margin:0 0 10px;padding:6px 12px;border-left:3px solid var(--line);color:var(--muted)}
+.dm-visual figure{margin:0 0 10px}
+.dm-visual img{display:block;max-width:100%;max-height:340px;height:auto;border-radius:6px;margin:4px 0}
+.dm-visual.ci-drag{border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.18)}
+#img-overlay,#ci-overlay{z-index:60}
+.ci-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:150px;padding:14px;border:2px dashed var(--line);border-radius:var(--r-sm);background:var(--mist);color:var(--muted);font-size:13px;text-align:center;cursor:pointer}
+.ci-drop:hover,.ci-drop.over{border-color:var(--blue);color:var(--ink)}
+.ci-drop img{max-width:100%;max-height:220px;border-radius:6px}
+.ci-field{display:block;margin-top:12px;font-size:12px;font-weight:700;color:var(--muted)}
+.ci-field input{display:block;width:100%;margin-top:5px;font-family:inherit;font-size:14px;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);color:var(--ink)}
 .dm-rewrite{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
 .dm-instr{font-family:inherit;font-size:13px;line-height:1.5;width:100%;min-height:74px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--s-card);color:var(--ink);resize:vertical}
 .dm-instr:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(75,155,215,.12)}
@@ -1038,7 +1047,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.38.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.39.0</div>
   </div>
   </div>
 </div>
@@ -1126,7 +1135,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.38.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.39.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1174,7 +1183,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.38.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.39.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1337,7 +1346,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.38.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.39.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1355,7 +1364,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.38.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.39.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1418,7 +1427,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.38.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.39.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1509,8 +1518,27 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <button class="mbtn primary" onclick="imgSearch()">Search</button>
     </div>
     <div id="img-grid" class="img-grid"></div>
-    <div class="wmeta" style="margin-top:10px">Photos from Pexels — free to use commercially.</div>
-    <div class="mfoot"><button class="mbtn" onclick="imgClose()">Cancel</button></div>
+    <div class="wmeta" style="margin-top:10px">Photos from Pexels — free to use commercially. Or use the client's own photo:</div>
+    <div class="mfoot"><button class="mbtn" onclick="imgUploadOwn()"><i class="fa-solid fa-upload"></i> Upload your own</button><span style="flex:1"></span><button class="mbtn" onclick="imgClose()">Cancel</button></div>
+  </div>
+</div>
+<div class="overlay" id="ci-overlay">
+  <div class="modal" style="max-width:520px">
+    <h2 style="margin:0 0 6px" id="ci-title">Insert a photo</h2>
+    <div class="wmeta" id="ci-note" style="margin-bottom:12px"></div>
+    <input type="file" id="ci-file" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none" onchange="ciFileChosen(this.files)">
+    <div class="ci-drop" id="ci-drop" onclick="document.getElementById('ci-file').click()">
+      <i class="fa-solid fa-cloud-arrow-up" style="font-size:22px"></i>
+      <span id="ci-drop-lab">Click to choose a photo, or drop one here<br><small>JPG, PNG, WEBP or GIF · up to 10 MB</small></span>
+      <img id="ci-preview" alt="" style="display:none">
+    </div>
+    <label class="ci-field">Alt text — describe the photo (screen readers and image search)
+      <input id="ci-alt" type="text" maxlength="160" placeholder="e.g. Technician repairing a garage door spring in Tulsa">
+    </label>
+    <label class="ci-field">…or use an image URL instead of uploading
+      <input id="ci-url" type="url" placeholder="https://…">
+    </label>
+    <div class="mfoot"><button class="mbtn" onclick="ciClose()">Cancel</button><button class="mbtn primary" id="ci-go" onclick="ciInsert()">Insert photo</button></div>
   </div>
 </div>
 
@@ -1543,6 +1571,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <button type="button" onclick="dmCmd('insertOrderedList')" title="Numbered list"><i class="fa-solid fa-list-ol"></i></button>
       <span class="sep"></span>
       <button type="button" onclick="dmLink()" title="Insert link"><i class="fa-solid fa-link"></i></button>
+      <button type="button" onclick="dmImage()" title="Insert a photo: upload from your computer (you can also paste or drag one into the editor)"><i class="fa-solid fa-image"></i></button>
       <button type="button" onclick="dmCmd('removeFormat')" title="Clear formatting"><i class="fa-solid fa-eraser"></i></button>
     </div>
     <div class="dm-visual" id="dm-visual" contenteditable="true"></div>
@@ -3349,7 +3378,7 @@ function genBody(t){
 }
 // ── Rank-Math-style on-page Content Score: grade a draft against its focus keyword ──
 function scoreContent(body, keyword, title, kind){
-  body=body||''; keyword=(keyword||'').trim(); title=title||'';
+  body=String(body||'').replace(/!\[[^\]]*\]\([^)]*\)/g,' ').replace(/<img\b[^>]*>/gi,' '); keyword=(keyword||'').trim(); title=title||'';
   const text=body.replace(/<[^>]+>/g,' ').replace(/[#*_>`]/g,' ');
   const words=(text.match(/[A-Za-z0-9’']+/g)||[]); const wc=words.length;
   const kw=keyword.toLowerCase(); const kwWords=kw.split(/\s+/).filter(Boolean);
@@ -3455,7 +3484,10 @@ async function dmLink(){
 // blockquote, br. Unknown wrappers fall through to their text.
 function html2md(html){
   const tmp=document.createElement('div'); tmp.innerHTML=String(html||'');
-  const BLOCK=/^(h[1-6]|p|div|ul|ol|blockquote|table)$/;
+  const BLOCK=/^(h[1-6]|p|div|ul|ol|blockquote|table|figure)$/;
+  // a photo → ![alt](src); pasted data: / blob: images are dropped (upload them instead)
+  const imgMd=(n)=>{ const src=(n.getAttribute('src')||'').trim(); if(!/^https?:\/\//i.test(src)) return '';
+    return '!['+String(n.getAttribute('alt')||'').replace(/[\[\]\r\n]+/g,' ').replace(/\s+/g,' ').trim()+']('+src.replace(/[\s()]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase().padStart(2,'0'))+')'; };
   const inline=(node)=>{
     let s='';
     node.childNodes.forEach(n=>{
@@ -3463,6 +3495,7 @@ function html2md(html){
       if(n.nodeType!==1) return;
       const tag=n.tagName.toLowerCase();
       if(tag==='br'){ s+='\n'; return; }
+      if(tag==='img'){ s+=imgMd(n); return; }
       const inner=inline(n);
       if(tag==='strong'||tag==='b'){ const t=inner.trim(); s+=t?'**'+t+'**':''; }
       else if(tag==='em'||tag==='i'){ const t=inner.trim(); s+=t?'*'+t+'*':''; }
@@ -3490,6 +3523,8 @@ function html2md(html){
       [...n.children].forEach(li=>{ if(li.tagName&&li.tagName.toLowerCase()==='li'){ const t=inline(li).trim().replace(/\n+/g,' '); if(t) items.push((tag==='ul'?'- ':(i++)+'. ')+t); } });
       if(items.length) blocks.push(items.join('\n')); return;
     }
+    if(tag==='img'){ const t=imgMd(n); if(t) blocks.push(t); return; }
+    if(tag==='figure'){ n.querySelectorAll('img').forEach(im=>{ const t=imgMd(im); if(t) blocks.push(t); }); return; }
     if(tag==='blockquote'){ const t=inline(n).trim(); if(t) blocks.push(t.split(/\n+/).map(l=>'> '+l.trim()).join('\n')); return; }
     if(tag==='p'||tag==='div'){
       // execCommand sometimes nests block elements inside divs — recurse
@@ -4973,13 +5008,125 @@ async function imgSearch(){
 async function imgPick(i){
   const p=_imgPhotos[i]; if(p==null||_draftIdx==null) return;
   const t=PK.topics[_draftIdx];
-  t.image=p.url; t.image_alt=p.alt||t.keyword||t.title;
+  await setDraftImage(p.url, p.alt||t.keyword||t.title);
+  imgClose();
+}
+// The draft's featured image (WordPress) / post photo (GBP): a Pexels pick or
+// an uploaded photo. Saved on the draft row right away.
+async function setDraftImage(url, alt, msg){
+  if(_draftIdx==null) return; const t=PK.topics[_draftIdx];
+  t.image=url; t.image_alt=alt||t.keyword||t.title;
   if(!OFFLINE&&t._id){
     const {error}=await sb.from('content_drafts').update({image_url:t.image, image_alt:t.image_alt}).eq('topic_id',t._id);
     if(error&&/column/i.test(error.message||'')) showToast('Image chosen but not saved — run platform_extras.sql (see runbook)',true);
+    else if(error) showToast('Image chosen but not saved: '+error.message,true);
   }
   const lab=document.getElementById('dm-img-lab'); if(lab) lab.textContent='Image ✓';
-  imgClose(); renderQueue(); showToast('Image attached — it ships as the featured image / post photo',false,true);
+  renderQueue(); showToast(msg||'Image attached — it ships as the featured image / post photo',false,true);
+}
+function imgUploadOwn(){ imgClose(); dmImage('featured'); }
+
+// ── PHOTO UPLOAD from the content editor ────────────────────────────────
+// Visual mode: the toolbar photo button, or paste / drag a photo into the
+// editor. The file goes to the public content-images bucket and lands in the
+// copy as ![alt](url) (markdown stays canonical). The WordPress connector
+// copies it into the site's media library on import. GBP posts carry one
+// photo, so there an upload becomes the post photo instead.
+const CI_TYPES=['image/jpeg','image/png','image/webp','image/gif'];
+let _ci={mode:'inline', range:null, mdPos:null, file:null, preview:''};
+async function uploadContentImage(file){
+  if(!file) throw Error('No file chosen');
+  if(!CI_TYPES.includes(file.type)) throw Error('Use a JPG, PNG, WEBP or GIF image');
+  if(file.size>10*1024*1024) throw Error('Images must be smaller than 10 MB');
+  if(OFFLINE) throw Error('Uploading needs the live platform');
+  const t=_draftIdx!=null?PK.topics[_draftIdx]:null;
+  const ext={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'}[file.type];
+  // a readable file name — WordPress keeps it when it copies the photo in
+  const base=String(file.name||'').replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,50)
+    || String((t&&(t.keyword||t.title))||'photo').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,50) || 'photo';
+  const path=`${(activeClient&&activeClient.id)||'shared'}/${(t&&t._id)||'misc'}/${Date.now().toString(36)}-${base}.${ext}`;
+  const {error}=await sb.storage.from('content-images').upload(path,file,{contentType:file.type,upsert:false});
+  if(error) throw Error(/bucket/i.test(error.message||'')?'content-images storage bucket missing — run content_images.sql':error.message);
+  return sb.storage.from('content-images').getPublicUrl(path).data.publicUrl;
+}
+function dmImage(mode, file, range){
+  if(_draftIdx==null||!canEditContent()) return;
+  const t=PK.topics[_draftIdx];
+  const featured=mode==='featured'||t.kind==='gbp_post';
+  _ci={mode:featured?'featured':'inline', range:null, mdPos:null, file:null, preview:''};
+  if(!featured){
+    if(DM_MODE==='visual'){
+      const ed=document.getElementById('dm-visual'), sel=window.getSelection();
+      if(range) _ci.range=range;
+      else if(sel&&sel.rangeCount&&ed.contains(sel.anchorNode)) _ci.range=sel.getRangeAt(0).cloneRange();
+    } else { const ta=document.getElementById('dm-body'); _ci.mdPos=ta.selectionStart; }
+  }
+  document.getElementById('ci-title').textContent=featured?(t.kind==='gbp_post'?'Post photo':'Featured image'):'Insert a photo';
+  document.getElementById('ci-note').textContent=t.kind==='gbp_post'
+    ? 'A Google Business Profile post carries one photo — this becomes the post photo (it replaces any stock photo picked before).'
+    : featured ? 'Becomes the featured image on WordPress (replaces any stock photo picked before).'
+    : 'Placed where your cursor is. When the deploy file is imported, WordPress copies it into the site\'s own media library.';
+  document.getElementById('ci-go').textContent=featured?'Use this photo':'Insert photo';
+  document.getElementById('ci-file').value='';
+  document.getElementById('ci-url').value='';
+  document.getElementById('ci-alt').value='';
+  ciShowPreview('');
+  document.getElementById('ci-overlay').classList.add('open');
+  if(file) ciFileChosen([file]);
+}
+function ciShowPreview(src){
+  if(_ci.preview){ try{ URL.revokeObjectURL(_ci.preview); }catch(_){} }
+  _ci.preview=src&&src.startsWith('blob:')?src:'';
+  const im=document.getElementById('ci-preview'), lab=document.getElementById('ci-drop-lab');
+  im.src=src||''; im.style.display=src?'':'none'; lab.style.display=src?'none':'';
+}
+function ciFileChosen(files){
+  const f=files&&files[0]; if(!f) return;
+  if(!CI_TYPES.includes(f.type)){ showToast('Use a JPG, PNG, WEBP or GIF image',true); return; }
+  if(f.size>10*1024*1024){ showToast('Images must be smaller than 10 MB',true); return; }
+  _ci.file=f; document.getElementById('ci-url').value='';
+  ciShowPreview(URL.createObjectURL(f));
+  document.getElementById('ci-alt').focus();
+}
+function ciClose(){ ciShowPreview(''); document.getElementById('ci-overlay').classList.remove('open'); _ci.file=null; }
+async function ciInsert(){
+  const alt=document.getElementById('ci-alt').value.replace(/[\[\]\r\n]+/g,' ').replace(/\s+/g,' ').trim();
+  const urlIn=document.getElementById('ci-url').value.trim();
+  if(!_ci.file&&!/^https:\/\/\S+$/i.test(urlIn)){ showToast('Choose a photo to upload, or paste an https:// image URL',true); return; }
+  if(!alt){ showToast('Add alt text — a short description of the photo',true); document.getElementById('ci-alt').focus(); return; }
+  const btn=document.getElementById('ci-go'), label=btn.textContent;
+  btn.disabled=true; btn.textContent=_ci.file?'Uploading…':'Saving…';
+  try{
+    const url=_ci.file?await uploadContentImage(_ci.file):urlIn;
+    if(_ci.mode==='featured'){
+      const t=PK.topics[_draftIdx];
+      await setDraftImage(url, alt, t&&t.kind==='gbp_post'?'Photo saved — it ships as the post photo':'Photo saved — it ships as the featured image');
+    } else dmInsertImage(url, alt);
+    ciClose();
+  }catch(e){ showToast('Photo upload failed: '+String(e.message||e),true); }
+  finally{ btn.disabled=false; btn.textContent=label; }
+}
+function dmInsertImage(url, alt){
+  if(DM_MODE==='visual'){
+    const ed=document.getElementById('dm-visual'); ed.focus();
+    const s=window.getSelection(); s.removeAllRanges();
+    let r=_ci.range;
+    if(!r||!ed.contains(r.startContainer)){ r=document.createRange(); r.selectNodeContents(ed); r.collapse(false); }
+    s.addRange(r);
+    document.execCommand('insertHTML', false, '<figure><img src="'+esc(url)+'" alt="'+esc(alt)+'"></figure><p><br></p>');
+  } else {
+    const ta=document.getElementById('dm-body'), pos=_ci.mdPos==null?ta.value.length:_ci.mdPos;
+    ta.value=(ta.value.slice(0,pos).replace(/\s*$/,'')+'\n\n!['+alt+']('+url+')\n\n'+ta.value.slice(pos).replace(/^\s*/,'')).trim();
+  }
+  renderDraftScore();
+  showToast('Photo inserted — click Save edits to keep it',false,true);
+}
+// paste or drag a photo straight into the Visual editor → the same dialog, file preloaded
+function ciEditorFiles(e, files, range){
+  const f=[...(files||[])].find(x=>x&&CI_TYPES.includes(x.type)); if(!f) return;
+  e.preventDefault();
+  if(document.getElementById('dm-visual').getAttribute('contenteditable')!=='true') return;
+  dmImage(null, f, range);
 }
 // ── CLIENT NOTES — free-form team notes per client (clients.notes). Edited
 // on the Setup tab (auto-saves) or from the "notes" chip on a client card;
@@ -6496,6 +6643,8 @@ function md2html(md){
   const esc2=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const safeHref=u=>{ u=String(u||'').trim(); return /^(https?:\/\/|\/(?!\/)|#|mailto:|tel:)/i.test(u)?u.replace(/["'<>\s]/g,''):''; };
   const inline=s=>esc2(s)
+    // ![alt](https://…) — a photo. Only absolute http(s) sources; alt stays text.
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g,(w,alt,url)=>{ const u=url.replace(/&amp;/g,'&').trim(); return /^https?:\/\//i.test(u)?'<img src="'+esc2(u.replace(/["'<>\s]/g,''))+'" alt="'+alt.replace(/"/g,'&quot;')+'" loading="lazy">':''; })
     .replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+&quot;[^)]*&quot;|\s+"[^"]*")?\)/g,(w,txt,url)=>{ const h=safeHref(url.replace(/&amp;/g,'&')); return h?'<a href="'+esc2(h).replace(/"/g,'')+'">'+txt+'</a>':txt; })
     .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g,'$1<em>$2</em>')
     .replace(/`+/g,''); // stray backticks (model code fences) never belong in client copy
@@ -6520,6 +6669,7 @@ function md2html(md){
     if(!t){ flushAll(); continue; }
     if(/^[-*_]{3,}$/.test(t)){ flushAll(); continue; }   // '---' separators: headings already delineate sections
     if(/^```/.test(t)){ flushAll(); continue; }          // code-fence lines: never part of the copy
+    if(/^!\[[^\]]*\]\([^)\s]+\)$/.test(t)){ flushAll(); const im=inline(t); if(im) out.push('<figure>'+im+'</figure>'); continue; }  // a photo on its own line
     if(/^\|.*\|$/.test(t)){ flush(); flushList(); (table=table||[]).push(t); continue; }
     flushTable();
     if((m=t.match(/^(#{1,6})\s+(.*)/))) heading(m[1].length, m[2]);
@@ -6609,7 +6759,8 @@ function gbpSchedule(){
 }
 function fmtPostDate(d){ return d.toLocaleDateString('en-US',{weekday:'long', month:'long', day:'numeric', year:'numeric', timeZone:'America/Chicago'}); }
 function mdToPlain(md){
-  return String(md||'').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'$1 ($2)').replace(/\*\*([^*]+)\*\*/g,'$1').replace(/\*([^*]+)\*/g,'$1')
+  return String(md||'').replace(/!\[([^\]]*)\]\((https?:[^)\s]+)\)/g,(w,a,u)=>'[Photo: '+(a.trim()||'image')+' - '+u+']')
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'$1 ($2)').replace(/\*\*([^*]+)\*\*/g,'$1').replace(/\*([^*]+)\*/g,'$1')
     .replace(/^#{1,6}\s+/gm,'').replace(/^>\s?/gm,'').replace(/\n{3,}/g,'\n\n').trim();
 }
 function gbpPostFile(t, sch){
@@ -7030,6 +7181,23 @@ document.getElementById('modal').addEventListener('click',e=>{ if(e.target===doc
 document.getElementById('draft-modal').addEventListener('click',e=>{ if(e.target===document.getElementById('draft-modal')) closeDraft(); });
 document.getElementById('dm-body').addEventListener('input', renderDraftScore);
 document.getElementById('dm-visual').addEventListener('input', renderDraftScore);
+(function(){
+  const ed=document.getElementById('dm-visual');
+  ed.addEventListener('paste', e=>ciEditorFiles(e, e.clipboardData&&e.clipboardData.files));
+  ed.addEventListener('dragover', e=>{ if(e.dataTransfer&&[...e.dataTransfer.items||[]].some(i=>i.kind==='file')){ e.preventDefault(); ed.classList.add('ci-drag'); } });
+  ed.addEventListener('dragleave', ()=>ed.classList.remove('ci-drag'));
+  ed.addEventListener('drop', e=>{
+    ed.classList.remove('ci-drag');
+    let r=null; try{ r=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;
+      if(!r&&document.caretPositionFromPoint){ const p=document.caretPositionFromPoint(e.clientX,e.clientY); if(p){ r=document.createRange(); r.setStart(p.offsetNode,p.offset); r.collapse(true); } } }catch(_){}
+    ciEditorFiles(e, e.dataTransfer&&e.dataTransfer.files, r&&ed.contains(r.startContainer)?r:null);
+  });
+  const drop=document.getElementById('ci-drop');
+  drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', ()=>drop.classList.remove('over'));
+  drop.addEventListener('drop', e=>{ e.preventDefault(); drop.classList.remove('over'); ciFileChosen(e.dataTransfer&&e.dataTransfer.files); });
+  document.getElementById('ci-overlay').addEventListener('click', e=>{ if(e.target.id==='ci-overlay') ciClose(); });
+})();
 try{ document.execCommand('defaultParagraphSeparator', false, 'p'); }catch(e){}
 document.getElementById('l-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
 

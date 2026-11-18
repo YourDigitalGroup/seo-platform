@@ -108,6 +108,26 @@ function buildPrompt(kind: string, title: string, keyword: string, biz: string, 
   return `${base}\n${kindBrief[kind] ?? kindBrief.blog}`;
 }
 
+// Photos uploaded in the console editor live in the copy as ![alt](url).
+const PHOTO_MD = /!\[[^\]]*\]\(https?:\/\/[^)\s]+\)/;
+function keepPhotos(before: string, after: string): string {
+  const photos = before.match(new RegExp(PHOTO_MD.source, "g")) || [];
+  let out = after;
+  for (const ph of photos) {
+    const url = (ph.match(/\((https?:\/\/[^)\s]+)\)/) || [])[1] || "";
+    if (!url || out.includes(url)) continue;
+    // the nearest heading above the photo in the old copy
+    const head = (before.slice(0, before.indexOf(ph)).match(/^#{2,4}\s+.+$/gm) || []).pop() || "";
+    const at = head ? out.indexOf(head) : -1;
+    if (at >= 0) {
+      const lineEnd = out.indexOf("\n", at);
+      const pos = lineEnd < 0 ? out.length : lineEnd;
+      out = out.slice(0, pos) + "\n\n" + ph + "\n" + out.slice(pos);
+    } else out = out.replace(/\s*$/, "") + "\n\n" + ph;
+  }
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -154,7 +174,9 @@ Deno.serve(async (req) => {
       .from("content_drafts").select("id, revision, body")
       .eq("topic_id", topic_id).order("revision", { ascending: false }).limit(1).maybeSingle();
     if (instruction && existing?.body) {
-      prompt += `\n\nHere is the current draft:\n\n${existing.body}\n\nRevise it according to these instructions: ${instruction}\n\nOutput only the revised content.`;
+      prompt += `\n\nHere is the current draft:\n\n${existing.body}\n\nRevise it according to these instructions: ${instruction}\n\n` +
+        (PHOTO_MD.test(existing.body) ? "The draft contains photos the strategist placed, written as ![alt text](url) on their own lines. Keep every one of them exactly as written (same alt text and URL), in the same section, unless the instructions say to remove a photo.\n\n" : "") +
+        `Output only the revised content.`;
     }
 
     // 3. Call the Anthropic API
@@ -182,9 +204,12 @@ Deno.serve(async (req) => {
     const data = await aRes.json();
     // Models sometimes wrap the piece in markdown code fences (or leave stray
     // fence lines mid-text) — backticks must never reach client-facing copy.
-    const body = (data.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n")
+    let body = (data.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n")
       .replace(/^\s*```[a-z]*\s*\n/i, "").replace(/\n```\s*$/i, "")
       .replace(/^\s*```[a-z]*\s*$/gim, "").trim();
+    // A rewrite must not lose the strategist's photos: any the model dropped
+    // go back under the heading they sat under (or at the end).
+    if (body && instruction && existing?.body && !/\b(remove|delete|drop|take out)\b[^.]*\b(photo|image|picture|pic)s?\b/i.test(String(instruction))) body = keepPhotos(existing.body, body);
     const usage = data.usage ?? null;
     if (data.stop_reason === "max_tokens") {
       // a cut-off piece must never land as a finished draft

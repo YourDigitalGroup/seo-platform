@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Your Digital Group SEO Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from your agency's SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-focused — it never changes your theme, layout, menus or visual settings; its only visible additions are optional (footer business address, an About box under platform-written posts) and switchable under Settings → SEO Platform. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.13.0
+ * Version: 1.14.0
  * Author: Your Digital Group
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -38,7 +38,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.13.0');
+define('SEOP_VERSION', '1.14.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -208,6 +208,43 @@ function seop_write_meta($post_id, $title, $desc, $canonical) {
     }
 }
 
+/* v1.14: copy remote <img> sources in imported copy into the media library.
+ * Only images hosted on the platform's storage (*.supabase.co) or Pexels are
+ * copied; each source is downloaded once per site (attachment meta
+ * _seoplatform_source_url), so re-imports reuse the same attachment. A copy
+ * that fails leaves the original URL in place — the page still shows it. */
+function seop_localize_images($content, $title = '') {
+    if (stripos($content, '<img') === false) return $content;
+    if (!preg_match_all('/<img\b[^>]*\bsrc\s*=\s*["\']([^"\']+)["\'][^>]*>/i', $content, $m, PREG_SET_ORDER)) return $content;
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    $done = [];
+    foreach (array_slice($m, 0, 20) as $hit) {
+        $tag = $hit[0]; $src = html_entity_decode($hit[1], ENT_QUOTES);
+        if (isset($done[$src])) { $new = $done[$src]; }
+        else {
+            $host = strtolower((string) wp_parse_url($src, PHP_URL_HOST));
+            if (!$host || !filter_var($src, FILTER_VALIDATE_URL) || !preg_match('/(^|\.)(supabase\.co|pexels\.com)$/', $host)) continue;
+            $alt = preg_match('/\balt\s*=\s*["\']([^"\']*)["\']/i', $tag, $am) ? html_entity_decode($am[1], ENT_QUOTES) : '';
+            $found = get_posts(['post_type' => 'attachment', 'post_status' => 'inherit', 'numberposts' => 1, 'fields' => 'ids',
+                'meta_key' => '_seoplatform_source_url', 'meta_value' => $src]);
+            $att = $found ? (int) $found[0] : 0;
+            if (!$att) {
+                $att = media_sideload_image(esc_url_raw($src), 0, sanitize_text_field($alt ?: $title), 'id');
+                if (is_wp_error($att) || !$att) continue;
+                update_post_meta($att, '_seoplatform_source_url', $src);
+                if ($alt !== '') update_post_meta($att, '_wp_attachment_image_alt', sanitize_text_field($alt));
+            }
+            $new = (string) wp_get_attachment_url($att);
+            if ($new === '') continue;
+            $done[$src] = $new;
+        }
+        $content = str_replace($tag, str_replace($hit[1], esc_url($new), $tag), $content);
+    }
+    return $content;
+}
+
 /* Create/update a content item. status: draft (default) | publish | future(+date). */
 function seop_upsert_content($p) {
     $title   = isset($p['title']) ? sanitize_text_field($p['title']) : '';
@@ -216,6 +253,10 @@ function seop_upsert_content($p) {
     // makes two, which fails the audit's single-H1 check on every imported
     // page — demote body H1s to H2 so imports can't regress the on-page score.
     $content = preg_replace('/<(\/?)h1\b/i', '<$1h2', $content);
+    // v1.14: photos placed in the platform's editor arrive hosted on the
+    // platform — copy them into this site's media library and point the copy
+    // at the local files, so live pages never hotlink the platform.
+    $content = seop_localize_images($content, $title);
     $excerpt = isset($p['excerpt']) ? sanitize_text_field($p['excerpt']) : '';
     $type    = (isset($p['post_type']) && $p['post_type'] === 'page') ? 'page' : 'post';
     $status  = isset($p['status']) && in_array($p['status'], ['publish', 'draft', 'future'], true) ? $p['status'] : 'draft';

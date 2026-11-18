@@ -105,6 +105,12 @@ WordPress site automatically — without ever touching the site's appearance.
   - **Per-piece schema**: each imported piece's own JSON-LD (Article /
     BlogPosting, Service, HowTo, FAQPage) is printed in its `<head>`.
 
+- **v1.14 — Photos in the copy**: photos a strategist uploads in the
+  platform's content editor arrive as `<img>` tags hosted on the platform.
+  On import they are copied into this site's media library (once per photo;
+  re-imports reuse the same attachment, alt text included) and the copy is
+  pointed at the local file, so live pages never hotlink the platform.
+
 ## What it cannot do (by design)
 - No theme, template, CSS, layout, menu, widget, or settings changes.
 - Unapproved content is never published — it arrives as drafts; only content
