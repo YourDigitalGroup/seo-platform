@@ -187,7 +187,9 @@ button{cursor:pointer;font-family:inherit}
 .gstat .gv{font-size:19px;font-weight:800;letter-spacing:-.5px}
 .gstat .gl{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:1px}
 .gstat .gv.ready{color:var(--grow-d)} .gstat .gv.zero{color:var(--muted)}
-.ginactive{position:absolute;top:12px;right:12px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);background:var(--mist);padding:3px 8px;border-radius:999px}
+.gedit{margin-left:auto;align-self:flex-start;width:30px;height:30px;flex-shrink:0;border:1px solid var(--line);border-radius:8px;background:var(--s-card);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:12px;transition:.12s}
+.gedit:hover{border-color:var(--blue);color:var(--blue)}
+.ginactive{position:absolute;bottom:16px;right:14px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);background:var(--mist);padding:3px 8px;border-radius:999px}
 
 /* ── group detail header ────────────────────────────────────── */
 .ghero{display:flex;align-items:center;gap:18px;padding:18px 0 4px}
@@ -1047,7 +1049,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.39.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.40.0</div>
   </div>
   </div>
 </div>
@@ -1135,7 +1137,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.39.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.40.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1183,7 +1185,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.39.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.40.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1346,7 +1348,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.39.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.40.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1364,7 +1366,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.39.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.40.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1427,7 +1429,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.39.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.40.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1667,11 +1669,12 @@ let STRATEGISTS = USERS.filter(u=>u.role==='strategist');
 // violate clients.strategist_id and made "Add & generate" fail).
 async function loadStaff(){
   if(OFFLINE) return;
-  const {data,error}=await sb.from('profiles').select('id,name,email,role');
+  let {data,error}=await sb.from('profiles').select('id,name,email,role,trello_username');
+  if(error) ({data,error}=await sb.from('profiles').select('id,name,email,role'));
   if(error||!data||!data.length){ console.warn('profiles list unavailable — strategist picker will be empty',error); USERS=[]; STRATEGISTS=[]; return; }
   const roleMap={super_admin:'admin', account_manager:'am', strategist:'strategist'};
   USERS=data.map(p=>({ id:p.id, name:p.name||String(p.email||'').split('@')[0], email:p.email,
-    role:roleMap[p.role]||p.role||'strategist',
+    role:roleMap[p.role]||p.role||'strategist', trello:String(p.trello_username||'').replace(/^@/,''),
     initials:(p.name||'?').replace(/[^A-Za-z]/g,'').slice(0,2).toUpperCase()||'··' }));
   // only actual strategists are assignable — set roles in Team & access
   STRATEGISTS=USERS.filter(u=>u.role==='strategist');
@@ -1773,8 +1776,9 @@ async function loadGroups(){
   if(OFFLINE){ GROUPS=PARTNER_GROUPS; return; }
   const {data,error}=await sb.from('partner_groups').select('*').order('name');
   if(error){ console.error(error); showToast('Could not load partner groups',true); return; }
+  try{ await fetchSocial(); }catch(_){ /* strategist names just stay blank */ }
   GROUPS=data.map(g=>({ id:g.id, name:g.name, am:g.am_name||'', amEmail:g.am_email||'',
-    strategist:'', color:g.brand_color||'#4B9BD7', color2:g.brand_color_2||'',
+    strategist:groupStrategistName(g.id, g.strategist), color:g.brand_color||'#4B9BD7', color2:g.brand_color_2||'',
     logo:g.logo_url||'', trello:g.trello_board_id||'', io:g.io_recipients||'' }));
 }
 async function loadRollup(){
@@ -2909,7 +2913,9 @@ function renderGroups(){
         <div class="ghead">
           ${logoTile(g,'glogo')}
           <div><div class="gname">${esc(g.name)}</div>
-          <div class="gpeople">${esc(g.am||'—')} · AM</div></div>
+          <div class="gpeople">${esc(g.am||'—')} · AM</div>
+          <div class="gpeople">${esc(g.strategist||'—')} · Strategist</div></div>
+          ${canAssign()?`<button class="gedit" title="Edit the account manager and social media strategist for ${esc(g.name)}" onclick="event.stopPropagation();editGroupPeople('${g.id}')"><i class="fa-solid fa-pen"></i></button>`:''}
         </div>
         <div class="gstats">
           <div class="gstat"><div class="gv ${ct.total?'':'zero'}">${ct.total}</div><div class="gl">Clients</div></div>
@@ -2921,6 +2927,62 @@ function renderGroups(){
   }).join('');
 }
 
+// ── Group people: account manager + social media strategist, per group.
+// AM → partner_groups.am_name / am_email (Trello fallback tag, AM filter).
+// Strategist → app_settings social_strategists.groups[group] = Trello handle
+// (read by the trello + wp-events functions; clients can still override it
+// in their own edit form), mirrored to partner_groups.strategist by name.
+function groupStrategistName(gid, fallback){
+  const h=(SOCIAL.groups||{})[gid]; if(!h) return '';
+  const p=(SOCIAL.people||[]).find(x=>x.trello===h) || USERS.find(u=>u.trello===h);
+  return p?p.name:(fallback||'@'+h);
+}
+async function editGroupPeople(gid){
+  const g=GROUPS.find(x=>x.id===gid); if(!g||!canAssign()) return;
+  try{ await fetchSocial(); }catch(_){}
+  // AM: account managers + admins from Team & access
+  const amPeople=USERS.filter(u=>u.role==='am'||u.role==='admin').sort((a,b)=>a.name.localeCompare(b.name));
+  const amOpts=[{value:'', label:'— none —'}];
+  if(g.am&&!amPeople.some(u=>u.email&&g.amEmail&&u.email.toLowerCase()===g.amEmail.toLowerCase()))
+    amOpts.push({value:'__keep', label:g.am+(g.amEmail?' ('+g.amEmail+')':'')+' · current'});
+  amPeople.forEach(u=>amOpts.push({value:u.email, label:u.name+(u.role==='admin'?' · admin':'')}));
+  const amCur=g.am?(amPeople.find(u=>g.amEmail&&u.email.toLowerCase()===g.amEmail.toLowerCase())?.email||'__keep'):'';
+  // Strategist: the social-strategist roster + strategists with a Trello username
+  const people=[...(SOCIAL.people||[])];
+  USERS.filter(u=>u.role==='strategist'&&u.trello&&!people.some(p=>p.trello===u.trello)).forEach(u=>people.push({name:u.name, trello:u.trello}));
+  people.sort((a,b)=>a.name.localeCompare(b.name));
+  const stCur=(SOCIAL.groups||{})[gid]||'';
+  const stOpts=[{value:'', label:'— none (tag the account manager) —'}, ...people.map(p=>({value:p.trello, label:p.name+' (@'+p.trello+')'}))];
+  if(stCur&&!people.some(p=>p.trello===stCur)) stOpts.push({value:stCur, label:'@'+stCur+' · current'});
+  const v=await dialog({ title:'Edit '+g.name,
+    body:'The account manager and social media strategist for every client in this group. The strategist is tagged on Trello when GBP posts are sent and when scheduled content goes live; a client can still be set to someone else in its own edit form.',
+    okLabel:'Save',
+    fields:[{id:'am', label:'Account manager', type:'select', options:amOpts, value:amCur},
+            {id:'st', label:'Social media strategist', type:'select', options:stOpts, value:stCur}]});
+  if(!v) return;
+  const amPick=v.am==='__keep'?null:(amPeople.find(u=>u.email===v.am)||null);
+  const amName=v.am==='__keep'?g.am:(amPick?amPick.name:''), amEmail=v.am==='__keep'?g.amEmail:(amPick?amPick.email:'');
+  const stPerson=people.find(p=>p.trello===v.st);
+  try{
+    const {error}=await sb.from('partner_groups').update({am_name:amName||null, am_email:amEmail||null, strategist:stPerson?stPerson.name:(v.st?'@'+v.st:null)}).eq('id',gid);
+    if(error) throw error;
+    await fetchSocial();   // latest copy: never clobber someone else's edit
+    const groups={...(SOCIAL.groups||{})}; const roster=[...(SOCIAL.people||[])];
+    if(v.st) groups[gid]=v.st; else delete groups[gid];
+    if(stPerson&&!roster.some(p=>p.trello===stPerson.trello)) roster.push({name:stPerson.name, trello:stPerson.trello});
+    if(JSON.stringify(groups)!==JSON.stringify(SOCIAL.groups||{})||roster.length!==(SOCIAL.people||[]).length){
+      const value={...SOCIAL, people:roster, groups};
+      const {error:e2}=await sb.from('app_settings').upsert({key:'social_strategists', value, updated_at:new Date().toISOString()});
+      if(e2) throw e2; SOCIAL=value;
+    }
+  }catch(e){ showToast('Could not save — '+String(e.message||e),true); return; }
+  g.am=amName; g.amEmail=amEmail; g.strategist=groupStrategistName(gid, stPerson&&stPerson.name);
+  const amSel=document.getElementById('g-am'); if(amSel){ delete amSel.dataset.filled; populateGroupFilters(); amSel.value=groupFilters.am||'all'; }
+  renderGroups();
+  if(activeGroup&&activeGroup.id===gid&&document.getElementById('gh-meta')) renderGroupHeader();
+  showToast('✓ '+g.name+' updated', false, true);
+}
+
 // ════════════════════════════════════════════════════════════
 //  GROUP DETAIL (clients)
 // ════════════════════════════════════════════════════════════
@@ -2929,7 +2991,8 @@ function renderGroupHeader(){
   const g=activeGroup;
   document.getElementById('gh-logo').outerHTML=logoTile(g,'glogo').replace('class="glogo"','class="glogo" id="gh-logo"');
   document.getElementById('gh-name').textContent=g.name+'.';
-  document.getElementById('gh-meta').innerHTML=`<b>${esc(g.am||'—')}</b> · account manager &nbsp;·&nbsp; <span style="color:var(--muted)">strategists assigned per account</span>`;
+  document.getElementById('gh-meta').innerHTML=`<b>${esc(g.am||'—')}</b> · account manager &nbsp;·&nbsp; <b>${esc(g.strategist||'—')}</b> · social media strategist`+
+    (canAssign()?` &nbsp;<button class="gedit" style="display:inline-flex;vertical-align:middle;width:26px;height:26px;margin-left:4px" title="Edit the account manager and strategist" onclick="editGroupPeople('${g.id}')"><i class="fa-solid fa-pen"></i></button>`:'');
   const route=document.getElementById('gh-routing');
   const bits=[];
   if(g.trello) bits.push(`<span class="rk">Trello board</span> connected`);
