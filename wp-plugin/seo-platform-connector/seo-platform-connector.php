@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Your Digital Group SEO Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from your agency's SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-focused — it never changes your theme, layout, menus or visual settings; its only visible additions are optional (footer business address, an About box under platform-written posts) and switchable under Settings → SEO Platform. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.14.0
+ * Version: 1.15.0
  * Author: Your Digital Group
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -38,7 +38,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.14.0');
+define('SEOP_VERSION', '1.15.0');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -116,6 +116,13 @@ add_action('rest_api_init', function () {
     register_rest_route(SEOP_NS, '/schema',   ['methods' => 'POST', 'permission_callback' => $auth, 'callback' => 'seop_schema']);
     // v1.1: the whole deploy package in one call (same JSON as the file upload).
     register_rest_route(SEOP_NS, '/package',  ['methods' => 'POST', 'permission_callback' => $auth, 'callback' => 'seop_package_rest']);
+    // v1.15: Search Console ownership — the platform asks Google for a META
+    // verification token and places it here before asking Google to verify.
+    register_rest_route(SEOP_NS, '/verification', ['methods' => 'POST', 'permission_callback' => $auth, 'callback' => function ($request) {
+        $t = (string) ($request->get_json_params()['google'] ?? '');
+        if (!seop_set_google_verification($t)) return new WP_Error('seop_bad_token', 'google verification token missing or malformed', ['status' => 400]);
+        return ['ok' => true, 'google_verification' => true];
+    }]);
     // v1.2: trigger the AI auto-fix remotely (platform-initiated runs).
     register_rest_route(SEOP_NS, '/ai-autofix', ['methods' => 'POST', 'permission_callback' => $auth, 'callback' => function () {
         $r = seop_ai_autofix();
@@ -156,8 +163,29 @@ function seop_status() {
         'business_loaded' => (bool) (seop_business()['name'] ?? ''),
         'site' => home_url(),
         'last_import' => get_option(SEOP_OPT_LAST_IMPORT) ?: null,
+        'google_verification' => (bool) get_option('seop_google_verification'),
     ];
 }
+
+/* v1.15: <meta name="google-site-verification"> for Search Console. The
+ * token is public by design (it only proves the platform's Google account
+ * may manage this site's property). Several tokens are kept, so verifying a
+ * second account never removes the first. */
+function seop_set_google_verification($t) {
+    $t = trim((string) $t);
+    if (!preg_match('/^[A-Za-z0-9_-]{20,100}$/', $t)) return false;
+    $all = get_option('seop_google_verification');
+    $all = is_array($all) ? $all : ($all ? [(string) $all] : []);
+    if (!in_array($t, $all, true)) { $all[] = $t; $all = array_slice($all, -5); }
+    update_option('seop_google_verification', $all);
+    return true;
+}
+add_action('wp_head', function () {
+    if (!is_front_page() && !is_home()) return;
+    $all = get_option('seop_google_verification');
+    foreach ((is_array($all) ? $all : ($all ? [(string) $all] : [])) as $t)
+        echo '<meta name="google-site-verification" content="' . esc_attr($t) . '" />' . "\n";
+}, 1);
 
 /* Find a post we previously created for this external id (so re-pushes update, not duplicate). */
 function seop_find_by_external($external_id) {
@@ -1018,6 +1046,10 @@ function seop_apply_package($pkg) {
         update_option(SEOP_OPT_FEATURES, $cur);
         $on = array_keys(array_filter($cur, function ($v, $k) { return $k !== 'brand_color' && $v; }, ARRAY_FILTER_USE_BOTH));
         $ok('Site features: ' . ($on ? implode(', ', $on) : 'all off'));
+    }
+    // v1.15: Search Console verification tag from the platform.
+    if (!empty($pkg['site_verification']['google']) && seop_set_google_verification((string) $pkg['site_verification']['google'])) {
+        $ok('Google Search Console verification tag');
     }
     $scheduled = 0; $drafted = 0;
     foreach ((array) ($pkg['content'] ?? []) as $cItem) {

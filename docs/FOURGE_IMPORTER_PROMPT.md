@@ -102,6 +102,11 @@ the agency uploads ONE file regardless of which CMS the client runs.
   //      once (key on the source URL) and rewrite src to the local copy; keep
   //      the alt text. If a download fails, leave the original src.
   //    post_type "page" vs "post" → map to Fourge's equivalents.
+  // Search Console ownership (optional): print on the HOME PAGE <head>
+  //   <meta name="google-site-verification" content="{site_verification.google}" />
+  // Keep earlier tokens too (append, never replace) — each one proves a
+  // different Google account's ownership.
+  "site_verification": { "google": "token-string" },
   "content": [
     { "external_id": "uuid", "title": "…", "body_html": "<h2>…</h2><p>…</p>",
       "slug": "/network-support-cedar-rapids",      // may be null on older exports

@@ -111,6 +111,13 @@ WordPress site automatically — without ever touching the site's appearance.
   re-imports reuse the same attachment, alt text included) and the copy is
   pointed at the local file, so live pages never hotlink the platform.
 
+- **v1.15 — Search Console verification**: the platform can set up a client's
+  Search Console property itself. It asks Google for a verification token and
+  sends it to `POST /verification` (or in the deploy file's
+  `site_verification.google`); the plugin prints
+  `<meta name="google-site-verification">` on the home page, and Google
+  verifies the property. New posts going live also resubmit the sitemaps.
+
 ## What it cannot do (by design)
 - No theme, template, CSS, layout, menu, widget, or settings changes.
 - Unapproved content is never published — it arrives as drafts; only content

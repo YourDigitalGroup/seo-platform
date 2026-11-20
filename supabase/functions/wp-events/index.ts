@@ -7,7 +7,8 @@
 //  POSTs here, and we:
 //    1. record it once (wp_publish_events, unique per client + piece),
 //    2. mark the campaign deliverable delivered, with the live URL,
-//    3. comment on the client's Trello card tagging the SOCIAL MEDIA
+//    3. resubmit the site's sitemaps to Search Console (gsc-manage),
+//    4. comment on the client's Trello card tagging the SOCIAL MEDIA
 //       STRATEGIST on the account (app_settings "social_strategists": per
 //       client override, else per partner group — Team & access), falling
 //       back to the group's account manager; they're added to the card first
@@ -89,6 +90,19 @@ Deno.serve(async (req) => {
   if (topicId) {
     await supa.from("deliverables").update({ state: "delivered", ...(url ? { asset_url: url } : {}) })
       .eq("client_id", client.id).eq("topic_id", topicId);
+  }
+
+  // New page live → resubmit the site's sitemaps to Search Console
+  // (gsc-manage throttles to once an hour per client; best effort).
+  {
+    const ping = fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/gsc-manage`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "submit_sitemaps", client_id: client.id }),
+      signal: AbortSignal.timeout(60_000),
+    }).then((r) => r.body?.cancel()).catch(() => { /* Search Console not set up: fine */ });
+    const er = (globalThis as any).EdgeRuntime;
+    if (er?.waitUntil) er.waitUntil(ping);
   }
 
   // ── Trello: tag the account manager on the client's card ──
