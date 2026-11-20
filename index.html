@@ -1049,7 +1049,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.40.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.41.0</div>
   </div>
   </div>
 </div>
@@ -1137,7 +1137,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.40.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.41.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1185,7 +1185,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.40.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.41.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1348,7 +1348,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.40.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.41.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1366,7 +1366,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.40.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.41.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1429,7 +1429,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.40.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.41.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1762,6 +1762,8 @@ function mapClient(r){
     notes:r.notes||'',
     addons:Array.isArray(r.addons)?r.addons:[],
     wp_api_key:r.wp_api_key||null,
+    gsc_property:r.gsc_property||null, gsc_permission:r.gsc_permission||null, gsc_token:r.gsc_verification_token||null,
+    gsc_sitemaps:Array.isArray(r.gsc_sitemaps)?r.gsc_sitemaps:null, gsc_sitemaps_at:r.gsc_sitemaps_submitted_at||null, gsc_error:r.gsc_manage_error||null,
     last_audit: r.last_audit_at ? r.last_audit_at.slice(0,10) : null,
     engagement_start_date: r.engagement_start_date || null,
     contract_length_months: r.contract_length_months || 6,
@@ -3755,7 +3757,8 @@ function renderAccessPanel(){
     const on=!!c[p.key];
     const pull = (p.key==='gsc' && !OFFLINE)
       ? '<button class="apc-pull" onclick="pullGSC()">Pull Search Console data →</button>'+
-        (['super_admin','admin'].includes(String(me?.role||'')) ? '<button class="apc-pull" style="margin-top:6px" onclick="backfillGscLastMonth()">Backfill previous month GSC →</button>' : '') : '';
+        (['super_admin','admin'].includes(String(me?.role||'')) ? '<button class="apc-pull" style="margin-top:6px" onclick="backfillGscLastMonth()">Backfill previous month GSC →</button>' : '')+
+        gscManageBlock(c) : '';
 
     const key = p.key==='wp' ? wpKeyRow(c) : '';
     return `<div class="apc ${on?'on':'off'} ${p.key}">
@@ -3797,6 +3800,61 @@ async function saveWpKey(){
   activeClient.wp_api_key=key; activeClient.wp=true; _wpKeyEdit=false;
   const gc=groupClients.find(x=>x.id===activeClient.id); if(gc){ gc.wp_api_key=key; gc.wp=true; }
   renderAccessPanel(); showToast('WordPress connected — key saved, publishing enabled', false, true);
+}
+
+// ── SEARCH CONSOLE MANAGEMENT (gsc-manage): create + verify the property,
+// submit sitemaps. Uses the partner group's connected Google account.
+function gscManageBlock(c){
+  const perm={siteOwner:'owner',siteFullUser:'full access',siteRestrictedUser:'restricted access',siteUnverifiedUser:'not verified'}[c.gsc_permission]||'';
+  const maps=(c.gsc_sitemaps||[]);
+  const when=c.gsc_sitemaps_at?new Date(c.gsc_sitemaps_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
+  const line=c.gsc_property
+    ? `<b>${esc(c.gsc_property)}</b>${perm?` · ${perm}`:''}${when?`<br>Sitemaps submitted ${when}: ${maps.filter(m=>m.ok).map(m=>esc(String(m.path).replace(/^https?:\/\/[^/]+/,''))).join(', ')||'—'}`:''}`
+    : 'No property found yet.';
+  const err=c.gsc_error?`<div class="apc-key-note" style="color:var(--high)">${esc(c.gsc_error)}</div>`:'';
+  const acts=canAssign()?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <button class="apc-key-btn save" onclick="gscManage('setup')" title="Create the property if it's missing, verify ownership (through the WordPress connector, or a tag in the deploy file), then submit the sitemaps"><i class="fa-brands fa-google"></i> Set up in Search Console</button>
+      <button class="apc-key-btn" onclick="gscManage('submit_sitemaps')" title="Find the site's sitemaps (robots.txt, sitemap_index.xml…) and submit them"><i class="fa-solid fa-sitemap"></i> Submit sitemaps</button>
+      <button class="apc-key-btn" onclick="gscManage('status')" title="Re-check the property, permission and sitemap status in Google"><i class="fa-solid fa-rotate"></i></button>
+    </div>`:'';
+  return `<div class="apc-key-note" id="gsc-manage-line" style="margin-top:8px">${line}</div>${err}${acts}`;
+}
+async function gscManage(action){
+  if(OFFLINE||!activeClient) return;
+  const c=activeClient;
+  showToast({setup:'Setting up Search Console — adding, verifying and submitting sitemaps…',submit_sitemaps:'Submitting sitemaps…',status:'Checking Search Console…'}[action]||'Working…');
+  try{
+    const {data,error}=await sb.functions.invoke('gsc-manage',{body:{action, client_id:c.id}});
+    let d=data;
+    if(error){ try{ d=await error.context.json(); }catch(_){ throw error; } }
+    if(!d||d.ok===false&&!d.tag) throw new Error((d&&(d.error||d.message))||'no response');
+    // keep the card in step with what Google said
+    if(d.property!==undefined) c.gsc_property=d.property||c.gsc_property;
+    if(d.permission!==undefined) c.gsc_permission=d.permission;
+    else if(d.verified) c.gsc_permission='siteOwner';
+    if(d.token) c.gsc_token=d.token;
+    if(Array.isArray(d.sitemaps)&&action!=='status'){ c.gsc_sitemaps=d.sitemaps; if(d.sitemaps.some(m=>m.ok)) c.gsc_sitemaps_at=new Date().toISOString(); }
+    c.gsc_error=null;
+    const gc=groupClients.find(x=>x.id===c.id); if(gc) Object.assign(gc,{gsc_property:c.gsc_property,gsc_permission:c.gsc_permission,gsc_token:c.gsc_token,gsc_sitemaps:c.gsc_sitemaps,gsc_sitemaps_at:c.gsc_sitemaps_at,gsc_error:null});
+    renderAccessPanel();
+    if(d.tag){
+      await dialog({title:'Verify ownership', okLabel:'OK',
+        body:`${esc(d.message||'')}<br><br>The tag is also in the next <b>Deploy file</b> (connector 1.15+ applies it on import). After it's on the site, click <b>Set up in Search Console</b> again.<br><br><code style="word-break:break-all">${esc(d.tag)}</code>`});
+      return;
+    }
+    if(action==='status'){
+      const sm=(d.sitemaps||[]);
+      showToast(d.property?`${d.property} · ${d.permission||''}${sm.length?` · ${sm.length} sitemap(s) in Google, ${sm.reduce((n,x)=>n+x.errors,0)} errors`:' · no sitemaps submitted'}`:'No Search Console property for this site yet — use Set up in Search Console', !d.property, !!d.property);
+    } else if(action==='setup'){
+      showToast((d.steps||['Done']).join(' '), false, true);
+    } else {
+      const ok=(d.sitemaps||[]).filter(m=>m.ok).length;
+      showToast(ok?`Submitted ${ok} sitemap(s) to Search Console`:'No sitemap was accepted — '+((d.sitemaps||[]).map(m=>m.error).join('; ')), !ok, !!ok);
+    }
+  }catch(e){
+    c.gsc_error=String(e.message||e); renderAccessPanel();
+    showToast('Search Console: '+String(e.message||e),true);
+  }
 }
 
 // Pull live Google Search Console data for the active client (service-account auth)
@@ -4586,7 +4644,7 @@ function renderGscOauth(){
         <button class="tbtn" onclick="navigator.clipboard.writeText(document.getElementById('gsc-oauth-callback').textContent).then(()=>showToast('Copied',false,true))">Copy</button>
       </div>
       Then set <code>GSC_OAUTH_CLIENT_ID</code> and <code>GSC_OAUTH_CLIENT_SECRET</code> in API keys above.
-      Use an OAuth consent app in Production with Google Search Console read-only scope.
+      Use an OAuth consent app in Production. In the same Google Cloud project, enable the <b>Google Search Console API</b> and the <b>Google Site Verification API</b>, and add the scopes <code>…/auth/webmasters</code> and <code>…/auth/siteverification</code> to the consent screen — that lets the platform create and verify properties and submit sitemaps (each client's access card → Set up in Search Console; sitemaps are resubmitted weekly and whenever a scheduled post goes live).
     </div>
     ${g.oauth_client_set?'':`<div class="wmeta" style="color:#c0392b;margin:9px 0"><i class="fa-solid fa-triangle-exclamation"></i> Google OAuth client ID or secret is missing. Add both in API keys above, then refresh.</div>`}
     ${(g.connections||[]).map(c=>`<div class="key-row">
@@ -4594,6 +4652,7 @@ function renderGscOauth(){
         <div class="key-name"><b>${c.connection==='44i'?'44i partner group':'All other partner groups'}</b>
           <code>${esc(c.expected_email)}</code>
           ${c.connected?`<span class="key-chip ok"><i class="fa-solid fa-check"></i> Connected as ${esc(c.account_email||c.expected_email)}</span>`:'<span class="key-chip off">Not yet authorized (existing service-account fallback)</span>'}
+          ${c.connected?(c.can_manage?'<span class="key-chip ok"><i class="fa-solid fa-sitemap"></i> Manages properties &amp; sitemaps</span>':'<span class="key-chip off" title="Click Reconnect and approve every permission so the platform can create and verify properties and submit sitemaps">Read-only — reconnect to manage properties &amp; sitemaps</span>'):''}
         </div>
         <div class="wmeta">${c.connected?`${Number(c.properties_count||0)} properties visible at authorization · connected ${new Date(c.connected_at).toLocaleString()}`:'The first account authorization will enable automatic data collection for all its accessible properties.'}</div>
         ${c.last_error?`<div class="wmeta" style="color:#c0392b">${esc(c.last_error)}</div>`:''}
@@ -7155,6 +7214,8 @@ function buildDeployPackage(){
     // (third-party widgets on first interaction, gzip, WebP uploads), branded
     // share images, footer NAP when the page lacks it, and the E-E-A-T box.
     features:{ delay_scripts:true, gzip:true, webp:true, og_images:true, footer_nap:true, eeat_box:true },
+    // Search Console ownership tag (connector 1.15+ prints it on the home page)
+    ...(c.gsc_token?{ site_verification:{ google:c.gsc_token } }:{}),
     // WordPress connector 1.12+: importing the file sets the plugin's API key
     // to this one (only on the site named in `site`), so nobody copies keys
     // between WordPress and the console. Other importers ignore it.
