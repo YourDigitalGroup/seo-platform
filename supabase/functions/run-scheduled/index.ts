@@ -8,7 +8,8 @@
 //    · { "mode": "full-packages", "client_ids"?: [...] } — a FULL package run
 //               (topics for every planned content deliverable + freshly
 //               written fixes) for each active client, or the listed ones.
-//    · { "mode": "draft-backlog", "limit"?: 4 } — writes drafts for topics
+//    · { "mode": "draft-backlog", "limit"?: 4 } — (1.6: spare slots shorten GBP
+//      posts over 1,500 characters) — writes drafts for topics
 //               that have none yet (oldest campaign month first), a few per
 //               run; pg_cron repeats it until the backlog is empty.
 //    · weekly → { "mode": "weekly-reports" } rebuilds the client progress
@@ -50,7 +51,7 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const FRESH_HOURS = 20;
-const SCHED_VERSION = "1.5.0";   // echoed in every response so a stale deploy is self-evident
+const SCHED_VERSION = "1.6.0";   // echoed in every response so a stale deploy is self-evident
 const STALE_JOB_MIN = 30;        // a background audit never legitimately runs this long
 const MAX_RATE_RETRIES = 4;
 
@@ -189,7 +190,22 @@ Deno.serve(async (req) => {
       }
       const todo = (tops || []).filter((t: any) => !have.has(t.id))
         .sort((a: any, b: any) => (monthOf[a.id] ?? 99) - (monthOf[b.id] ?? 99));
-      const batch = todo.slice(0, n);
+      const batch: any[] = todo.slice(0, n);
+      // Spare slots: GBP posts over Google's 1,500-character limit get a
+      // shortening rewrite (generate-content enforces the cap on output).
+      let overLimit = 0;
+      if (batch.length < n && pkIds.length) {
+        const { data: gt } = await supa.from("content_topics").select("id").in("package_id", pkIds).eq("kind", "gbp_post").limit(3000);
+        const gIds = (gt || []).map((t: any) => t.id);
+        const long: string[] = [];
+        for (let i = 0; i < gIds.length; i += 200) {
+          const { data: dr } = await supa.from("content_drafts").select("topic_id, body").in("topic_id", gIds.slice(i, i + 200));
+          (dr || []).forEach((d: any) => { if (String(d.body || "").length > 1500) long.push(d.topic_id); });
+        }
+        overLimit = long.length;
+        long.slice(0, n - batch.length).forEach((id) => batch.push({ id, instruction:
+          "Shorten this Google Business Profile post to under 1,400 characters including spaces. Keep the main point, the business name, the location and exactly one call to action. Plain text only." }));
+      }
       const res = { ok: 0, failed: 0 };
       const work = (async () => {
         for (let i = 0; i < batch.length; i += 2) {
@@ -197,7 +213,7 @@ Deno.serve(async (req) => {
             try {
               const r = await fetch(`${base}/functions/v1/generate-content`, { method: "POST",
                 headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ topic_id: t.id }), signal: AbortSignal.timeout(180_000) });
+                body: JSON.stringify({ topic_id: t.id, ...(t.instruction ? { instruction: t.instruction } : {}) }), signal: AbortSignal.timeout(180_000) });
               if (r.ok) res.ok++; else { res.failed++; console.error("draft-backlog", t.id, r.status, (await r.text()).slice(0, 200)); }
             } catch (e) { res.failed++; console.error("draft-backlog", t.id, String(e).slice(0, 200)); }
           }));
@@ -206,7 +222,7 @@ Deno.serve(async (req) => {
       })();
       const er0 = (globalThis as any).EdgeRuntime;
       if (er0?.waitUntil) er0.waitUntil(work); else await work;
-      return json({ ok: true, mode, version: SCHED_VERSION, drafting: batch.length, backlog: todo.length });
+      return json({ ok: true, mode, version: SCHED_VERSION, drafting: batch.length, backlog: todo.length, gbp_over_limit: overLimit });
     }
 
     // Reap audit jobs whose worker was killed mid-run (no finally ever ran).

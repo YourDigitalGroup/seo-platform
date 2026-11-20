@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Your Digital Group SEO Connector
  * Description: Securely receives SEO metadata, JSON-LD schema, and content from your agency's SEO platform — one item at a time via REST, or everything at once via a deploy-package file (Settings → SEO Platform → Import package). SEO-focused — it never changes your theme, layout, menus or visual settings; its only visible additions are optional (footer business address, an About box under platform-written posts) and switchable under Settings → SEO Platform. Unapproved content arrives as drafts; approved content publishes on its schedule.
- * Version: 1.15.0
+ * Version: 1.15.1
  * Author: Your Digital Group
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -38,7 +38,7 @@ if (!defined('WP_HTTP_BLOCK_EXTERNAL')) define('WP_HTTP_BLOCK_EXTERNAL', false);
 
 define('SEOP_NS', 'seo-platform/v1');
 define('SEOP_KEY_OPT', 'seoplatform_api_key');
-define('SEOP_VERSION', '1.15.0');
+define('SEOP_VERSION', '1.15.1');
 // v1.2: built-in AI auto-fix (fills MISSING SEO titles/descriptions and image
 // alts site-wide using the Anthropic API; never overwrites existing values).
 define('SEOP_OPT_AI_KEY',    'seoplatform_anthropic_key');
@@ -305,6 +305,7 @@ function seop_upsert_content($p) {
     }
     $existing = seop_find_by_external($external);
     $kept_live = false;
+    $was_live = $existing && get_post_status($existing) === 'publish';
     if ($existing) {
         // Never demote content a human already published or scheduled: a
         // re-import whose console copy is still unapproved must not un-publish
@@ -326,6 +327,12 @@ function seop_upsert_content($p) {
     else           { $id = wp_insert_post(wp_slash($data), true); }
     if (is_wp_error($id)) return $id;
     if ($external) update_post_meta($id, '_seoplatform_external_id', $external);
+    // v1.15.1: a piece published straight from the import (targeted landing
+    // pages go live right away) gets the same "went live" ping as a scheduled
+    // post — WordPress fired its status hook before the external id was saved.
+    if ($status === 'publish' && !$was_live && !$kept_live && $external) {
+        $p = get_post($id); if ($p) seop_ping_published($p);
+    }
     if (!empty($p['focus_keyword'])) update_post_meta($id, '_seoplatform_focus_keyword', sanitize_text_field($p['focus_keyword']));
     // v1.8: featured image picked in the platform (Pexels). Sideloaded once —
     // a re-import never re-downloads or replaces an existing thumbnail.
@@ -355,7 +362,7 @@ function seop_upsert_content($p) {
         update_post_meta($id, '_seoplatform_schema_list', $list);
     }
     return ['ok' => true, 'post_id' => $id, 'status' => $kept_live ? get_post_status($id) : $status,
-        'kept_live_copy' => $kept_live,
+        'kept_live_copy' => $kept_live, 'was_live' => (bool) $was_live,
         'scheduled_for' => get_post_status($id) === 'future' ? get_post_time('Y-m-d H:i', false, $id) : null,
         'edit_url' => admin_url('post.php?post=' . $id . '&action=edit'),
         'view_url' => get_permalink($id)];
@@ -1065,7 +1072,7 @@ function seop_apply_package($pkg) {
         ]);
         if (is_wp_error($res)) $skip('Content "' . ($cItem['title'] ?? '?') . '"', $res->get_error_message());
         elseif (($res['status'] ?? '') === 'future') { $scheduled++; $ok('Scheduled "' . ($cItem['title'] ?? '?') . '" → publishes ' . ($res['scheduled_for'] ?: 'per campaign')); }
-        elseif (($res['status'] ?? '') === 'publish') { $ok('"' . ($cItem['title'] ?? '?') . '" is already live — updated in place'); }
+        elseif (($res['status'] ?? '') === 'publish') { $ok('"' . ($cItem['title'] ?? '?') . (empty($res['was_live']) ? '" published — live now' : '" is already live — updated in place')); }
         else $drafted++;
     }
     if ($scheduled) $ok($scheduled . ' piece(s) scheduled on the campaign calendar (dates above)');
@@ -1438,6 +1445,9 @@ function seop_same_site($url) {
  * a slow or unreachable platform never delays publishing. */
 add_action('transition_post_status', function ($new, $old, $post) {
     if ($new !== 'publish' || $old !== 'future' || !($post instanceof WP_Post)) return;
+    seop_ping_published($post);
+}, 10, 3);
+function seop_ping_published($post) {
     $external = (string) get_post_meta($post->ID, '_seoplatform_external_id', true);
     $key = (string) get_option(SEOP_KEY_OPT);
     if ($external === '' || $key === '') return;   // not platform content, or not connected
@@ -1451,7 +1461,7 @@ add_action('transition_post_status', function ($new, $old, $post) {
             'plugin_version' => SEOP_VERSION,
         ]),
     ]);
-}, 10, 3);
+}
 
 /* ════════════════════════════════════════════════════════════════════════════
  * v1.13 — SITE EXPERIENCE FEATURES (each one switchable; the deploy package's

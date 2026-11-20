@@ -92,6 +92,8 @@ the agency uploads ONE file regardless of which CMS the client runs.
   // 7) Content. THE KEY BEHAVIOR:
   //    status "schedule" + ISO date → create the page/post and publish it
   //      automatically at that time (if the date is past, publish ~now).
+  //    status "publish" → create it and publish IMMEDIATELY (targeted landing
+  //      pages; schedule is null). Never un-publish or re-date a live page.
   //    status "draft" → create unpublished, for human review.
   //    external_id → idempotency key: re-importing the same file UPDATES the
   //      same items instead of duplicating them. Store it on the record.

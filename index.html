@@ -1049,7 +1049,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div class="lerr" id="l-err"></div>
     <button class="lbtn" id="l-btn" onclick="doLogin()" style="box-shadow:var(--shadow-brand)">Sign in →</button>
-    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.41.0</div>
+    <div class="login-foot">44i Digital, Inc. · Internal tool · V5.42.0</div>
   </div>
   </div>
 </div>
@@ -1137,7 +1137,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         <div class="groups" id="groups-grid"></div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.41.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.42.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1185,7 +1185,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
         </div>
       </div>
       <footer>
-        <span>44i, Inc. · Internal Ops Console · V5.41.0</span>
+        <span>44i, Inc. · Internal Ops Console · V5.42.0</span>
         <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
       </footer>
     </div>
@@ -1348,7 +1348,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
     </div>
 
     <footer>
-      <span>44i, Inc. · Specialist Console · V5.41.0 · draft outputs require specialist review</span>
+      <span>44i, Inc. · Specialist Console · V5.42.0 · draft outputs require specialist review</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1366,7 +1366,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="rep-list" style="overflow-x:auto"><div class="wmeta" style="padding:18px 0">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.41.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.42.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -1429,7 +1429,7 @@ body[data-theme="dark"] .rep-btn.alt{color:color-mix(in oklab,var(--pc,#4B9BD7) 
       <div id="ai-tracking-settings"><div class="wmeta">Loading…</div></div>
     </div>
     <footer>
-      <span>44i, Inc. · Internal Ops Console · V5.41.0</span>
+      <span>44i, Inc. · Internal Ops Console · V5.42.0</span>
       <div class="fbadges"><span>Search & Authority Data</span><span>· Secure Cloud</span></div>
     </footer>
   </div>
@@ -3482,7 +3482,10 @@ function renderDraftScore(){
   const {score,checks}=scoreContent(dmGetBody(), t.keyword, t.title, t.kind||'blog');
   const cls=score>=80?'good':score>=50?'ok':'bad';
   const lab=score>=80?'Optimized':score>=50?'Room to improve':'Needs work';
-  el.innerHTML=`<div class="cs-top"><div class="cs-ring ${cls}">${score}</div><div class="cs-lab"><b>Content score · ${lab}</b><span>focus keyword: ${esc(t.keyword||'—')}</span></div></div>`+
+  // Google rejects GBP posts over 1,500 characters
+  const gbpLen=t.kind==='gbp_post'?dmGetBody().trim().length:0;
+  const gbpLine=t.kind==='gbp_post'?`<div class="cs-item ${gbpLen<=GBP_MAX?'ok':'no'}" style="margin:6px 0 2px"><span class="cs-ic">${gbpLen<=GBP_MAX?'✓':'○'}</span><span class="cs-tx"><b>${gbpLen.toLocaleString()} / ${GBP_MAX.toLocaleString()} characters</b>${gbpLen>GBP_MAX?` <i>Google rejects posts over ${GBP_MAX.toLocaleString()} — cut ${(gbpLen-GBP_MAX).toLocaleString()} characters (or request a rewrite) before approving.</i>`:''}</span></div>`:'';
+  el.innerHTML=`<div class="cs-top"><div class="cs-ring ${cls}">${score}</div><div class="cs-lab"><b>Content score · ${lab}</b><span>focus keyword: ${esc(t.keyword||'—')}</span></div></div>`+gbpLine+
     `<div class="cs-list">`+checks.map(c=>`<div class="cs-item ${c.ok?'ok':'no'}"><span class="cs-ic">${c.ok?'✓':'○'}</span><span class="cs-tx">${c.label}${c.ok?'':` <i>${c.hint}</i>`}</span></div>`).join('')+`</div>`;
 }
 // ── Editor mode: Visual (WYSIWYG) vs Markdown. The draft is STORED as
@@ -3668,9 +3671,12 @@ function approvalOf(t, finalBody){
 }
 const APPROVAL_LABEL={as_is:'Approved As Is', modified:'Modified & Approved'};
 function statusLabel(t){ return t.status==='approved'?(APPROVAL_LABEL[t.approval]||'Approved'):cap(t.status); }
+const GBP_MAX=1500;
 function approveDraft(){
   if(_draftIdx==null||!canEditContent()) return;
-  const t=PK.topics[_draftIdx]; t.body=dmGetBody();
+  const t=PK.topics[_draftIdx];
+  if(t.kind==='gbp_post'&&dmGetBody().trim().length>GBP_MAX){ showToast(`Cannot approve — GBP posts must be ${GBP_MAX.toLocaleString()} characters or fewer (this one is ${dmGetBody().trim().length.toLocaleString()})`, true); return; }
+  t.body=dmGetBody();
   const qa=qaScan(t.body);
   if(qa.blocking.length){ showToast('Cannot approve — '+qa.blocking[0], true); return; }
   if(qa.warnings.length) showToast('Approved with a style note: '+qa.warnings[0]);
@@ -6837,8 +6843,11 @@ function splitDraft(md){
 // Website content publish dates (the Deploy file's schedule): each approved
 // piece publishes inside ITS campaign month, spread evenly, 2+ days apart,
 // never in the past. Shared by the Deploy file and "Submit to Trello".
+const publishesNow=t=>t.kind==='landing';
 function contentSchedule(){
-  const deployable=(PK.topics||[]).filter(t=>t.body&&t.kind!=='gbp_post'&&t.status==='approved');
+  // Targeted landing pages aren't scheduled: they publish as soon as the
+  // deploy file is imported (publishesNow), so they're left out here.
+  const deployable=(PK.topics||[]).filter(t=>t.body&&t.kind!=='gbp_post'&&t.status==='approved'&&!publishesNow(t));
   const DAY=24*3600*1000, NOW=Date.now();
   const monthOfT={}; (PK.campaign||[]).forEach(d=>{ if(d.topic_id) monthOfT[d.topic_id]=d.month_offset||1; });
   const engS=activeClient&&activeClient.engagement_start_date
@@ -6931,7 +6940,8 @@ async function sendGbpPostsToTrello(only, quiet){
 // Deploy-file schedule, SEO fields, and the full text.
 function contentPieceFile(t){
   const c=activeClient||{}, d=splitDraft(t.body);
-  const when=t.status==='approved'?contentSchedule()[t._id||t.title]:null;
+  const now=publishesNow(t);
+  const when=t.status==='approved'&&!now?contentSchedule()[t._id||t.title]:null;
   const monthOfT={}; (PK.campaign||[]).forEach(x=>{ if(x.topic_id) monthOfT[x.topic_id]=x.month_offset||1; });
   const KIND={blog:'Blog post', landing:'Landing page', service:'Service page', pillar:'AEO pillar page', faq:'FAQ'};
   const slug=String(t.title||'piece').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'piece';
@@ -6939,7 +6949,7 @@ function contentPieceFile(t){
   const lines=[
     (KIND[t.kind]||'Content').toUpperCase(),
     `Client: ${c.name||c.url||''}`,
-    `Publish date: ${when?fmtPostDate(new Date(when)):(t.status==='approved'?'not scheduled':'not scheduled — approve it to schedule')}`,
+    `Publish date: ${now?(t.status==='approved'?'immediately, when the deploy file is imported':'immediately on import, once approved'):when?fmtPostDate(new Date(when)):(t.status==='approved'?'not scheduled':'not scheduled — approve it to schedule')}`,
     monthOfT[t._id]?`Campaign month: ${monthOfT[t._id]}`:null,
     `Status: ${statusLabel(t)}`,
     `Title (H1): ${d.h1||t.title||''}`,
@@ -6952,7 +6962,7 @@ function contentPieceFile(t){
     '', '----- CONTENT -----', '',
     mdToPlain(d.body),
   ].filter(x=>x!==null);
-  return { name:`${(t.kind||'content')}_${when?String(when).slice(0,10):'unscheduled'}_${slug}${key?'_'+key:''}.txt`, key, text:lines.join('\n')+'\n' };
+  return { name:`${(t.kind||'content')}_${now?'publish-now':when?String(when).slice(0,10):'unscheduled'}_${slug}${key?'_'+key:''}.txt`, key, text:lines.join('\n')+'\n' };
 }
 function pieceFile(t){ return t.kind==='gbp_post'?gbpPostFile(t, gbpSchedule()[t._id||t.title]):contentPieceFile(t); }
 // "Trello" on a queue row: this one piece onto the client's card. GBP posts
@@ -7157,7 +7167,8 @@ function buildDeployPackage(){
   };
   const content=deployable.map(t=>{
     const approved=t.status==='approved';
-    const when=approved?(schedFor[t._id||t.title]||null):null;
+    const now=approved&&publishesNow(t);
+    const when=approved?(now?new Date().toISOString():(schedFor[t._id||t.title]||null)):null;
     const d=splitDraft(t.body);
     // The CMS prints the title as the page's H1 — drop a body "# Title" line
     // so it isn't repeated as an H2 under it.
@@ -7168,7 +7179,7 @@ function buildDeployPackage(){
       post_type:(t.kind==='landing'||t.kind==='service'||t.kind==='pillar')?'page':'post',
       kind:t.kind, focus_keyword:t.keyword||'', location:t.town||null,
       image_url:t.image||null, image_alt:t.image_alt||null, link_target:t.link||null,
-      approved, status:approved?'schedule':'draft', schedule:when,
+      approved, status:approved?(now?'publish':'schedule'):'draft', schedule:now?null:when,
       qa:(q=>[...q.blocking,...q.warnings])(qaScan(t.body)) };
   });
   const gbpSch=gbpSchedule();
