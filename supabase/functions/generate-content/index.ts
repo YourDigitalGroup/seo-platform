@@ -102,10 +102,21 @@ function buildPrompt(kind: string, title: string, keyword: string, biz: string, 
     pillar:  `Write a comprehensive cornerstone/pillar article titled "${title}" targeting "${keyword}". 1200–1600 words, definition-first opening, question-based H2s, and at least one Markdown comparison table where the topic supports it (e.g. options, models, tiers). ${faqRule(6)}`,
     landing: `Write a conversion-focused landing page titled "${title}" for "${keyword}"${town ? `, specifically for ${town}` : ""}. ANTI-DOORWAY REQUIREMENTS: this page must be genuinely specific to its location — reference the town by name inside headings and body, speak to its proximity to the business's base only in safe generic terms ("a short drive away", never invented minutes), and DO NOT use a templated "Why [City] Businesses Choose Us" skeleton — structure this page differently from any sibling city page. Include benefit sections and one clear call to action. ${faqRule(5, town ? ` The FAQs must be ${town}-specific (e.g. service-area or response questions a ${town} customer would ask), not generic definitions.` : "")}`,
     service: `Write a service page titled "${title}" for "${keyword}". 600+ words, H1 containing the keyword naturally, benefit-led sections with substance (what the service includes, who it's for, how engagement works), and a contact CTA. No geo-templating. Include a Markdown comparison table if the topic has natural options to compare. ${faqRule(5)}`,
-    gbp_post:`Write ONE Google Business Profile post about "${title}". STRICT SHAPE: 100–300 words of plain text, no headings, no lists, no markdown syntax, exactly one call to action. Never produce an article — a GBP post is a short update. Skip the DELIVERABLE HEADER block for this kind.`,
+    gbp_post:`Write ONE Google Business Profile post about "${title}". STRICT SHAPE: 100–200 words of plain text and NEVER more than 1,400 characters including spaces (Google rejects posts over 1,500), no headings, no lists, no markdown syntax, exactly one call to action. Never produce an article — a GBP post is a short update. Skip the DELIVERABLE HEADER block for this kind.`,
     faq:     `Write an FAQ set of 5–7 question/answer pairs about "${keyword}" for the page "${title}". Each answer: first 40–60 words fully answer the question standalone, then at most 2 more sentences. Format as ## question then the answer.`,
   };
   return `${base}\n${kindBrief[kind] ?? kindBrief.blog}`;
+}
+
+// Google Business Profile posts are capped at 1,500 characters.
+const GBP_MAX = 1500;
+// Last resort when the model's shortened copy is still too long: cut at the
+// last sentence end that fits (never mid-word).
+function trimToLimit(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const end = Math.max(...[". ", "! ", "? ", ".\n", "!\n", "?\n"].map((m) => cut.lastIndexOf(m)));
+  return (end > max * 0.6 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, "")).trim();
 }
 
 // Photos uploaded in the console editor live in the copy as ![alt](url).
@@ -210,7 +221,32 @@ Deno.serve(async (req) => {
     // A rewrite must not lose the strategist's photos: any the model dropped
     // go back under the heading they sat under (or at the end).
     if (body && instruction && existing?.body && !/\b(remove|delete|drop|take out)\b[^.]*\b(photo|image|picture|pic)s?\b/i.test(String(instruction))) body = keepPhotos(existing.body, body);
-    const usage = data.usage ?? null;
+    let usage = data.usage ?? null;
+    // GBP posts over Google's 1,500-character limit: one shortening pass,
+    // then a sentence-boundary trim if it's still over.
+    if (topic.kind === "gbp_post" && body && body.length > GBP_MAX && data.stop_reason !== "max_tokens") {
+      try {
+        const sRes = await fetch(ANTHROPIC_URL, {
+          method: "POST",
+          headers: {
+            "x-api-key": ANTHROPIC_KEY, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json",
+            ...((await platformKey("ANTHROPIC_WORKSPACE_ID")) ? { "anthropic-workspace-id": (await platformKey("ANTHROPIC_WORKSPACE_ID")) } : {}),
+          },
+          body: JSON.stringify({ model: apiModel, max_tokens: 700, messages: [{ role: "user", content:
+            `Shorten this Google Business Profile post to under 1,400 characters including spaces (it is ${body.length} now). ` +
+            `Keep its main point, the business name, the location and exactly one call to action. Plain text only — no headings, lists or markdown. ` +
+            `Do not add facts. Output only the post.\n\n${body}` }] }),
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (sRes.ok) {
+          const sj = await sRes.json();
+          const short = (sj.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n").replace(/^\s*```[a-z]*\s*$/gim, "").trim();
+          if (short && short.length < body.length && sj.stop_reason !== "max_tokens") body = short;
+          if (sj.usage && usage) usage = { ...usage, shorten: sj.usage };
+        }
+      } catch (e) { console.error("gbp shorten", String(e)); }
+      body = trimToLimit(body, GBP_MAX);
+    }
     if (data.stop_reason === "max_tokens") {
       // a cut-off piece must never land as a finished draft
       await supa.from("content_topics").update({ status: "queued" }).eq("id", topic_id);

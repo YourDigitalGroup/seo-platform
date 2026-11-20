@@ -117,6 +117,9 @@ WordPress site automatically — without ever touching the site's appearance.
   `site_verification.google`); the plugin prints
   `<meta name="google-site-verification">` on the home page, and Google
   verifies the property. New posts going live also resubmit the sitemaps.
+- **v1.15.1**: content sent with `status: "publish"` (targeted landing pages
+  publish as soon as the deploy file is imported) also sends the "went live"
+  ping, so the Trello note and the sitemap resubmission happen for them too.
 
 ## What it cannot do (by design)
 - No theme, template, CSS, layout, menu, widget, or settings changes.
